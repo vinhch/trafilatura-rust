@@ -23,8 +23,7 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 2 | Parity harness (`AGENTS.md`, Parity harness): fixture generator in `tools/parity/`, `scripts/fixtures` and `scripts/measure`, the parity test and its report; plus what it needs on the Rust side: `dom/` (arena tree, html5ever parse, depth and node limits), `utils::decode_file`, skeleton `error.rs` and `cancel.rs` | Next | `scripts/test.sh` runs the comparison; the crate's tree dump matches the `html5` fixture on every page or the page has a class other than `port-bug`; fixture generation is reproducible from the pin and lock file; the measurement run produces a decode and parse baseline for crate and upstream | none |
-| 3 | Extraction core: `settings`, the rest of `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | Not started | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | 2 |
+| 3 | Extraction core: `settings`, the rest of `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | Next | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | none |
 | 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
 | 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
 | 6 | Output formats: `xml` (XML, XML-TEI, JSON, CSV) | Not started | Upstream `xml_tei_tests.py` cases ported by name pass | 3 |
@@ -36,6 +35,7 @@ The parity bar for every phase is upstream Python output at the pinned release w
 | --- | --- |
 | 0. Scaffold: Apache-2.0 license and NOTICE, crate skeleton with panic and unsafe lints, `cargo-deny` policy, `.sh`/`.ps1` scripts, CI, release and quality workflows, Dependabot, `AGENTS.md` | `eac2d8d` |
 | 1. Core design: tree model, public API, cancellation, limits, module layout, first dependencies (`AGENTS.md`, D-2..D-4) | `521051e` |
+| 2. Parity harness: `tools/parity/` fixture generator, `scripts/fixtures` and `scripts/measure`, the parity test and report, `dom/` (arena tree, html5ever parse, depth and node limits), `utils::decode_file`, `error.rs`, `cancel.rs` | `35a3e8a` |
 
 ## Open items register
 
@@ -61,3 +61,7 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-8 | charset_normalizer parity for non-UTF-8 input: replace the `chardetng` guess with a detector that follows upstream's charset_normalizer, if the Phase 2 harness shows encoding-caused mismatches worth closing. Candidates: `charset-norm` and `charset-normalizer-core` (both MIT, young, single author; the second claims behavior-identical to charset_normalizer 3.5.x). Check each against charset_normalizer's mess and coherence logic and on non-UTF-8 fixtures first. | Phase 2 |
 | F-9 | Enforce the no-exact-pin rule mechanically: `scripts/test.sh` and `.ps1` fail when `Cargo.toml` declares a `=` version requirement, which `cargo deny` does not check (Dependency policy). | Phase 2 |
 | F-10 | Minimal-versions check: a CI job runs `cargo +nightly update -Z direct-minimal-versions` and the tests, so each declared minimum really builds; add the rule to Dependency policy. Matters once the crate is published and resolved by ranges instead of this repo's `Cargo.lock`. | Phase 2, before Phase 7 |
+| F-11 | Default element cap for the parser. html5ever re-creates open formatting elements for every block start, so a small page can build millions of elements (a 102 KB page builds 4.0M and peaks near 1.3 GB); libxml2 builds no such copies. Only callers that set `max_nodes` are protected. A default cap rejects pages upstream accepts, so it is a deviation and needs the maintainer's approval. | Phase 3 |
+| F-12 | Tighten parity classification: a page in class `encoding`, `normalized` or `python-parser` is excluded whole today; classify each differing line and fail on any line no class explains. | Phase 3 |
+| F-13 | Harness hardening: restore logging and warnings state after the generator tests; write fixture pages and index atomically (temp directory, then rename); parametrize the identity test over pin, upstream version, `max_date` and lock hash. | Phase 3 |
+| F-14 | `dom/`: checked or saturating arithmetic in `Inner::depth`, `height` and dump indentation; replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `dom`, `settings` and `utils` as callers land. | Phase 3 |
