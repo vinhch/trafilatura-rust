@@ -12,14 +12,26 @@ fn manifest_dir() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// The `commit` value inside the `[package.metadata.upstream]` table of `manifest`, if any.
+fn upstream_commit(manifest: &str) -> Option<String> {
+    let mut in_table = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_table = line == "[package.metadata.upstream]";
+        } else if in_table && let Some(value) = line.strip_prefix("commit") {
+            let value = value.trim_start().strip_prefix('=')?;
+            return Some(value.trim().trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
 /// The upstream commit `Cargo.toml` pins in `[package.metadata.upstream]`.
 pub fn pin() -> String {
     let manifest = std::fs::read_to_string(manifest_dir().join("Cargo.toml")).unwrap();
-    manifest
-        .lines()
-        .find_map(|line| line.strip_prefix("commit = "))
-        .map(|value| value.trim().trim_matches('"').to_string())
-        .expect("Cargo.toml has no `commit = ` line under [package.metadata.upstream]")
+    upstream_commit(&manifest)
+        .expect("Cargo.toml has no `commit` key under [package.metadata.upstream]")
 }
 
 /// The upstream checkout: `$TRAFILATURA_UPSTREAM`, else `../trafilatura`; `None` when it is absent.
@@ -44,4 +56,34 @@ pub fn fixture_dir() -> Option<PathBuf> {
 /// The directory the tests write their reports to.
 pub fn report_dir() -> PathBuf {
     manifest_dir().join(".temp/parity")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn commit_is_read_from_the_upstream_table() {
+        let manifest = r#"
+[package]
+commit = "wrong"
+
+[package.metadata.other]
+commit = "also wrong"
+
+[package.metadata.upstream]
+version = "1"
+commit = "abc123"
+
+[dependencies]
+commit = "late"
+"#;
+        assert_eq!(super::upstream_commit(manifest).as_deref(), Some("abc123"));
+        assert_eq!(
+            super::upstream_commit(
+                "[package]
+commit = \"x\"
+"
+            ),
+            None
+        );
+    }
 }
