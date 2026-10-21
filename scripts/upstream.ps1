@@ -28,7 +28,7 @@ pin and REF under trafilatura/ and tests/.
 
   --upstream PATH  Upstream git checkout. Default: `$env:TRAFILATURA_UPSTREAM, else ../trafilatura.
   --to REF         Target ref. Default: the highest v* tag in the checkout.
-  --patch          Print the full diff of trafilatura/ instead of the summary.
+  --patch          Print the full diff of trafilatura/ and tests/ instead of the summary.
   -h, --help       Show this message.
 
 Fetch tags in the upstream checkout first (git -C PATH fetch --tags); this script never fetches.
@@ -91,7 +91,7 @@ git -C $Upstream merge-base --is-ancestor $TargetCommit $PinnedCommit
 if ($LASTEXITCODE -eq 0) { "note: $Target is older than the pin; the summary shows changes in reverse" }
 
 if ($Patch) {
-    git -C $Upstream --no-pager diff $PinnedCommit $TargetCommit -- trafilatura/
+    git -C $Upstream --no-pager diff $PinnedCommit $TargetCommit -- trafilatura/ tests/
     exit 0
 }
 

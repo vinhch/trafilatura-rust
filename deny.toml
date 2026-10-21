@@ -1,5 +1,5 @@
-# cargo-deny policy. CI runs `cargo deny check` on every push and a weekly advisories-only check,
-# because a new RustSec advisory can fail a crate whose lockfile has not changed.
+# cargo-deny policy. CI runs `cargo deny check` on pushes to main and pull requests, and a weekly
+# advisories-only check, because a new RustSec advisory can fail a crate whose lockfile has not changed.
 
 [graph]
 all-features = true

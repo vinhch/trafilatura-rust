@@ -26,9 +26,6 @@ jobs:
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-deny@0.20.2
-      - name: Check the version the sources carry
-        shell: bash
-        run: scripts/version.sh --check
       - name: Run every check
         shell: bash
         run: scripts/test.sh

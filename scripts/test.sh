@@ -10,8 +10,8 @@ usage() {
   cat <<EOF
 Usage: scripts/$script_name [--no-deny]
 
-Runs cargo fmt --check, cargo clippy --locked --all-targets --all-features -- -D warnings,
-cargo test --locked --all-features (doc tests included) and cargo deny check.
+Runs scripts/version.sh --check, cargo fmt --check,
+cargo clippy --locked --all-targets --all-features -- -D warnings, cargo test --locked --all-features (doc tests included) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
   -h, --help   Show this message.
@@ -43,6 +43,7 @@ done
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+scripts/version.sh --check
 cargo fmt --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-features
