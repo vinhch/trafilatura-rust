@@ -1,3 +1,5 @@
+import pytest
+
 from parity import measure
 
 HOST = {"os": "windows", "arch": "amd64", "runtime": "native"}
@@ -97,6 +99,14 @@ def test_combine_rust_joins_time_and_heap_and_ands_loaded():
     }
     page = measure.combine_rust(time_run, heap_run)["pages"][0]
     assert (page["median_ns"], page["peak_bytes"], page["loaded"]) == (7, 9, False)
+
+
+def test_combine_rust_fails_on_a_page_in_only_one_run():
+    def run(*ids):
+        return {"pin": "p", "host": HOST, "extra": {}, "pages": [{"id": i, "loaded": True} for i in ids]}
+
+    with pytest.raises(ValueError, match="1 only in time, 2 only in heap"):
+        measure.combine_rust(run("a", "b"), run("a", "c", "d"))
 
 
 def test_ratio_of_zero_is_not_a_division_error():

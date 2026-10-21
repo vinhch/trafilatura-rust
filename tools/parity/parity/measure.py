@@ -102,13 +102,20 @@ def run(upstream_root: Path, out: Path, only: str) -> None:
 
 
 def combine_rust(time_run: dict, heap_run: dict) -> dict:
-    "The crate's two runs as one file: per page the time fields and the heap fields."
+    """The crate's two runs as one file: per page the time fields and the heap fields.
+
+    Raises ValueError when a page is in only one of the runs (the runs were made on different
+    corpora, or one was cut short)."""
     heap = {p["id"]: p for p in heap_run["pages"]}
+    time_ids = {p["id"] for p in time_run["pages"]}
+    only_time = len(time_ids - heap.keys())
+    only_heap = len(heap.keys() - time_ids)
+    if only_time or only_heap:
+        raise ValueError(f"rust time and heap runs cover different pages: {only_time} only in time, {only_heap} only in heap")
     pages = []
     for t in time_run["pages"]:
-        if t["id"] in heap:
-            h = heap[t["id"]]
-            pages.append({**h, **t, "loaded": t["loaded"] and h["loaded"]})
+        h = heap[t["id"]]
+        pages.append({**h, **t, "loaded": t["loaded"] and h["loaded"]})
     return {
         "pin": time_run["pin"],
         "host": time_run["host"],
@@ -221,6 +228,9 @@ def merge(out: Path, rows: int) -> int:
         python = _read(out / f"{pin}-python.json")
     except OSError as err:
         print(f"measure: {err}; run scripts/measure.sh first", file=sys.stderr)
+        return 1
+    except ValueError as err:
+        print(f"measure: {err}; rerun scripts/measure.sh", file=sys.stderr)
         return 1
     pages, dropped = merge_pages(rust, python)
     if not loaded_pages(pages):

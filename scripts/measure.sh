@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # Measure decode + parse, Rust against upstream Python: time (5-run median) and heap per page over
-# the parity corpus. Writes .temp/measure/<pin>-rust.json, <pin>-python.json and the merged
-# <pin>.json, and prints a Markdown table. Needs the fixtures (scripts/fixtures.sh): their index.json
+# the parity corpus. The Rust targets write .temp/measure/<pin>-rust-time.json and <pin>-rust-heap.json,
+# the Python side <pin>-python.json; --merge writes <pin>-rust.json and the merged <pin>.json and
+# prints a Markdown table. Needs the fixtures (scripts/fixtures.sh): their index.json
 # lists the pages. Run it by hand; the numbers depend on the machine.
 set -euo pipefail
 
