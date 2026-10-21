@@ -4,8 +4,8 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Parity of the crate's parsed tree with the html5 fixtures generated from upstream (AGENTS.md,
-//! Parity harness). Skips when the fixtures or the upstream checkout are missing.
+//! Parity of the crate's parsed tree with the html5 fixtures generated from upstream
+//! (`docs/parity-harness.md`). Skips when the fixtures or the upstream checkout are missing.
 
 #[allow(dead_code)]
 mod common;

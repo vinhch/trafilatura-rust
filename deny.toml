@@ -6,7 +6,7 @@ all-features = true
 
 [advisories]
 # Unmaintained and unsound advisories fail too: a dependency the crate cannot get fixes for is the
-# risk the dependency policy in AGENTS.md exists to avoid. An entry here needs its reason.
+# risk the dependency policy in docs/dependencies.md exists to avoid. An entry here needs its reason.
 unmaintained = "all"
 yanked = "deny"
 ignore = []
@@ -31,7 +31,7 @@ unused-allowed-license = "allow"
 # this crate cannot remove (two dependencies pinning different majors of `syn` or `windows-sys`) goes
 # in `skip` with its reason, so each one is a decision rather than noise.
 multiple-versions = "deny"
-# Dev-dependencies count: AGENTS.md promises one version of each crate in Cargo.lock.
+# Dev-dependencies count: docs/dependencies.md promises one version of each crate in Cargo.lock.
 multiple-versions-include-dev = true
 skip = [{ crate = "miniz_oxide@0.8", reason = "dev-only: dhat -> backtrace pins miniz_oxide 0.8 while flate2 (feature decompress) uses 0.9; drop when backtrace moves to 0.9" }]
 wildcards = "deny"

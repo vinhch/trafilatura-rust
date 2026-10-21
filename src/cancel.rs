@@ -6,7 +6,8 @@ use std::time::Instant;
 
 use crate::error::ExtractError;
 
-/// How many nodes a loop visits between two `Call::check` calls; tuned by benchmarks (AGENTS Runtime contract).
+/// How many nodes a loop visits between two `Call::check` calls; tuned by benchmarks
+/// (`docs/architecture.md`, Runtime contract).
 pub(crate) const CHECK_INTERVAL: usize = 256;
 
 /// A flag a caller sets from any thread to stop a running extraction.

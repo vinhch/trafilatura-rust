@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Show what changed in upstream Python trafilatura since the release this port follows, as the first
-# step of the sync procedure in AGENTS.md. Read-only: it changes neither checkout.
+# step of the sync procedure in docs/upstream-sync.md. Read-only: it changes neither checkout.
 set -euo pipefail
 
 readonly script_name="upstream.sh"

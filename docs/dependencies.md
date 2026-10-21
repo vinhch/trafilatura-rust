@@ -1,17 +1,35 @@
 # Dependencies
 
-Why each dependency in `Cargo.toml` is there. The policy that admits one is in `AGENTS.md`
-(Dependency policy). A row is added with the dependency and removed with it.
+The policy that admits a dependency, and why each dependency in `Cargo.toml` is there. Read it before
+adding, changing or removing one. A row is added with the dependency and removed with it.
+
+## Policy
+
+- Fewest dependencies that do the job. Write a small piece (a few hundred lines) before taking a crate
+  for it.
+- A Rust crate named after a Python package is not that package. Where upstream calls `htmldate` or
+  `courlan`, port the logic it uses; take a crate only for infrastructure with no upstream logic in it
+  (HTML parsing, regex, encoding tables and detection).
+- Take a crate only when it is actively maintained (a release in the last 12 months and issues being
+  answered), widely used or backed by an organization, and under a license `deny.toml` allows.
+  Dev-only crates (tests, benchmarks, measurement) never reach users: stable and widely used is
+  enough, without a recent release.
+- One version of each crate in `Cargo.lock`: `cargo deny check` fails on duplicates, advisories,
+  unmaintained crates, unknown sources and unknown licenses.
+- Each dependency has a row in the table below: what it replaces upstream and why this crate.
+  No exact `=` pins and no git dependencies; Dependabot moves versions weekly.
+- Optional functionality goes behind a cargo feature so the default build stays small.
+
+## Table
 
 | Crate | Kind | Replaces upstream | Why this crate |
 | --- | --- | --- | --- |
 | `html5ever` | always | `lxml.html` parsing | Servo's WHATWG parser, widely used; feeds the crate's own tree through `TreeSink` (D-2) |
 | `encoding_rs` | always | Python codecs | The WHATWG encodings, maintained by Firefox's encoding owner |
 | `chardetng` | always | `charset_normalizer` | Firefox's detector, same maintainer as `encoding_rs` (D-3) |
-| `regex` | always, from Phase 2 | `re` | rust-lang regex; lookaround and backreferences are written by hand (Gotchas) |
+| `regex` | always | `re` | rust-lang regex; lookaround and backreferences are written by hand (`gotchas.md`) |
 | `flate2` | feature `decompress` | `gzip`, `zlib` | rust-lang; pure-Rust `miniz_oxide` backend (D-4) |
 | `brotli-decompressor` | feature `decompress` | `brotli` | Decompress-only, forbids `unsafe` by default (D-4) |
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |
-| `tokio` (`rt`) | feature `tokio` | none | `spawn_blocking` for `extract_async` |
-| `dhat` | dev | `tracemalloc` | Peak heap and allocation count per page for `scripts/measure`; dev-only, so stable and widely used is enough (Dependency policy) |
+| `dhat` | dev | `tracemalloc` | Peak heap and allocation count per page for `scripts/measure`; dev-only, so stable and widely used is enough (Policy) |
 | `serde_json` | dev | none | Reads parity fixtures in tests; never a normal dependency |

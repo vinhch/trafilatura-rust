@@ -1,14 +1,14 @@
 # Phase plan
 
 This plan is the durable record of what trafilatura-rust ships next and the items still open. It
-holds current state only; history is in git. `AGENTS.md` holds the porting rules and the runtime
-contract every phase works under; this plan does not restate them.
+holds current state only; history is in git. `AGENTS.md` holds the porting rules every phase works
+under and `docs/architecture.md` the runtime contract; this plan does not restate them.
 
 How the plan is kept:
 
 - A phase runs its own brainstorm and design gate before code; nothing here pre-decides its design.
   Design specs and implementation plans are working files under `.superpowers/` (not tracked); once a
-  design is approved, the decisions that outlive the phase move into `AGENTS.md` and `docs/`.
+  design is approved, the decisions that outlive the phase move into `AGENTS.md` and the pages under `docs/`.
 - A row moves from Remaining to Shipped when its done-when criteria hold, citing the commit or tag.
 - A register row leaves the register when it closes. Ids are never reused: `OI-n` for open items,
   `F-n` for followups.
@@ -59,8 +59,8 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-6 | `fast=False` (closes D-1): port `external.py` and `readability_lxml.py`, add the `fast` option, fill every `// deviation: D-1` branch, regenerate parity fixtures in both modes. Decide between porting the used parts of `justext` and a maintained jusText crate, judged on parity fixtures and the dependency policy. Likely behind a cargo feature. | Phase 7 |
 | F-7 | libxml2-style tree construction: a tree builder that follows libxml2's `HTMLparser.c` rules (`htmlStartClose`, `htmlEndPriority`, no implied `tbody`, no adoption agency) instead of HTML5 tree construction. Only if the Phase 2 harness shows parser-caused mismatches worth closing; port just the rules behind them. `xmloxide` (MIT, pure Rust, HTML parser modelled on `HTMLparser.c`) is a candidate, as a dependency or as reference; check it against those tables first. | Phase 2 |
 | F-8 | charset_normalizer parity for non-UTF-8 input: replace the `chardetng` guess with a detector that follows upstream's charset_normalizer, if the Phase 2 harness shows encoding-caused mismatches worth closing. Candidates: `charset-norm` and `charset-normalizer-core` (both MIT, young, single author; the second claims behavior-identical to charset_normalizer 3.5.x). Check each against charset_normalizer's mess and coherence logic and on non-UTF-8 fixtures first. | Phase 2 |
-| F-9 | Enforce the no-exact-pin rule mechanically: `scripts/test.sh` and `.ps1` fail when `Cargo.toml` declares a `=` version requirement, which `cargo deny` does not check (Dependency policy). | Phase 2 |
-| F-10 | Minimal-versions check: a CI job runs `cargo +nightly update -Z direct-minimal-versions` and the tests, so each declared minimum really builds; add the rule to Dependency policy. Matters once the crate is published and resolved by ranges instead of this repo's `Cargo.lock`. | Phase 2, before Phase 7 |
+| F-9 | Enforce the no-exact-pin rule mechanically: `scripts/test.sh` and `.ps1` fail when `Cargo.toml` declares a `=` version requirement, which `cargo deny` does not check (`docs/dependencies.md`, Policy). | Phase 2 |
+| F-10 | Minimal-versions check: a CI job runs `cargo +nightly update -Z direct-minimal-versions` and the tests, so each declared minimum really builds; add the rule to the Policy in `docs/dependencies.md`. Matters once the crate is published and resolved by ranges instead of this repo's `Cargo.lock`. | Phase 2, before Phase 7 |
 | F-12 | Tighten parity classification: a page in class `encoding`, `normalized` or `python-parser` is excluded whole today; classify each differing line and fail on any line no class explains. | Phase 3 |
 | F-13 | Harness hardening: restore logging and warnings state after the generator tests; write fixture pages and index atomically (temp directory, then rename); parametrize the identity test over pin, upstream version, `max_date` and lock hash. | Phase 3 |
 | F-14 | `dom/`: checked or saturating arithmetic in `Inner::depth`, `height` and dump indentation; replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `dom`, `settings` and `utils` as callers land. | Phase 3 |

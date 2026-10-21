@@ -26,7 +26,7 @@ jobs:
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-deny@0.20.2
-      # The parity fixtures are unpacked from the tracked archive (AGENTS.md, Parity harness); the
+      # The parity fixtures are unpacked from the tracked archive (docs/parity-harness.md); the
       # Windows job skips the parity tests because it does not unpack them.
       - name: Read the upstream pin
         if: matrix.os == 'ubuntu-latest'

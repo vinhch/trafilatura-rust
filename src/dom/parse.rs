@@ -21,7 +21,7 @@ use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::error::{ExtractError, Rejection};
 use crate::settings::DEFAULT_MAX_NODES;
 
-/// libxml2's nesting limit (AGENTS Runtime contract): parsing ends at the cut.
+/// libxml2's nesting limit (`docs/architecture.md`, Runtime contract): parsing ends at the cut.
 pub const MAX_DEPTH: usize = 256;
 
 /// Input is fed to html5ever in chunks of this many bytes, with a cancel and node-limit check between

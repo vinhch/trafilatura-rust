@@ -1,7 +1,7 @@
 #Requires -Version 7.2
 
 # Show what changed in upstream Python trafilatura since the release this port follows, as the first
-# step of the sync procedure in AGENTS.md. Read-only: it changes neither checkout.
+# step of the sync procedure in docs/upstream-sync.md. Read-only: it changes neither checkout.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

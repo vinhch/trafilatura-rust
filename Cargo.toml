@@ -12,8 +12,8 @@ keywords = ["html", "extraction", "scraping", "boilerplate", "text"]
 categories = ["text-processing", "parser-implementations"]
 publish = false
 
-# The upstream Python release this port follows. AGENTS.md and scripts/upstream.{sh,ps1} read it
-# from here; no other file states it.
+# The upstream Python release this port follows. AGENTS.md, docs/upstream-sync.md and
+# scripts/upstream.{sh,ps1} read it from here; no other file states it.
 [package.metadata.upstream]
 repository = "https://github.com/adbar/trafilatura"
 version = "2.3.1"
