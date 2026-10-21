@@ -17,8 +17,38 @@ records why each dependency is there.
 - Upstream checkout: `../trafilatura` beside this repository, or the path in `TRAFILATURA_UPSTREAM`.
   Read upstream code at the pinned commit (`git -C ../trafilatura show <commit>:trafilatura/core.py`),
   not at its working tree, which may be ahead.
-- Upstream is the only reference implementation. Do not port from, compare against or cite other
-  ports; their behavior is not evidence of upstream behavior.
+- Upstream Python is the only reference for behavior. Other ports may supply technique and code
+  (Borrowing from other ports), but their output is never evidence of upstream behavior.
+
+## Borrowing from other ports
+
+Other Rust ports of trafilatura may be borrowed from when a piece is sound and worth it: data
+structures, infrastructure code, test tooling, performance techniques, ported logic.
+
+- The repository never names another port: not in code, comments, docs, tests, fixtures or commit
+  messages. Borrowed code carries no reference to where it came from.
+- Most other ports translate the Go port, which follows an older Python release and has changes of
+  its own. Borrowed logic is checked against the upstream Python function before it lands: same
+  branches, constants and order. A difference is fixed, or recorded in `docs/deviations.md`.
+- Borrowed code is written to fit this crate and reads like the rest of it: it keeps its
+  `// upstream: file.py::fn` comment, and where the logic is not obvious a comment explains what it
+  does and why.
+- Agreement with another port's output is not parity; parity is upstream Python output only.
+
+## Fast mode only, for now
+
+The port covers upstream's `fast=True` path; `fast=False` is not ported yet (deviation D-1, followup
+F-6 in `docs/phase-plan.md`). Upstream's default runs readability and jusText after the main extractor
+and keeps the better result; until F-6 lands, this crate leaves that choice to the caller, who gets a
+typed rejection and can run a fallback of their own.
+
+- `Options` has no `fast` field while only fast mode exists.
+- At each upstream `if not options.fast` (or `if options.fast`), port the fast branch only and mark
+  the spot `// deviation: D-1`, so F-6 finds every place the slow branch goes. Expressions that read `options.fast` as a value (for example
+  `keep_teasers=options.fast` in `main_extractor.py`) take `true`.
+- An upstream test that runs with the default `fast=False` is ported with the fast-mode result. When
+  that differs from the upstream assertion, the test asserts the fast-mode output from upstream Python
+  and says so in a comment citing D-1.
 
 ## Module map
 
@@ -27,13 +57,13 @@ upstream name so a diff of one Python file points at one Rust file. Scope says w
 
 | Upstream | Rust | Scope |
 | --- | --- | --- |
-| `core.py` | `core.rs` | `extract`, `bare_extraction`, the extraction pipeline and its fallback decisions |
+| `core.py` | `core.rs` | `extract`, `bare_extraction`, the extraction cascade in fast mode |
 | `settings.py`, `settings.cfg` | `settings.rs` | `Extractor` options and every default value; one place for all of them |
 | `main_extractor.py` | `main_extractor.rs` | content and comment extraction, the element handlers |
 | `htmlprocessing.py` | `htmlprocessing.rs` | tree cleaning, pruning, link density, `convert_tags` |
 | `xpaths.py` | `xpaths.rs` | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | `baseline`, `html2txt` |
-| `external.py`, `readability_lxml.py` | `external.rs`, `readability.rs` | the readability and jusText fallbacks |
+| `external.py`, `readability_lxml.py` | none | not ported yet: the readability and jusText fallbacks run only when `fast=False` (Fast mode only, for now) |
 | `metadata.py`, `json_metadata.py` | `metadata.rs`, `json_metadata.rs` | metadata from meta tags, JSON-LD, the tree |
 | `deduplication.py` | `deduplication.rs` | the duplicate test, simhash and content fingerprint |
 | `utils.py` | `utils.rs` | text normalization, trimming, language and size checks |
@@ -42,9 +72,10 @@ upstream name so a diff of one Python file points at one Rust file. Scope says w
 | `downloads.py`, `feeds.py`, `sitemaps.py`, `spider.py`, `cli.py`, `cli_utils.py` | none | out of scope: fetching and crawling belong to the caller |
 
 Upstream's own dependencies carry extraction logic, so the parts trafilatura calls are ported with it:
-`htmldate` (date extraction), `courlan` (URL normalization and filtering), `justext` (fallback),
-`charset_normalizer` (decoding bytes). The Rust module for each is named after the package. The language
-check (`py3langid`, optional upstream) is tracked in `docs/phase-plan.md`.
+`htmldate` (date extraction), `courlan` (URL normalization and filtering), `charset_normalizer`
+(decoding bytes). The Rust module for each is named after the package. `justext` is not ported yet: only
+the fallbacks use it. The language check (`py3langid`, optional upstream) is tracked in
+`docs/phase-plan.md`.
 
 Tests: upstream `tests/*_tests.py` are the specification. Port a test case by case and keep its name
 (`test_extract_with_metadata` becomes `fn test_extract_with_metadata`), so a changed upstream test
@@ -59,7 +90,7 @@ points at one Rust test.
    hunk to the function that carries its `upstream:` trace comment.
 3. Port the changed upstream tests the same way. A test upstream deleted is deleted here.
 4. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,
-   `justext`, `charset_normalizer`, `lxml`): a dependency release can change extraction output with
+   `charset_normalizer`, `lxml`): a dependency release can change extraction output with
    no change in trafilatura itself. Diff the ported parts of that package too.
 5. Regenerate the parity fixtures from upstream Python at the new tag and run `scripts/test.sh`.
    A fixture that changed without a matching upstream change is a parser or port difference: fix it,

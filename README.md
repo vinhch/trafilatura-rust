@@ -7,6 +7,11 @@ from other languages.
 
 Status: scaffold. No extraction code yet; `docs/phase-plan.md` has the roadmap.
 
+Scope: for now only upstream's fast mode (`fast=True`). The readability and jusText fallbacks that
+upstream runs by default are not ported yet; they may come later. When extraction finds nothing usable
+it returns an error that says why, and a caller that wants a fallback runs its own extractor on that
+error.
+
 ## Why another Rust port
 
 Other Rust ports exist, but they translate the Go port, which follows an older Python release. This

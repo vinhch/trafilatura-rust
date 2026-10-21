@@ -15,8 +15,8 @@ How the plan is kept:
 
 ## Roadmap
 
-The parity bar for every phase is upstream Python output at the pinned release, compared by the
-parity harness Phase 2 builds.
+The parity bar for every phase is upstream Python output at the pinned release with `fast=True`
+(D-1), compared by the parity harness Phase 2 builds.
 
 ### Remaining phases
 
@@ -26,7 +26,7 @@ parity harness Phase 2 builds.
 | 2 | Parity harness: a script that runs upstream Python at the pinned commit over a page corpus and writes fixtures; a Rust test that compares crate output with them | Not started | `scripts/test.sh` runs the comparison; fixture generation is reproducible from the pin | 1, OI-3 |
 | 3 | Extraction core: `settings`, `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core` with TXT, Markdown and HTML output | Not started | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | 2 |
 | 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
-| 5 | Fallbacks and deduplication: `external`, `readability_lxml`, `justext`, `deduplication` | Not started | Upstream fallback and dedup tests pass; fallback decisions match the fixtures | 3 |
+| 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
 | 6 | Output formats: `xml` (XML, XML-TEI, JSON, CSV), Markdown escaping parity | Not started | Upstream `xml_tei_tests.py` cases ported by name pass | 3 |
 | 7 | First release: lift `publish = false`, set the version, publish 0.1.0 through `release.yml`, move the .NET binding onto this crate | Not started | Crate on crates.io; the .NET binding builds and passes its tests against it | 3, 4, 5 |
 
@@ -58,3 +58,4 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-3 | Benchmarks: a criterion suite over the parity corpus, with a recorded baseline and a CI job that reports regressions. | Phase 3 |
 | F-4 | Mutation testing with `cargo-mutants` in the weekly quality workflow. | Phase 3 |
 | F-5 | A scheduled upstream watch: a workflow that runs `scripts/upstream.sh` weekly and opens an issue when a new upstream tag appears. | Phase 7 |
+| F-6 | `fast=False` (closes D-1): port `external.py` and `readability_lxml.py`, add the `fast` option, fill every `// deviation: D-1` branch, regenerate parity fixtures in both modes. Decide between porting the used parts of `justext` and a maintained jusText crate, judged on parity fixtures and the dependency policy. Likely behind a cargo feature. | Phase 7 |
