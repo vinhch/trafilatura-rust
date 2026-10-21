@@ -1,0 +1,42 @@
+# cargo-deny policy. CI runs `cargo deny check` on every push and a weekly advisories-only check,
+# because a new RustSec advisory can fail a crate whose lockfile has not changed.
+
+[graph]
+all-features = true
+
+[advisories]
+# Unmaintained and unsound advisories fail too: a dependency the crate cannot get fixes for is the
+# risk the dependency policy in AGENTS.md exists to avoid. An entry here needs its reason.
+unmaintained = "all"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Apache-2.0-compatible permissive licenses only. A new license needs its own entry and reason.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.93
+# The list is a policy, not an inventory: an allowed license no current dependency uses is fine.
+unused-allowed-license = "allow"
+
+[bans]
+# Two versions of one crate double its compile time and binary size and split its fixes. A duplicate
+# this crate cannot remove (two dependencies pinning different majors of `syn` or `windows-sys`) goes
+# in `skip` with its reason, so each one is a decision rather than noise.
+multiple-versions = "deny"
+skip = []
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

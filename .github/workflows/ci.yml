@@ -1,0 +1,16 @@
+# A tag does not trigger this: release.yml runs the same _ci.yml for the tagged commit.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify
+    uses: ./.github/workflows/_ci.yml

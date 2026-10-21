@@ -1,0 +1,34 @@
+[package]
+name = "trafilatura-rust"
+version = "0.0.0"
+edition = "2024"
+# Kept equal to the toolchain the CI workflow pins, so the CI run doubles as the MSRV check.
+rust-version = "1.98"
+description = "Web page main-text and metadata extraction, a Rust port of the Python trafilatura library."
+license = "Apache-2.0"
+repository = "https://github.com/vinhch/trafilatura-rust"
+readme = "README.md"
+keywords = ["html", "extraction", "scraping", "boilerplate", "text"]
+categories = ["text-processing", "parser-implementations"]
+publish = false
+
+# The upstream Python release this port follows. AGENTS.md and scripts/upstream.{sh,ps1} read it
+# from here; no other file states it.
+[package.metadata.upstream]
+repository = "https://github.com/adbar/trafilatura"
+version = "2.3.1"
+commit = "e2f85c965662c7df26b73290ef175b2c2a5fdca6"
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+# The crate runs on untrusted pages and behind an FFI boundary, where a panic aborts the host.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "warn"
+string_slice = "deny"

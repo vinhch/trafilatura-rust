@@ -1,0 +1,6 @@
+trafilatura-rust
+Copyright 2026 Vinh Cao
+
+This product is a Rust port of trafilatura (https://github.com/adbar/trafilatura),
+Copyright Adrien Barbaresi and contributors, licensed under the Apache License, Version 2.0.
+The extraction logic, rules, defaults and test expectations derive from that project.

@@ -22,3 +22,14 @@ rustc-ice-*.txt
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+### trafilatura-rust ###
+# Local scratch: drafts, notes, temporary downloads. Never committed.
+/.temp/
+/.work/
+
+# Session plans and per-plan execution workspaces, local to the machine that wrote them.
+/.superpowers/
+
+# Browser automation snapshots and session state.
+/.playwright-cli/

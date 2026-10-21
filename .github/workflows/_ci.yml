@@ -1,0 +1,34 @@
+# Called by ci.yml on a pull request and a main push, and by release.yml on a tag.
+name: _ci
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Dependabot cannot move this pin: the ref is a branch tip, not a release. It must stay equal to
+      # rust-version in Cargo.toml, so this job is also the MSRV check.
+      - uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+        with:
+          # test.sh checks with rustfmt and clippy; the minimal profile carries neither.
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-deny@0.20.2
+      - name: Check the version the sources carry
+        shell: bash
+        run: scripts/version.sh --check
+      - name: Run every check
+        shell: bash
+        run: scripts/test.sh

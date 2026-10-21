@@ -1,0 +1,34 @@
+# Version updates for the two ecosystems this repository depends on. Actions are pinned to a commit
+# SHA in .github/workflows, which is why this file exists: Dependabot is what moves them.
+# Repository settings, not expressible here, hold Dependabot alerts and security updates.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One pull request for the updates that cannot change behaviour on their own; a major bump
+      # still arrives on its own so it is read as the deliberate change it is.
+      cargo-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
