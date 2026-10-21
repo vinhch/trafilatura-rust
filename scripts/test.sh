@@ -11,7 +11,9 @@ usage() {
 Usage: scripts/$script_name [--no-deny]
 
 Runs scripts/version.sh --check, cargo fmt --check,
-cargo clippy --locked --all-targets --all-features -- -D warnings, cargo test --locked --all-features (doc tests included) and cargo deny check.
+cargo clippy --locked --all-targets --all-features -- -D warnings,
+cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
+items only the tests use), cargo test --locked --all-features (doc tests included) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
   -h, --help   Show this message.
@@ -46,6 +48,8 @@ cd "$repo_root"
 scripts/version.sh --check
 cargo fmt --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
+cargo clippy --locked -- -D warnings
+cargo clippy --locked --no-default-features -- -D warnings
 cargo test --locked --all-features
 if [ "$run_deny" = true ]; then
   # Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.

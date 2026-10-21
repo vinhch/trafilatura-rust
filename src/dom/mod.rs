@@ -9,9 +9,14 @@ mod parse;
 
 use std::sync::Arc;
 
-pub use dump::{DumpMode, dump};
 pub use html5ever::LocalName;
-pub use parse::{ParseLimits, parse_document, parse_fragment};
+pub use parse::{ParseLimits, parse_document};
+
+// Only the `__internals` module and the tests use these until the pipeline lands.
+#[cfg(any(feature = "__internals", test))]
+pub use dump::{DumpMode, dump};
+#[cfg(any(feature = "__internals", test))]
+pub use parse::parse_fragment;
 
 /// Index of a node in its `Tree`; only valid for the tree that produced it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

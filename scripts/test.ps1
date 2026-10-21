@@ -25,7 +25,9 @@ function Show-Usage {
 Usage: scripts/$ScriptName [--no-deny]
 
 Runs scripts/version.ps1 --check, cargo fmt --check,
-cargo clippy --locked --all-targets --all-features -- -D warnings, cargo test --locked --all-features (doc tests included) and cargo deny check.
+cargo clippy --locked --all-targets --all-features -- -D warnings,
+cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
+items only the tests use), cargo test --locked --all-features (doc tests included) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
   -h, --help   Show this message.
@@ -57,6 +59,8 @@ $global:LASTEXITCODE = 0
 if ($global:LASTEXITCODE -ne 0) { Fail "'version.ps1 --check' exited with $global:LASTEXITCODE" }
 Invoke-Checked @('cargo', 'fmt', '--check')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--all-targets', '--all-features', '--', '-D', 'warnings')
+Invoke-Checked @('cargo', 'clippy', '--locked', '--', '-D', 'warnings')
+Invoke-Checked @('cargo', 'clippy', '--locked', '--no-default-features', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'test', '--locked', '--all-features')
 if ($RunDeny) {
     # Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.

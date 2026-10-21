@@ -307,7 +307,7 @@ How crate output is compared with upstream. Fixtures are generated, never commit
 
 | Command | Does |
 | --- | --- |
-| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, fmt, clippy `-D warnings`, tests (the parity test when fixtures exist), `cargo deny check` |
+| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests (the parity test when fixtures exist), `cargo deny check` |
 | `scripts/fixtures.sh` / `scripts/fixtures.ps1` | generates parity fixtures for the pin: `uv` on Linux, Docker elsewhere, both from `tools/parity/uv.lock` |
 | `scripts/measure.sh` / `scripts/measure.ps1` | time per page for crate and upstream, and heap per page (comparable only on the Rust side: tracemalloc misses the lxml tree), into `.temp/measure/<pin>.json`; run by hand |
 | `scripts/upstream.sh` / `scripts/upstream.ps1` | upstream changes since the pin (`--to REF`, `--patch`) |
