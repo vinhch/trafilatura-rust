@@ -69,7 +69,7 @@ only_args=()
 [ -z "$only" ] || only_args=(--only "$only")
 
 if [ "$use_docker" = false ] && [ "$(uname -s)" = "Linux" ]; then
-  exec uv run --frozen --no-dev --project tools/parity python -m parity.generate \
+  exec uv run --frozen --no-dev --directory tools/parity python -m parity.generate \
     --upstream "$upstream" --out "$repo_root/.temp/fixtures" ${only_args[@]+"${only_args[@]}"}
 fi
 

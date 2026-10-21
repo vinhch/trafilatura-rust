@@ -67,7 +67,7 @@ $Temp = (Resolve-Path '.temp').Path
 $OnlyArgs = if ($Only) { @('--only', $Only) } else { @() }
 
 if (-not $UseDocker -and $IsLinux) {
-    uv run --frozen --no-dev --project tools/parity python -m parity.generate --upstream $Upstream --out "$RepoRoot/.temp/fixtures" @OnlyArgs
+    uv run --frozen --no-dev --directory tools/parity python -m parity.generate --upstream $Upstream --out "$RepoRoot/.temp/fixtures" @OnlyArgs
     exit $LASTEXITCODE
 }
 

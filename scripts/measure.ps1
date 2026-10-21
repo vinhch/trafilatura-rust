@@ -86,9 +86,9 @@ try {
 
 [Console]::Error.WriteLine('== Python: upstream load_html ==')
 if (-not $UseDocker -and $IsLinux) {
-    uv run --frozen --no-dev --project tools/parity python -m parity.measure --upstream $Upstream --out "$RepoRoot/.temp/measure" @OnlyArgs
+    uv run --frozen --no-dev --directory tools/parity python -m parity.measure --upstream $Upstream --out "$RepoRoot/.temp/measure" @OnlyArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    uv run --frozen --no-dev --project tools/parity python -m parity.measure --merge --out "$RepoRoot/.temp/measure" --rows $Rows
+    uv run --frozen --no-dev --directory tools/parity python -m parity.measure --merge --out "$RepoRoot/.temp/measure" --rows $Rows
     exit $LASTEXITCODE
 }
 

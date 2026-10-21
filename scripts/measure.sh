@@ -84,9 +84,9 @@ TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY=
 
 echo "== Python: upstream load_html ==" >&2
 if [ "$use_docker" = false ] && [ "$(uname -s)" = "Linux" ]; then
-  uv run --frozen --no-dev --project tools/parity python -m parity.measure \
+  uv run --frozen --no-dev --directory tools/parity python -m parity.measure \
     --upstream "$upstream" --out "$repo_root/.temp/measure" ${only_args[@]+"${only_args[@]}"}
-  exec uv run --frozen --no-dev --project tools/parity python -m parity.measure \
+  exec uv run --frozen --no-dev --directory tools/parity python -m parity.measure \
     --merge --out "$repo_root/.temp/measure" --rows "${rows:-0}"
 fi
 
