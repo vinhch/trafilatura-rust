@@ -135,6 +135,7 @@ fn bounded_inflate(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
 }
 
 // upstream: utils.py::_bounded_unbrotli
+// Trailing bytes after a valid brotli stream are read ahead and not noticed; upstream keeps the input.
 #[cfg(feature = "decompress")]
 fn bounded_unbrotli(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
     let mut out = Vec::new();
@@ -198,13 +199,19 @@ pub fn decode_file(content: &[u8], max_size: usize) -> Cow<'_, str> {
             Err(err) => Cow::Owned(err.into_bytes()),
         },
     };
-    for encoding in detect_encoding(&content) {
-        if let Some(text) = encoding.decode_without_bom_handling_and_without_replacement(&content) {
+    decode_with(&content, &detect_encoding(&content))
+}
+
+/// Decodes `content` with the first of `encodings` that does it without loss, else as UTF-8 with
+/// U+FFFD for what is invalid.
+fn decode_with(content: &[u8], encodings: &[&'static Encoding]) -> Cow<'static, str> {
+    for encoding in encodings {
+        if let Some(text) = encoding.decode_without_bom_handling_and_without_replacement(content) {
             return Cow::Owned(text.into_owned());
         }
     }
     // Destructive fallback if nothing else succeeded.
-    Cow::Owned(String::from_utf8_lossy(&content).into_owned())
+    Cow::Owned(String::from_utf8_lossy(content).into_owned())
 }
 
 /// Whether the start of the page, lowercased, has no `html` in it.
@@ -255,9 +262,9 @@ fn leading_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<&str> {
             continue;
         }
         lines.push(prefix.get(start..at).unwrap_or_default());
-        start = at + ch.len_utf8();
+        start = at.saturating_add(ch.len_utf8());
         if ch == '\r' && chars.next_if(|&(_, next)| next == '\n').is_some() {
-            start += 1;
+            start = start.saturating_add(1);
         }
         if lines.len() == max_lines {
             return lines;
@@ -307,24 +314,32 @@ pub fn load_html(
 /// `len(tree)` of the element lxml's `fromstring` returns for this parse.
 ///
 /// A full document is returned whole. For a fragment lxml returns the lone element of `body`
-/// when there is no `head`, else the document; html5ever always adds an empty `head`, so only a
-/// `head` with children counts as one.
+/// when there is no `head`, else the document. html5ever always adds an empty `head` while
+/// libxml2 (`default_doctype=False`) makes one only for head content, so an empty `head` is not
+/// counted. libxml2 also wraps leading body text in an implicit `p` that takes in the inline
+/// elements after it, so text followed by a block element counts as one more child.
+///
+/// Known mismatches that come from the parser (D-2), not fixed here: `<head></head><div><p>x</p></div>`
+/// (libxml2 keeps the explicit empty head and accepts; this rejects) and `<td>a</td><td>b</td>`
+/// (html5ever drops the stray `td`).
 // upstream: lxml/html/__init__.py::fromstring (the part `load_html` observes)
 fn lxml_len(tree: &Tree, is_full_html: bool) -> usize {
     let root = tree.root();
-    let whole = || tree.children(root).count();
-    if is_full_html {
-        return whole();
-    }
     let child_named = |parent, name: &str| {
         tree.children(parent)
             .find(|&child| &*tree.node(child).name == name)
     };
-    if child_named(root, "head").is_some_and(|head| tree.children(head).next().is_some()) {
-        return whole();
+    let has_head =
+        child_named(root, "head").is_some_and(|head| tree.children(head).next().is_some());
+    let root_len = || {
+        let empty_head = usize::from(!has_head && child_named(root, "head").is_some());
+        tree.children(root).count().saturating_sub(empty_head)
+    };
+    if is_full_html || has_head {
+        return root_len();
     }
     let Some(body) = child_named(root, "body") else {
-        return whole();
+        return root_len();
     };
     let blank = |text: &Option<String>| text.as_deref().is_none_or(|t| t.trim().is_empty());
     let mut children = tree.children(body);
@@ -332,8 +347,61 @@ fn lxml_len(tree: &Tree, is_full_html: bool) -> usize {
         (Some(only), None) if blank(&tree.node(body).text) && blank(&tree.node(only).tail) => {
             tree.children(only).count()
         }
+        (Some(first), _)
+            if !blank(&tree.node(body).text) && is_block_tag(&tree.node(first).name) =>
+        {
+            tree.children(body).count().saturating_add(1)
+        }
         _ => tree.children(body).count(),
     }
+}
+
+/// Whether `name` is in `lxml.html.defs.block_tags`.
+// upstream: lxml/html/defs.py::block_tags
+fn is_block_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "address"
+            | "blockquote"
+            | "center"
+            | "del"
+            | "div"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "hr"
+            | "ins"
+            | "isindex"
+            | "noscript"
+            | "p"
+            | "pre"
+            | "dir"
+            | "dl"
+            | "dt"
+            | "dd"
+            | "li"
+            | "menu"
+            | "ol"
+            | "ul"
+            | "table"
+            | "caption"
+            | "colgroup"
+            | "col"
+            | "thead"
+            | "tfoot"
+            | "tbody"
+            | "tr"
+            | "td"
+            | "th"
+            | "fieldset"
+            | "form"
+            | "legend"
+            | "optgroup"
+            | "option"
+    )
 }
 
 #[cfg(test)]

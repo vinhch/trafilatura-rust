@@ -128,18 +128,43 @@ fn decode_windows_1251() {
 
 #[test]
 fn decode_falls_back_to_replacement() {
-    // Shift_JIS-looking junk that the guessed encoding rejects strictly: a truncated lead byte.
-    let junk = b"<p>\x81\x81\x81\x81 \xe3\x81</p>";
-    let strictly = detect_encoding(junk).iter().any(|e| {
-        e.decode_without_bom_handling_and_without_replacement(junk)
-            .is_some()
-    });
-    let decoded = decode_file(junk, SIZE);
-    if !strictly {
-        assert_eq!(decoded, String::from_utf8_lossy(junk));
-        assert!(decoded.contains('\u{fffd}'));
+    // A Shift_JIS lead byte before a space is malformed, so strict decoding fails and U+FFFD takes over.
+    let junk = b"<p>\x81 ok</p>";
+    assert!(
+        encoding_rs::SHIFT_JIS
+            .decode_without_bom_handling_and_without_replacement(junk)
+            .is_none()
+    );
+    let decoded = decode_with(junk, &[encoding_rs::SHIFT_JIS]);
+    assert_eq!(decoded, "<p>\u{fffd} ok</p>");
+    assert_eq!(decode_with(junk, &[]), decoded);
+    // A later candidate that decodes strictly wins over the fallback.
+    assert_eq!(
+        decode_with(junk, &[encoding_rs::SHIFT_JIS, WINDOWS_1252]),
+        "<p>\u{81} ok</p>"
+    );
+}
+
+#[test]
+fn load_html_full_document_ignores_synthetic_head() {
+    for page in [
+        "<!DOCTYPE foo><p>x</p>",
+        "<!DOCTYPE foo><p>x</p><p>y</p>",
+        "<!DOCTYPE foo>text",
+    ] {
+        assert!(load(page).is_err(), "{page}");
     }
-    assert!(decoded.starts_with("<p>"));
+    let late_html = format!("{}<html><body><p>x</p></body></html>", " ".repeat(60));
+    assert!(load(&late_html).is_err());
+}
+
+#[test]
+fn load_html_leading_text_counts_implicit_paragraph() {
+    assert!(load("text <p>a</p>").is_ok());
+    assert!(load("x<div><p>a</p><p>b</p></div>").is_ok());
+    assert!(load("hello <b>x</b> <i>y</i>").is_ok());
+    assert!(load("hello <b>x</b>").is_err());
+    assert!(load("just text").is_err());
 }
 
 #[test]
