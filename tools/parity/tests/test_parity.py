@@ -108,21 +108,41 @@ def _sources(pin_dir) -> list[str]:
 
 def test_filtered_run_merges_instead_of_wiping(tmp_path):
     meta = {"pin": "p", "max_date": "d", "lock_sha256": "l"}
-    generate.store(tmp_path, meta, [_page("tests/a.html"), _page("tests/b.html")], full=True)
-    (tmp_path / "f1.json").write_text("{}")
-    generate.store(tmp_path, meta, [_page("tests/b.html")], full=False)
+    generate.store(tmp_path, meta, [_page("tests/a.html"), _page("tests/b.html")], f1={"f1": 1})
+    generate.store(tmp_path, meta, [_page("tests/b.html")], f1=None)
     assert _sources(tmp_path) == ["tests/a.html", "tests/b.html"]
     assert (tmp_path / "pages" / "tests__a.html.json").is_file()
-    assert (tmp_path / "f1.json").is_file()
-    generate.store(tmp_path, meta, [_page("tests/c.html")], full=True)
+    assert json.loads((tmp_path / "f1.json").read_text()) == {"f1": 1}
+    generate.store(tmp_path, meta, [_page("tests/c.html")], f1={"f1": 2})
     assert _sources(tmp_path) == ["tests/c.html"]
     assert not (tmp_path / "pages" / "tests__a.html.json").exists()
 
 
-def test_filtered_run_drops_pages_from_another_lock(tmp_path):
-    generate.store(tmp_path, {"lock_sha256": "old"}, [_page("tests/a.html")], full=True)
-    generate.store(tmp_path, {"lock_sha256": "new"}, [_page("tests/b.html")], full=False)
+def test_filtered_run_drops_pages_and_f1_from_another_lock(tmp_path):
+    generate.store(tmp_path, {"lock_sha256": "old"}, [_page("tests/a.html")], f1={"f1": 1})
+    generate.store(tmp_path, {"lock_sha256": "new"}, [_page("tests/b.html")], f1=None)
     assert _sources(tmp_path) == ["tests/b.html"]
+    assert not (tmp_path / "f1.json").exists()
+
+
+def test_failing_f1_leaves_the_previous_fixture_set(tmp_path, monkeypatch):
+    out = tmp_path / "out"
+    monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "corpus", lambda root: [])
+    monkeypatch.setattr(generate, "f1_scores", lambda root: (_ for _ in ()).throw(RuntimeError("f1 failed")))
+    generate.store(out / "pin", {"lock_sha256": "old"}, [_page("tests/a.html")], f1={"f1": 1})
+    before = (out / "pin" / "index.json").read_text()
+    with pytest.raises(RuntimeError):
+        generate.main(["--upstream", str(UPSTREAM), "--out", str(out)])
+    assert (out / "pin" / "index.json").read_text() == before
+    assert json.loads((out / "pin" / "f1.json").read_text()) == {"f1": 1}
+
+
+def test_check_pin_names_worktrees(tmp_path):
+    (tmp_path / ".git").write_text("gitdir: /elsewhere")
+    with pytest.raises(SystemExit) as exc:
+        generate.check_pin(tmp_path, expected="0" * 40)
+    assert "worktree" in str(exc.value)
 
 
 def test_variant_records_upstream_exception(monkeypatch):

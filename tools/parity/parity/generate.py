@@ -190,19 +190,21 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, ensure_ascii=True, indent=1) + "\n", encoding="utf-8")
 
 
-def store(pin_dir: Path, meta: dict, pages: list[tuple[dict, dict]], full: bool) -> None:
-    """Write page files and index.json under pin_dir.
+def store(pin_dir: Path, meta: dict, pages: list[tuple[dict, dict]], f1: dict | None) -> None:
+    """Write page files, index.json and f1.json under pin_dir.
 
-    A full run removes stale page files and lists exactly `pages`. A filtered run overwrites only
-    its pages and merges their entries into the existing index (when it came from the same lock
-    file and max_date), so earlier pages and f1.json stay valid.
+    A full run (f1 given) removes stale page files, lists exactly `pages` and writes f1.json. A
+    filtered run (f1 None) overwrites only its pages and merges their entries into the existing
+    index when it has the same identity (pin, version, max_date, lock hash), keeping f1.json; on an
+    identity mismatch it starts a new index and deletes the f1.json that belongs to the old one.
     """
     pages_dir = pin_dir / "pages"
     pages_dir.mkdir(parents=True, exist_ok=True)
     entries = {entry["id"]: entry for entry, _ in pages}
-    if full:
+    if f1 is not None:
         for stale in pages_dir.glob("*.json"):
             stale.unlink()
+        _write_json(pin_dir / "f1.json", f1)
     else:
         try:
             old = json.loads((pin_dir / "index.json").read_text(encoding="utf-8"))
@@ -211,6 +213,8 @@ def store(pin_dir: Path, meta: dict, pages: list[tuple[dict, dict]], full: bool)
         if all(old.get(k) == v for k, v in meta.items()):
             kept = {e["id"]: e for e in old["pages"] if (pages_dir / f"{e['id']}.json").is_file()}
             entries = kept | entries
+        else:
+            (pin_dir / "f1.json").unlink(missing_ok=True)
     for entry, page in pages:
         _write_json(pages_dir / f"{entry['id']}.json", page)
     ordered = sorted(entries.values(), key=lambda e: e["source"])
@@ -256,9 +260,8 @@ def main(argv: list[str] | None = None) -> int:
         "max_date": MAX_DATE,
         "lock_sha256": hashlib.sha256(LOCK_FILE.read_bytes()).hexdigest(),
     }
-    store(pin_dir, meta, results, full)
-    if full:
-        _write_json(pin_dir / "f1.json", f1_scores(upstream_root))
+    # F1 first: a failure here must leave the previous fixture set untouched
+    store(pin_dir, meta, results, f1_scores(upstream_root) if full else None)
     print(f"wrote {len(results)} pages to {pin_dir}", file=sys.stderr)
     return 0
 
