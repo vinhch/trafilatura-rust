@@ -16,7 +16,7 @@ import tomllib
 import warnings
 from pathlib import Path
 
-from . import MAX_DATE
+from . import MAX_DATE, import_path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOCK_FILE = Path(__file__).resolve().parents[1] / "uv.lock"
@@ -230,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
 
     upstream_root = args.upstream.resolve()
     pin = check_pin(upstream_root)
-    sys.path.insert(0, str(upstream_root))
+    import_path(upstream_root)
     logging.disable(logging.CRITICAL)
     warnings.simplefilter("ignore")
 

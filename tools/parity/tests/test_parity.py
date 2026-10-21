@@ -161,3 +161,24 @@ def test_variant_records_upstream_exception(monkeypatch):
     result = generate.run_variant(b"<html><body><p>x</p></body></html>", True)
     assert result["formats"]["html"] is None
     assert result["errors"]["html"] == "KeyError: 'uppercase'"
+
+
+def test_import_path_supplies_version_metadata_for_a_clean_clone(tmp_path):
+    import subprocess
+    import sys
+    import textwrap
+
+    package = tmp_path / "clone" / "trafilatura"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text('__version__ = "9.8.7"\n', encoding="utf-8")
+    script = textwrap.dedent(
+        f"""
+        from importlib.metadata import version
+        from parity import import_path
+        import_path({str(tmp_path / "clone")!r})
+        print(version("trafilatura"))
+        """
+    )
+    result = subprocess.run([sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {str(Path(__file__).parents[1])!r}); exec({script!r})"], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "9.8.7"

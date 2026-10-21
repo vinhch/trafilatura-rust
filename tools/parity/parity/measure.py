@@ -79,10 +79,11 @@ def host() -> dict:
 
 
 def run(upstream_root: Path, out: Path, only: str) -> None:
+    from . import import_path
     from .generate import check_pin, corpus
 
     pin = check_pin(upstream_root)
-    sys.path.insert(0, str(upstream_root))
+    import_path(upstream_root)
     logging.disable(logging.CRITICAL)
     warnings.simplefilter("ignore")
     from trafilatura.utils import load_html
