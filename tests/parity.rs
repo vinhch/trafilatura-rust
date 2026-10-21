@@ -235,16 +235,55 @@ fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
     path
 }
 
+/// What the test does with the fixtures it found: `Ok(true)` run, `Ok(false)` skip with a hint, `Err`
+/// fail. `require` is `PARITY_REQUIRE_FIXTURES`: CI sets it so a missing or empty fixture set fails
+/// the job instead of passing without comparing anything.
+fn gate(require: bool, present: bool, page_count: Option<usize>) -> Result<bool, &'static str> {
+    match (present, page_count) {
+        (false, _) if require => Err(
+            "PARITY_REQUIRE_FIXTURES is set but the fixtures or the upstream checkout are missing",
+        ),
+        (false, _) => Ok(false),
+        (true, Some(0)) if require => {
+            Err("PARITY_REQUIRE_FIXTURES is set but index.json lists no pages")
+        }
+        (true, _) => Ok(true),
+    }
+}
+
+#[test]
+fn gate_skips_only_when_fixtures_are_not_required() {
+    assert_eq!(gate(false, false, None), Ok(false));
+    assert!(gate(true, false, None).is_err());
+    assert!(gate(true, true, Some(0)).is_err());
+    assert_eq!(gate(false, true, Some(0)), Ok(true));
+    assert_eq!(gate(true, true, Some(3)), Ok(true));
+}
+
 #[test]
 fn tree_dump_matches_html5_fixture() {
-    let (Some(fixtures), Some(upstream)) = (common::fixture_dir(), common::upstream_root()) else {
-        eprintln!(
-            "parity: fixtures or the upstream checkout are missing; run scripts/fixtures.sh \
-             (or set TRAFILATURA_FIXTURES and TRAFILATURA_UPSTREAM) to enable this test"
-        );
+    let require = std::env::var_os("PARITY_REQUIRE_FIXTURES").is_some_and(|v| !v.is_empty());
+    let found = common::fixture_dir().zip(common::upstream_root());
+    let index = found
+        .as_ref()
+        .map(|(fixtures, _)| read_json(&fixtures.join("index.json")));
+    let page_count = index
+        .as_ref()
+        .and_then(|i| i["pages"].as_array())
+        .map(Vec::len);
+    match gate(require, found.is_some(), page_count) {
+        Err(message) => panic!("{message}"),
+        Ok(false) => {
+            eprintln!(
+                "parity: fixtures or the upstream checkout are missing; run scripts/fixtures.sh                  (or set TRAFILATURA_FIXTURES and TRAFILATURA_UPSTREAM) to enable this test"
+            );
+            return;
+        }
+        Ok(true) => {}
+    }
+    let (Some((fixtures, upstream)), Some(index)) = (found, index) else {
         return;
     };
-    let index = read_json(&fixtures.join("index.json"));
     let mut pages = Vec::new();
     let mut parser_count = 0;
     for entry in index["pages"].as_array().unwrap() {

@@ -298,7 +298,8 @@ How crate output is compared with upstream. Fixtures are generated, never commit
   not valid UTF-8, D-3), `decompress` (D-4), `normalized` (the copy rule touched the page; check by
   hand). Only `port-bug` fails the test. The report is `.temp/parity/report.md`.
 - The parity test checks for fixtures when it runs and returns early, naming `scripts/fixtures.sh`, when
-  they are missing, so `cargo test` works without Python or Docker.
+  they are missing, so `cargo test` works without Python or Docker. With `PARITY_REQUIRE_FIXTURES` set
+  (CI's Ubuntu job), missing fixtures or an index without pages fail the test instead.
 - F1 against upstream's `tests/evaldata.json`, resolved as upstream's `eval_common.py` does, is
   reported for crate and upstream as a quality signal, not a gate.
 

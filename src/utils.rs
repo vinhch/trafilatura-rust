@@ -148,13 +148,16 @@ fn bounded_unbrotli(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
     (!out.is_empty()).then_some(out)
 }
 
-/// Candidate encodings for bytes that are not valid UTF-8, best first.
+/// Candidate encodings for bytes that are not valid UTF-8, best first; none for mostly-UTF-8 text.
 ///
 /// Inputs of 10 000 bytes or more are judged on their first and last 5000 bytes.
 // upstream: utils.py::detect_encoding
 pub fn detect_encoding(content: &[u8]) -> Vec<&'static Encoding> {
     if std::str::from_utf8(content).is_ok() {
         return vec![UTF_8];
+    }
+    if is_mostly_utf8(content) {
+        return Vec::new();
     }
     let mut detector = EncodingDetector::new(Iso2022JpDetection::Deny);
     let head = content.get(..5000);
@@ -171,9 +174,23 @@ pub fn detect_encoding(content: &[u8]) -> Vec<&'static Encoding> {
             detector.feed(content, true);
         }
     }
-    // deviation: D-3 (one guess, never UTF-8 because that was tested above; upstream returns every
-    // charset_normalizer match and retries on the whole input when the sample matched nothing)
+    // deviation: D-3 (one guess instead of every charset_normalizer match, and no retry on the whole
+    // input when the sample matched nothing)
     vec![detector.guess(None, Utf8Detection::Deny)]
+}
+
+/// Whether the bytes are UTF-8 text with a few stray invalid sequences: at least ten times as many
+/// valid non-ASCII characters as invalid sequences.
+// deviation: D-3 (charset_normalizer rejects every single-byte decoding of such text as mojibake,
+// so upstream has no candidate and decodes UTF-8 with replacement; chardetng always guesses one)
+fn is_mostly_utf8(content: &[u8]) -> bool {
+    let (mut valid_non_ascii, mut invalid) = (0_usize, 0_usize);
+    for chunk in content.utf8_chunks() {
+        valid_non_ascii =
+            valid_non_ascii.saturating_add(chunk.valid().chars().filter(|c| !c.is_ascii()).count());
+        invalid = invalid.saturating_add(usize::from(!chunk.invalid().is_empty()));
+    }
+    valid_non_ascii > invalid.saturating_mul(10)
 }
 
 /// Decompresses `content` if needed and decodes it to text: strict UTF-8 first, then the guessed

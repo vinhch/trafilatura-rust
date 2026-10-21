@@ -127,6 +127,19 @@ fn decode_windows_1251() {
 }
 
 #[test]
+fn decode_mostly_utf8_keeps_valid_text() {
+    let text = "Zażółć gęślą jaźń, a potem przeczytaj długi akapit o sprawach wsi. ".repeat(20);
+    let mut bytes = text.clone().into_bytes();
+    bytes.extend_from_slice(b" caf\xe9 ");
+    bytes.extend_from_slice(text.as_bytes());
+    assert!(detect_encoding(&bytes).is_empty());
+    assert_eq!(
+        decode_file(&bytes, SIZE),
+        format!("{text} caf\u{fffd} {text}")
+    );
+}
+
+#[test]
 fn decode_falls_back_to_replacement() {
     // A Shift_JIS lead byte before a space is malformed, so strict decoding fails and U+FFFD takes over.
     let junk = b"<p>\x81 ok</p>";
