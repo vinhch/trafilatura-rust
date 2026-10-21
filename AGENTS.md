@@ -25,8 +25,8 @@ not when it looks similar or scores well on a benchmark.
 - Upstream checkout: `../trafilatura` beside this repository, or the path in `TRAFILATURA_UPSTREAM`.
   Read upstream code at the pinned commit (`git -C <checkout> show <commit>:trafilatura/core.py`),
   not at its working tree, which may be ahead.
-- Upstream Python is the only reference for behavior. Other ports may supply technique and code
-  (Borrowing from other ports), but their output is never evidence of upstream behavior.
+- Upstream Python is the only reference for behavior. Other ports can suggest ideas (Other ports as
+  prior art), but their output is never evidence of upstream behavior.
 
 ## Porting rules
 
@@ -68,19 +68,20 @@ not when it looks similar or scores well on a benchmark.
     When that differs from the upstream assertion, the test asserts the fast-mode output from
     upstream Python and says so in a comment citing D-1.
 
-## Borrowing from other ports
+## Other ports as prior art
 
-Other Rust ports of trafilatura may be borrowed from when a piece is sound and worth it: data
-structures, infrastructure code, test tooling, performance techniques, ported logic.
+Other ports of trafilatura exist, and reading them can save time: how they model the tree, handle an
+edge case, structure tests or make a hot path fast. Treat them as ideas to evaluate, not as a
+reference. Many follow an older upstream release, carry changes of their own or are no longer
+maintained; most translate the Go port rather than the Python library.
 
-- Never name another port: not in code, comments, docs, tests, fixtures or commit messages. Borrowed
-  code carries no reference to where it came from.
-- Most other ports translate the Go port, which follows an older Python release and has changes of
-  its own. Check borrowed logic against the upstream Python function before it lands: same branches,
-  constants and order. Fix a difference, or record it in `docs/deviations.md`.
-- Write borrowed code to fit this crate so it reads like the rest of it: give it the
-  `// upstream: file.py::fn` comment of the function it ports, and where the logic is not obvious a
-  comment explains what it does and why.
+- Implement from upstream Python. An idea from another port is a starting point; the code that lands
+  is written for this crate, from the upstream function, in this crate's style and structure.
+- Verify before relying on an idea: compare it with the upstream function at the pinned commit (same
+  branches, constants and order). A difference is fixed, or recorded in `docs/deviations.md`.
+- Cite upstream only. Trace comments, docs, tests and commit messages point at the upstream function
+  (`// upstream: file.py::fn`), the one place a reader checks behavior; other ports are not cited as
+  a source, so the reference never splits.
 - Agreement with another port's output is not parity; parity is upstream Python output only.
 
 ## Runtime rules
