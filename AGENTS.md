@@ -150,10 +150,11 @@ upstream has no equivalent.
 - Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them
   (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
   means no limit). Nesting depth stops at 256 as libxml2 does: parsing ends at the cut and the
-  partial tree is kept. That is upstream behavior, always on. Limits the port adds (`max_input_bytes`,
-  `max_nodes` counted while parsing) are options, off by default; a caller that turns one on accepts
-  rejections upstream would not make. No recursion whose depth follows the input, so callers never
-  need large thread stacks.
+  partial tree is kept. That is upstream behavior, always on. Limits the port adds are options:
+  `max_input_bytes` is off by default, and a caller that turns it on accepts rejections upstream would
+  not make; `max_nodes` (elements created while parsing, html5ever's clones included) is on by default
+  at `DEFAULT_MAX_NODES` (D-5), and a caller may lift it with `None`. No recursion whose depth
+  follows the input, so callers never need large thread stacks.
 - No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`); here it is an
   option (`Call`) whose default is computed on each `extract` call, never when the extractor is built,
   and parity fixtures pin it.

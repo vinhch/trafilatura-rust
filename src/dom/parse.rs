@@ -19,6 +19,7 @@ use html5ever::{Attribute, LocalName, ParseOpts, Parser, QualName, local_name, n
 use super::{Ns, Tree};
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::error::{ExtractError, Rejection};
+use crate::settings::DEFAULT_MAX_NODES;
 
 /// libxml2's nesting limit (AGENTS Runtime contract): parsing ends at the cut.
 pub const MAX_DEPTH: usize = 256;
@@ -36,7 +37,8 @@ const SHARED_VALUE_BYTES: usize = 32;
 pub struct ParseLimits {
     /// Element nesting depth at which parsing stops and the partial tree is kept.
     pub max_depth: usize,
-    /// Element count above which parsing fails with `Rejection::TreeTooLarge`; `None` = no limit.
+    /// Element count above which parsing fails with `Rejection::TreeTooLarge`, html5ever's clones of
+    /// open formatting elements included; `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
 }
 
@@ -44,7 +46,8 @@ impl Default for ParseLimits {
     fn default() -> Self {
         Self {
             max_depth: MAX_DEPTH,
-            max_nodes: None,
+            // deviation: D-5
+            max_nodes: Some(DEFAULT_MAX_NODES),
         }
     }
 }

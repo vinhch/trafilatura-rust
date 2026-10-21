@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use super::*;
 use crate::cancel::{Call, CancelToken};
 use crate::error::{ExtractError, Rejection};
+use crate::settings::DEFAULT_MAX_NODES;
 
 fn parse(html: &str) -> Tree {
     parse_document(html, &ParseLimits::default(), &Call::default()).unwrap()
@@ -107,8 +108,29 @@ fn max_nodes_rejects() {
     };
     let err = parse_document(&html, &limits, &Call::default()).unwrap_err();
     assert_eq!(err, ExtractError::Rejected(Rejection::TreeTooLarge));
-    let tree = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap();
+    let unlimited = ParseLimits {
+        max_nodes: None,
+        ..ParseLimits::default()
+    };
+    let tree = parse_document(&html, &unlimited, &Call::default()).unwrap();
     assert!(tree.len() > 10_000);
+}
+
+#[test]
+fn default_limit_is_the_default_max_nodes() {
+    assert_eq!(ParseLimits::default().max_nodes, Some(DEFAULT_MAX_NODES));
+}
+
+#[test]
+fn default_limits_reject_formatting_element_amplification() {
+    // Each `<p>` re-opens the 200 formatting elements: 10000 paragraphs would make ~2M elements.
+    let mut html = String::from("<html><body><p>");
+    for i in 0..200 {
+        html.push_str(&format!("<b id={i}>"));
+    }
+    html.push_str(&"<p>x".repeat(10_000));
+    let err = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap_err();
+    assert_eq!(err, ExtractError::Rejected(Rejection::TreeTooLarge));
 }
 
 #[test]
