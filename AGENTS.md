@@ -135,7 +135,7 @@ upstream has no equivalent.
 - Cancellable. Every public extraction entry point takes a cancellation and deadline handle. It
   travels inside the per-call context passed where upstream passes `options`, and is checked at stage
   boundaries and inside every loop over nodes; a ported function that checks it returns `Result`.
-  The Phase 1 spec fixes the types. A check only returns early with a distinct error; it never changes
+  The Phase 1 design fixes the types. A check only returns early with a distinct error; it never changes
   a branch, so a run that completes gives the same output as one without a handle.
 - Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them
   (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
