@@ -23,8 +23,7 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 1 | Core design: tree model with text and tail, public API (options, results, errors), cancellation and deadline handle, resource limits, module layout, first dependency choices. API goals for bindings: byte input with encoding detection, a reusable `Send + Sync` extractor handle built once from options, only the requested output formats rendered, a flat result read field by field (no JSON on the hot path), typed errors a binding maps one to one, the dedup cache as a caller-owned value, an optional `tokio` feature with `extract_async` | Next | Design approved; its lasting decisions (tree model, API shape, cancellation, limits, module layout) are in `AGENTS.md`; `docs/dependencies.md` lists each chosen crate with its reason | none |
-| 2 | Parity harness: a script that runs upstream Python at the pinned commit over a page corpus and writes fixtures; a Rust test that compares crate output with them; a measurement run that records time, peak heap and allocation count per page | Not started | `scripts/test.sh` runs the comparison; fixture generation is reproducible from the pin; the measurement run produces a baseline | 1, OI-3 |
+| 2 | Parity harness: a script that runs upstream Python at the pinned commit over a page corpus and writes fixtures; a Rust test that compares crate output with them; a measurement run that records time, peak heap and allocation count per page | Next | `scripts/test.sh` runs the comparison; fixture generation is reproducible from the pin; the measurement run produces a baseline | OI-3 |
 | 3 | Extraction core: `settings`, `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | Not started | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | 2 |
 | 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
 | 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
@@ -36,6 +35,7 @@ The parity bar for every phase is upstream Python output at the pinned release w
 | Phase | Shipped in |
 | --- | --- |
 | 0. Scaffold: Apache-2.0 license and NOTICE, crate skeleton with panic and unsafe lints, `cargo-deny` policy, `.sh`/`.ps1` scripts, CI, release and quality workflows, Dependabot, `AGENTS.md` | `eac2d8d` |
+| 1. Core design: tree model, public API, cancellation, limits, module layout, first dependencies (`AGENTS.md`, D-2..D-4) | `521051e` |
 
 ## Open items register
 
