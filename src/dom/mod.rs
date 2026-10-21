@@ -7,6 +7,8 @@
 mod dump;
 mod parse;
 
+use std::sync::Arc;
+
 pub use dump::{DumpMode, dump};
 pub use html5ever::LocalName;
 pub use parse::{ParseLimits, parse_document, parse_fragment};
@@ -34,7 +36,7 @@ pub struct Node {
     /// Namespace.
     pub ns: Ns,
     /// Attributes in source order, by local name.
-    pub attrs: Vec<(LocalName, String)>,
+    pub attrs: Vec<(LocalName, Arc<str>)>,
     /// Text before the first child element.
     pub text: Option<String>,
     /// Text after this element's end tag, up to the next sibling element or the parent's end.
@@ -47,7 +49,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(name: LocalName, ns: Ns, attrs: Vec<(LocalName, String)>) -> Self {
+    fn new(name: LocalName, ns: Ns, attrs: Vec<(LocalName, Arc<str>)>) -> Self {
         Self {
             name,
             ns,
@@ -86,7 +88,7 @@ pub struct Tree {
 
 impl Tree {
     /// A tree holding only a root element.
-    pub fn new(name: LocalName, ns: Ns, attrs: Vec<(LocalName, String)>) -> Self {
+    pub fn new(name: LocalName, ns: Ns, attrs: Vec<(LocalName, Arc<str>)>) -> Self {
         Self {
             nodes: vec![Node::new(name, ns, attrs)],
         }
@@ -125,7 +127,7 @@ impl Tree {
         parent: NodeId,
         name: LocalName,
         ns: Ns,
-        attrs: Vec<(LocalName, String)>,
+        attrs: Vec<(LocalName, Arc<str>)>,
     ) -> NodeId {
         // Saturating: the parser rejects or stops long before u32::MAX elements.
         let id = NodeId(u32::try_from(self.nodes.len()).unwrap_or(u32::MAX));

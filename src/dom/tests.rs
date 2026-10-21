@@ -50,7 +50,7 @@ fn dump_matches_python_format() {
 
     // The same tree built by hand, without the implied head, gives the Python string verbatim.
     let name = |n: &str| LocalName::from(n);
-    let attr = |k: &str, v: &str| (name(k), v.to_string());
+    let attr = |k: &str, v: &str| (name(k), Arc::<str>::from(v));
     let mut tree = Tree::new(name("html"), Ns::Html, vec![]);
     let body = tree.add_child(tree.root(), name("body"), Ns::Html, vec![]);
     let div = tree.add_child(
@@ -169,4 +169,20 @@ fn tree_is_send_sync() {
     assert_send_sync::<Tree>();
     assert_send_sync::<CancelToken>();
     assert_send_sync::<ExtractError>();
+}
+
+#[test]
+fn max_nodes_rejects_formatting_element_amplification() {
+    // Each `<p>` re-opens the 50 formatting elements, so 2000 paragraphs make ~100k elements.
+    let mut html = String::from("<html><body><p>");
+    for i in 0..50 {
+        html.push_str(&format!("<b id={i}>"));
+    }
+    html.push_str(&"<p>x".repeat(2000));
+    let limits = ParseLimits {
+        max_nodes: Some(5_000),
+        ..ParseLimits::default()
+    };
+    let err = parse_document(&html, &limits, &Call::default()).unwrap_err();
+    assert_eq!(err, ExtractError::Rejected(Rejection::TreeTooLarge));
 }

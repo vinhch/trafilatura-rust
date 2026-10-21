@@ -1,6 +1,7 @@
 //! Tree dump: the text form in which the Python and Rust trees are compared.
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use super::{LocalName, Node, NodeId, Ns, Tree};
 
@@ -50,14 +51,14 @@ fn strip_invalid(text: &str, changed: &mut bool) -> String {
     cleaned
 }
 
-fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, String)> {
-    let mut attrs: Vec<(LocalName, String)> = Vec::new();
+fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, Arc<str>)> {
+    let mut attrs: Vec<(LocalName, Arc<str>)> = Vec::new();
     for (name, value) in &node.attrs {
         // An invalid name, or `href` next to `xlink:href` once namespaces are reduced: first wins.
         if !is_valid_name(name, false) || attrs.iter().any(|(kept, _)| kept == name) {
             *changed = true;
         } else {
-            attrs.push((name.clone(), strip_invalid(value, changed)));
+            attrs.push((name.clone(), Arc::from(strip_invalid(value, changed))));
         }
     }
     attrs
@@ -150,7 +151,7 @@ fn push_element_line(out: &mut String, depth: usize, node: &Node) {
         Ns::Svg => out.push_str("@svg"),
         Ns::MathMl => out.push_str("@math"),
     }
-    let mut attrs: Vec<&(LocalName, String)> = node.attrs.iter().collect();
+    let mut attrs: Vec<&(LocalName, Arc<str>)> = node.attrs.iter().collect();
     attrs.sort_by(|a, b| str::cmp(&a.0, &b.0));
     for (name, value) in attrs {
         out.push(' ');

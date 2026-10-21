@@ -7,7 +7,9 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::mem;
+use std::sync::Arc;
 
 use html5ever::interface::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use html5ever::tendril::{StrTendril, TendrilSink};
@@ -21,8 +23,13 @@ use crate::error::{ExtractError, Rejection};
 /// libxml2's nesting limit (AGENTS Runtime contract): parsing ends at the cut.
 pub const MAX_DEPTH: usize = 256;
 
-/// Input is fed to html5ever in chunks of this many bytes, with a cancel check between chunks.
-const CHUNK_BYTES: usize = 64 * 1024;
+/// Input is fed to html5ever in chunks of this many bytes, with a cancel and node-limit check between
+/// chunks. html5ever cannot be stopped inside a chunk, so the chunk size bounds the work done after an
+/// abort.
+const CHUNK_BYTES: usize = 8 * 1024;
+
+/// Attribute values at least this long are shared between the elements html5ever clones.
+const SHARED_VALUE_BYTES: usize = 32;
 
 /// Limits applied while parsing.
 #[derive(Clone, Copy, Debug)]
@@ -54,7 +61,7 @@ enum Kind {
 struct SinkNode {
     kind: Kind,
     qual: QualName,
-    attrs: Vec<(LocalName, String)>,
+    attrs: Vec<(LocalName, Arc<str>)>,
     text: String,
     mathml_integration_point: bool,
     parent: Option<u32>,
@@ -67,10 +74,17 @@ struct SinkNode {
 struct Inner {
     nodes: Vec<SinkNode>,
     max_depth: usize,
+    max_nodes: Option<usize>,
+    /// Elements created so far, the unattached ones html5ever clones included.
     elements: usize,
     /// Set at the depth cut or on abort: every later sink call changes nothing.
     stopped: bool,
     abort: Option<ExtractError>,
+    /// Long attribute values by (address, length) of the buffer html5ever hands over. html5ever
+    /// clones the open formatting elements' attributes (tendrils share one buffer) for every block
+    /// element, so one value would otherwise be copied once per clone. The address is only a
+    /// hint: a hit is used after comparing content, so a reused address cannot return a wrong value.
+    values: HashMap<(usize, usize), Arc<str>>,
 }
 
 fn empty_name() -> QualName {
@@ -88,13 +102,15 @@ fn ns_of(qual: &QualName) -> Ns {
 }
 
 impl Inner {
-    fn new(max_depth: usize) -> Self {
+    fn new(limits: &ParseLimits) -> Self {
         let mut inner = Self {
             nodes: Vec::new(),
-            max_depth,
+            max_depth: limits.max_depth,
+            max_nodes: limits.max_nodes,
             elements: 0,
             stopped: false,
             abort: None,
+            values: HashMap::new(),
         };
         inner.new_node(Kind::Document, empty_name());
         inner
@@ -119,6 +135,21 @@ impl Inner {
             next: None,
         });
         id
+    }
+
+    fn share(&mut self, value: &str) -> Arc<str> {
+        if value.len() < SHARED_VALUE_BYTES {
+            return Arc::from(value);
+        }
+        let key = (value.as_ptr() as usize, value.len());
+        match self.values.get(&key) {
+            Some(shared) if **shared == *value => Arc::clone(shared),
+            _ => {
+                let shared: Arc<str> = Arc::from(value);
+                self.values.insert(key, Arc::clone(&shared));
+                shared
+            }
+        }
     }
 
     // Handles are minted by `new_node` and nodes are never removed.
@@ -296,10 +327,6 @@ struct Sink<'c> {
 }
 
 impl Sink<'_> {
-    fn element_count(&self) -> usize {
-        self.inner.borrow().elements
-    }
-
     fn stopped(&self) -> bool {
         self.inner.borrow().stopped
     }
@@ -351,19 +378,30 @@ impl TreeSink for Sink<'_> {
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> u32 {
         let mut inner = self.inner.borrow_mut();
         inner.elements = inner.elements.saturating_add(1);
-        if inner.elements.is_multiple_of(CHECK_INTERVAL)
-            && !inner.stopped
-            && let Err(error) = self.call.check()
-        {
-            inner.abort = Some(error);
-            inner.stopped = true;
+        if inner.abort.is_none() {
+            if inner.max_nodes.is_some_and(|max| inner.elements > max) {
+                inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
+                inner.stopped = true;
+            } else if inner.elements.is_multiple_of(CHECK_INTERVAL)
+                && !inner.stopped
+                && let Err(error) = self.call.check()
+            {
+                inner.abort = Some(error);
+                inner.stopped = true;
+            }
         }
+        // Once stopped the element only needs a handle: nothing it carries reaches the tree.
+        let attrs: Vec<_> = if inner.stopped {
+            Vec::new()
+        } else {
+            attrs
+                .into_iter()
+                .map(|a| (a.name.local, inner.share(&a.value)))
+                .collect()
+        };
         let id = inner.new_node(Kind::Element, name);
         let node = inner.node_mut(id);
-        node.attrs = attrs
-            .into_iter()
-            .map(|a| (a.name.local, String::from(&*a.value)))
-            .collect();
+        node.attrs = attrs;
         node.mathml_integration_point = flags.mathml_annotation_xml_integration_point;
         id
     }
@@ -431,8 +469,7 @@ impl TreeSink for Sink<'_> {
         let node = inner.node_mut(*target);
         for attr in attrs {
             if !node.attrs.iter().any(|(name, _)| *name == attr.name.local) {
-                node.attrs
-                    .push((attr.name.local, String::from(&*attr.value)));
+                node.attrs.push((attr.name.local, Arc::from(&*attr.value)));
             }
         }
     }
@@ -474,7 +511,7 @@ fn parse_opts() -> ParseOpts {
 
 fn new_sink<'c>(limits: &ParseLimits, call: &'c Call<'c>, fragment: bool) -> Sink<'c> {
     Sink {
-        inner: RefCell::new(Inner::new(limits.max_depth)),
+        inner: RefCell::new(Inner::new(limits)),
         call,
         fragment,
     }
@@ -500,12 +537,6 @@ fn drive(
         let sink = &parser.tokenizer.sink.sink;
         if let Some(error) = sink.take_abort() {
             return Err(error);
-        }
-        if limits
-            .max_nodes
-            .is_some_and(|max| sink.element_count() > max)
-        {
-            return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
         }
         if sink.stopped() {
             break;
@@ -550,4 +581,67 @@ pub fn parse_fragment(
         false,
     );
     drive(parser, html, limits, call)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    // `<p>` then `n` formatting elements with a long attribute, then `m` paragraphs: each `<p>`
+    // makes html5ever clone every open formatting element.
+    fn amplifying(n: usize, m: usize, value: &str) -> String {
+        let mut html = String::from("<html><body><p>");
+        for i in 0..n {
+            html.push_str(&format!("<b id={i} t={value}>"));
+        }
+        html.push_str(&"<p>x".repeat(m));
+        html
+    }
+
+    fn feed_whole<'a>(html: &str, limits: &ParseLimits, call: &'a Call<'a>) -> Parser<Sink<'a>> {
+        let mut parser = html5ever::parse_document(new_sink(limits, call, false), parse_opts());
+        parser.process(StrTendril::from_slice(html));
+        parser
+    }
+
+    #[test]
+    fn cloned_formatting_elements_share_attribute_values() {
+        let value = "v".repeat(500);
+        let html = amplifying(20, 50, &value);
+        let call = Call::default();
+        let parser = feed_whole(&html, &ParseLimits::default(), &call);
+        let inner = parser.tokenizer.sink.sink.inner.borrow();
+        let values: Vec<&Arc<str>> = inner
+            .nodes
+            .iter()
+            .flat_map(|node| node.attrs.iter())
+            .filter(|(name, _)| &**name == "t")
+            .map(|(_, value)| value)
+            .collect();
+        let distinct: HashSet<*const u8> = values.iter().map(|v| v.as_ptr()).collect();
+        assert!(values.len() > 20 * 50, "{} elements carry t", values.len());
+        assert_eq!(distinct.len(), 20);
+    }
+
+    #[test]
+    fn no_attributes_are_kept_once_the_node_limit_is_hit() {
+        let html = amplifying(50, 2000, &"v".repeat(200));
+        let call = Call::default();
+        let limits = ParseLimits {
+            max_nodes: Some(5_000),
+            ..ParseLimits::default()
+        };
+        let parser = feed_whole(&html, &limits, &call);
+        let inner = parser.tokenizer.sink.sink.inner.borrow();
+        assert!(inner.stopped);
+        assert_eq!(
+            inner.abort,
+            Some(ExtractError::Rejected(Rejection::TreeTooLarge))
+        );
+        let with_attrs = inner.nodes.iter().filter(|n| !n.attrs.is_empty()).count();
+        assert!(with_attrs <= 5_000, "{with_attrs} nodes kept attributes");
+        assert!(inner.elements > 50_000, "the input must outgrow the limit");
+    }
 }
