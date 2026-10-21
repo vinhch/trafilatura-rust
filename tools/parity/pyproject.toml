@@ -1,0 +1,28 @@
+[project]
+name = "trafilatura-parity"
+version = "0.0.0"
+description = "Parity fixture generator: runs upstream Python trafilatura at the pinned commit."
+requires-python = ">=3.13,<3.14"
+# Upstream's runtime dependencies (its pyproject.toml) plus html5lib for the html5 fixture variant.
+# Upstream itself is not installed: parity.generate puts the checkout on sys.path.
+dependencies = [
+    "certifi",
+    "lxml==6.1.3",
+    "urllib3>=2.8.0,<3",
+    "charset_normalizer>=3.5.2",
+    "courlan>=1.4.0",
+    "htmldate>=1.11.0",
+    "justext>=3.0.2",
+    "brotli>=1.2.0",
+    "backports.zstd>=1.7.0; python_version < '3.14'",
+    "html5lib==1.1",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

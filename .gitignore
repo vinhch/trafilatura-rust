@@ -33,3 +33,8 @@ rustc-ice-*.txt
 
 # Browser automation snapshots and session state.
 /.playwright-cli/
+
+# Python tooling (tools/parity)
+.venv/
+__pycache__/
+.pytest_cache/
