@@ -4,21 +4,23 @@
     python -m parity.measure --merge --out DIR [--rows N]
 
 The first form times `trafilatura.utils.load_html(bytes)` (5-run median) and measures its heap with
-tracemalloc, per page of the fixture corpus, into DIR/<pin>-python.json. The second form reads that
-file and the crate's DIR/<pin>-rust.json (tests/measure.rs), writes DIR/<pin>.json and prints a
-Markdown table. tracemalloc has no running total of allocations: Python reports the heap still held
-once the tree is built (`retained_*`), the crate reports that and its total allocations.
+tracemalloc, per page of the fixture corpus, into DIR/<pin>-python.json. The second form combines
+the crate's DIR/<pin>-rust-time.json and DIR/<pin>-rust-heap.json (tests/measure_time.rs,
+tests/measure_heap.rs) into DIR/<pin>-rust.json, merges that with the Python file into
+DIR/<pin>.json and prints a Markdown table.
 
-tracemalloc sees only memory allocated through Python's allocators. lxml builds its tree with
-libxml2's C allocator, which it does not see, so the Python heap columns undercount upstream's real
-memory (the tree itself is missing); the Rust columns count every allocation. Time is comparable;
-heap is a lower bound for Python.
+Time is comparable. Heap is not: tracemalloc sees only memory allocated through Python allocators,
+and lxml builds its tree with the libxml2 C allocator, so the Python heap columns miss the tree itself
+while the Rust columns count every allocation. The table prints the numbers side by side and no
+ratio for them.
 """
 
 import argparse
 import gc
 import json
 import logging
+import os
+import platform
 import statistics
 import sys
 import time
@@ -27,6 +29,7 @@ import warnings
 from pathlib import Path
 
 RUNS = 5
+HEAP_NOTE = "not comparable: tracemalloc excludes libxml2 C allocations (the lxml tree)"
 
 
 def measure_page(load_html, data: bytes) -> dict:
@@ -43,6 +46,8 @@ def measure_page(load_html, data: bytes) -> dict:
     gc.collect()
     tracemalloc.start(1)
     try:
+        # The snapshot call allocates too: the baseline count carries that cost, so the difference does not
+        base_blocks = len(tracemalloc.take_snapshot().traces)
         base, _ = tracemalloc.get_traced_memory()
         tracemalloc.reset_peak()
         try:
@@ -50,7 +55,7 @@ def measure_page(load_html, data: bytes) -> dict:
         except Exception:
             tree = None
         current, peak = tracemalloc.get_traced_memory()
-        blocks = len(tracemalloc.take_snapshot().traces)
+        blocks = len(tracemalloc.take_snapshot().traces) - base_blocks
     finally:
         tracemalloc.stop()
     del tree
@@ -61,6 +66,15 @@ def measure_page(load_html, data: bytes) -> dict:
         "retained_bytes": current - base,
         "retained_blocks": blocks,
         "peak_bytes": peak - base,
+    }
+
+
+def host() -> dict:
+    "Where this ran; scripts/measure sets TRAFILATURA_MEASURE_RUNTIME=docker inside the container."
+    return {
+        "os": platform.system().lower(),
+        "arch": platform.machine().lower(),
+        "runtime": os.environ.get("TRAFILATURA_MEASURE_RUNTIME", "native"),
     }
 
 
@@ -82,25 +96,48 @@ def run(upstream_root: Path, out: Path, only: str) -> None:
         pages.append({"id": source.replace("/", "__"), "source": source, **measure_page(load_html, path.read_bytes())})
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{pin}-python.json"
-    target.write_text(json.dumps({"pin": pin, "runs": RUNS, "pages": pages}, indent=1) + "\n", encoding="utf-8")
+    document = {"pin": pin, "host": host(), "extra": {"runs": RUNS}, "pages": pages}
+    target.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     print(f"wrote {len(pages)} pages to {target}", file=sys.stderr)
 
 
-def merge_pages(rust: dict, python: dict) -> list[dict]:
-    "Pages present on both sides, in the Rust file's order."
+def combine_rust(time_run: dict, heap_run: dict) -> dict:
+    "The crate's two runs as one file: per page the time fields and the heap fields."
+    heap = {p["id"]: p for p in heap_run["pages"]}
+    pages = []
+    for t in time_run["pages"]:
+        if t["id"] in heap:
+            h = heap[t["id"]]
+            pages.append({**h, **t, "loaded": t["loaded"] and h["loaded"]})
+    return {
+        "pin": time_run["pin"],
+        "host": time_run["host"],
+        "extra": {**time_run["extra"], **heap_run["extra"]},
+        "pages": pages,
+    }
+
+
+def merge_pages(rust: dict, python: dict) -> tuple[list[dict], int]:
+    "Pages on both sides in the Rust file's order, and how many ids are on one side only."
     by_id = {p["id"]: p for p in python["pages"]}
-    return [
+    pages = [
         {"id": r["id"], "source": r["source"], "input_bytes": r["input_bytes"], "rust": r, "python": by_id[r["id"]]}
         for r in rust["pages"]
         if r["id"] in by_id
     ]
+    return pages, len(rust["pages"]) + len(python["pages"]) - 2 * len(pages)
+
+
+def loaded_pages(pages: list[dict]) -> list[dict]:
+    "Pages both sides parsed; a page one side rejected would skew the comparison."
+    return [p for p in pages if p["rust"]["loaded"] and p["python"]["loaded"]]
 
 
 def totals(pages: list[dict]) -> dict:
-    "Per side: summed median time and retained heap, summed allocations (Rust only), largest and mean peak."
+    "Per side over the loaded pages: summed median time and retained heap, summed allocations (Rust only), peaks."
     result = {}
     for side in ("rust", "python"):
-        rows = [p[side] for p in pages]
+        rows = [p[side] for p in loaded_pages(pages)]
         peaks = [r["peak_bytes"] for r in rows]
         result[side] = {
             "median_ms": sum(r["median_ns"] for r in rows) / 1e6,
@@ -118,46 +155,61 @@ def _ratio(python: float, rust: float) -> str:
     return f"{python / rust:.1f}x" if rust else "n/a"
 
 
-def format_table(pages: list[dict], rows: int = 0) -> str:
-    "Markdown: the first `rows` pages one per line, then the totals."
+def _where(h: dict) -> str:
+    return f"{h['os']}/{h['arch']} ({h['runtime']})"
+
+
+def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict | None = None) -> str:
+    "Markdown: the first `rows` loaded pages one per line, the totals, then the caveats."
+    usable = loaded_pages(pages)
     lines = []
     if rows:
         lines += [
-            "| page | input KiB | time ms Rust | time ms Python | Python / Rust | peak KiB Rust | peak KiB Python | Python / Rust |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            "| page | input KiB | time ms Rust | time ms Python | Python / Rust | peak KiB Rust | peak KiB Python (*) |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
-        for p in pages[:rows]:
+        for p in usable[:rows]:
             r, y = p["rust"], p["python"]
             lines.append(
                 f"| {p['source']} | {p['input_bytes'] / 1024:.1f} | {r['median_ns'] / 1e6:.2f} | {y['median_ns'] / 1e6:.2f} "
-                f"| {_ratio(y['median_ns'], r['median_ns'])} | {r['peak_bytes'] / 1024:.0f} | {y['peak_bytes'] / 1024:.0f} "
-                f"| {_ratio(y['peak_bytes'], r['peak_bytes'])} |"
+                f"| {_ratio(y['median_ns'], r['median_ns'])} | {r['peak_bytes'] / 1024:.0f} | {y['peak_bytes'] / 1024:.0f} |"
             )
-        if len(pages) > rows:
-            lines.append(f"| ... {len(pages) - rows} more pages | | | | | | | |")
+        if len(usable) > rows:
+            lines.append(f"| ... {len(usable) - rows} more pages | | | | | | |")
         lines.append("")
     t = totals(pages)
     r, y = t["rust"], t["python"]
     lines += [
-        f"Totals over {len(pages)} pages, decode + parse:",
+        f"Totals over {len(usable)} pages, decode + parse:",
         "",
         "| metric | Rust | Python | Python / Rust |",
         "| --- | ---: | ---: | ---: |",
         f"| median time, sum (ms) | {r['median_ms']:.1f} | {y['median_ms']:.1f} | {_ratio(y['median_ms'], r['median_ms'])} |",
-        f"| peak heap, largest page (KiB) | {r['peak_max_bytes'] / 1024:.0f} | {y['peak_max_bytes'] / 1024:.0f} "
-        f"| {_ratio(y['peak_max_bytes'], r['peak_max_bytes'])} |",
-        f"| peak heap, mean per page (KiB) | {r['peak_mean_bytes'] / 1024:.0f} | {y['peak_mean_bytes'] / 1024:.0f} "
-        f"| {_ratio(y['peak_mean_bytes'], r['peak_mean_bytes'])} |",
-        f"| retained after parse, sum (KiB) | {r['retained_bytes'] / 1024:.0f} | {y['retained_bytes'] / 1024:.0f} "
-        f"| {_ratio(y['retained_bytes'], r['retained_bytes'])} |",
-        f"| retained blocks, sum | {r['retained_blocks']} | {y['retained_blocks']} "
-        f"| {_ratio(y['retained_blocks'], r['retained_blocks'])} |",
+        f"| peak heap, largest page (KiB) (*) | {r['peak_max_bytes'] / 1024:.0f} | {y['peak_max_bytes'] / 1024:.0f} | n/a |",
+        f"| peak heap, mean per page (KiB) (*) | {r['peak_mean_bytes'] / 1024:.0f} | {y['peak_mean_bytes'] / 1024:.0f} | n/a |",
+        f"| retained after parse, sum (KiB) (*) | {r['retained_bytes'] / 1024:.0f} | {y['retained_bytes'] / 1024:.0f} | n/a |",
+        f"| retained blocks, sum (*) | {r['retained_blocks']} | {y['retained_blocks']} | n/a |",
         f"| allocated, total (KiB) | {r['alloc_bytes'] / 1024:.0f} | n/a | n/a |",
         f"| allocation count, total | {r['alloc_count']} | n/a | n/a |",
         "",
-        "Python heap is tracemalloc: it misses the libxml2 tree lxml builds, so it is a lower bound.",
+        f"(*) {HEAP_NOTE}.",
+        f"Pages: {len(usable)} compared, {len(pages) - len(usable)} excluded (not loaded on one side), "
+        f"{dropped} dropped (on one side only).",
     ]
+    if hosts:
+        rust_where, python_where = _where(hosts["rust"]), _where(hosts["python"])
+        if rust_where == python_where:
+            lines.append(f"Platform: both sides on {rust_where}.")
+        else:
+            lines.append(
+                f"Platform: Rust on {rust_where}, Python on {python_where}: the times come from different "
+                "systems; compare ratios between runs of the same setup."
+            )
     return "\n".join(lines)
+
+
+def _read(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def merge(out: Path, rows: int) -> int:
@@ -165,24 +217,27 @@ def merge(out: Path, rows: int) -> int:
 
     pin = pinned_commit()
     try:
-        rust = json.loads((out / f"{pin}-rust.json").read_text(encoding="utf-8"))
-        python = json.loads((out / f"{pin}-python.json").read_text(encoding="utf-8"))
+        rust = combine_rust(_read(out / f"{pin}-rust-time.json"), _read(out / f"{pin}-rust-heap.json"))
+        python = _read(out / f"{pin}-python.json")
     except OSError as err:
         print(f"measure: {err}; run scripts/measure.sh first", file=sys.stderr)
         return 1
-    pages = merge_pages(rust, python)
-    if not pages:
-        print("measure: the Rust and Python files share no page", file=sys.stderr)
+    pages, dropped = merge_pages(rust, python)
+    if not loaded_pages(pages):
+        print("measure: no page loaded on both sides", file=sys.stderr)
         return 1
+    hosts = {"rust": rust["host"], "python": python["host"]}
+    (out / f"{pin}-rust.json").write_text(json.dumps(rust, indent=1) + "\n", encoding="utf-8")
     merged = {
         "pin": pin,
-        "runs": rust["runs"],
-        "peak_scope": rust["peak_scope"],
+        "host": hosts,
+        "extra": {"rust": rust["extra"], "python": python["extra"], "heap_note": HEAP_NOTE},
+        "dropped": dropped,
         "totals": totals(pages),
         "pages": pages,
     }
     (out / f"{pin}.json").write_text(json.dumps(merged, indent=1) + "\n", encoding="utf-8")
-    print(format_table(pages, rows))
+    print(format_table(pages, rows, dropped, hosts))
     return 0
 
 

@@ -17,7 +17,8 @@ usage() {
   cat <<EOF
 Usage: scripts/$script_name [--upstream PATH] [--docker] [--only SUBSTRING]
 
-Runs tests/measure.rs (release build, feature __internals), then tools/parity (parity.measure) against
+Runs tests/measure_time.rs and tests/measure_heap.rs (release build, feature __internals; two binaries,
+because the dhat allocator of the heap one would slow the timings), then tools/parity (parity.measure) against
 the upstream checkout at PATH, then merges both into .temp/measure/<pin>.json. The Python side runs
 where scripts/fixtures.sh runs: uv on Linux, Docker elsewhere. On Windows and macOS the two sides
 therefore run on different systems (host and container): compare ratios between runs, not absolutes.
@@ -76,9 +77,9 @@ if [ -n "$only" ]; then
   rows="$table_rows"
 fi
 
-echo "== Rust: load_html over the corpus ==" >&2
+echo "== Rust: load_html over the corpus (time, then heap) ==" >&2
 TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY="$only" \
-  cargo test --release --features __internals --test measure -- --nocapture >&2
+  cargo test --release --features __internals --test measure_time --test measure_heap -- --nocapture >&2
 
 echo "== Python: upstream load_html ==" >&2
 if [ "$use_docker" = false ] && [ "$(uname -s)" = "Linux" ]; then
@@ -98,7 +99,7 @@ exec docker run --rm \
   -v "$(host_path "$repo_root"):/work:ro" \
   -v "$(host_path "$upstream"):/upstream:ro" \
   -v "$(host_path "$repo_root/.temp"):/work/.temp" \
-  -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy \
+  -e PYTHONDONTWRITEBYTECODE=1 -e TRAFILATURA_MEASURE_RUNTIME=docker -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy \
   -w /work/tools/parity "$docker_image" \
   sh -c 'rows=$1 && shift && pip install --quiet --root-user-action=ignore "uv==$0" && uv sync --frozen --no-dev --quiet && uv run --frozen --no-dev python -m parity.measure --upstream /upstream --out /work/.temp/measure "$@" && exec uv run --frozen --no-dev python -m parity.measure --merge --out /work/.temp/measure --rows "$rows"' \
   "$uv_version" "${rows:-0}" ${only_args[@]+"${only_args[@]}"}

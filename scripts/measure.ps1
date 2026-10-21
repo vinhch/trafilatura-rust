@@ -29,7 +29,8 @@ function Show-Usage {
     @"
 Usage: scripts/$ScriptName [--upstream PATH] [--docker] [--only SUBSTRING]
 
-Runs tests/measure.rs (release build, feature __internals), then tools/parity (parity.measure) against
+Runs tests/measure_time.rs and tests/measure_heap.rs (release build, feature __internals; two binaries,
+because the dhat allocator of the heap one would slow the timings), then tools/parity (parity.measure) against
 the upstream checkout at PATH, then merges both into .temp/measure/<pin>.json. The Python side runs
 where scripts/fixtures.ps1 runs: uv on Linux, Docker elsewhere. On Windows and macOS the two sides
 therefore run on different systems (host and container): compare ratios between runs, not absolutes.
@@ -71,12 +72,12 @@ $Temp = (Resolve-Path '.temp').Path
 $OnlyArgs = if ($Only) { @('--only', $Only) } else { @() }
 $Rows = if ($Only) { $TableRows } else { 0 }
 
-[Console]::Error.WriteLine('== Rust: load_html over the corpus ==')
+[Console]::Error.WriteLine('== Rust: load_html over the corpus (time, then heap) ==')
 $env:TRAFILATURA_UPSTREAM = $Upstream
 $env:TRAFILATURA_MEASURE = '1'
 $env:TRAFILATURA_MEASURE_ONLY = $Only
 try {
-    cargo test --release --features __internals --test measure -- --nocapture 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
+    cargo test --release --features __internals --test measure_time --test measure_heap -- --nocapture 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
     if ($LASTEXITCODE -ne 0) { Fail 'the Rust measurement failed' }
 } finally {
     Remove-Item Env:TRAFILATURA_MEASURE, Env:TRAFILATURA_MEASURE_ONLY -ErrorAction SilentlyContinue
@@ -96,7 +97,7 @@ docker run --rm `
     -v "${RepoRoot}:/work:ro" `
     -v "${Upstream}:/upstream:ro" `
     -v "${Temp}:/work/.temp" `
-    -e PYTHONDONTWRITEBYTECODE=1 -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy `
+    -e PYTHONDONTWRITEBYTECODE=1 -e TRAFILATURA_MEASURE_RUNTIME=docker -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy `
     -w /work/tools/parity $DockerImage `
     sh -c $Inner $UvVersion $Rows @OnlyArgs
 exit $LASTEXITCODE
