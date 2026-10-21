@@ -29,7 +29,7 @@ def dump_tree(root: HtmlElement) -> str:
     (libxml2 yields plain `svg`/`math` elements) is tagged by `svg`/`math` ancestor-or-self instead.
     """
     lines: list[str] = []
-    plain = not any(el.tag.startswith("{") for el in root.iter())
+    plain = not any(isinstance(el.tag, str) and el.tag.startswith("{") for el in root.iter())
 
     def walk(el: HtmlElement, depth: int, foreign: str | None) -> None:
         ns, local = _split(el.tag)
@@ -43,6 +43,10 @@ def dump_tree(root: HtmlElement) -> str:
         if el.text:
             lines.append(f"{pad}  #text {_json(el.text)}")
         for child in el:
+            if not isinstance(child.tag, str):  # comment or PI: skipped, its tail stays
+                if child.tail:
+                    lines.append(f"{pad}  #text {_json(child.tail)}")
+                continue
             walk(child, depth + 1, foreign)
             if child.tail:
                 lines.append(f"{pad}  #text {_json(child.tail)}")

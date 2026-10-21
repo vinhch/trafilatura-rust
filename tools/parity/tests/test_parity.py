@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from pathlib import Path
@@ -76,3 +77,61 @@ def test_refuses_wrong_commit():
 def test_html5_copy_keeps_root_attributes():
     root = html5tree.parse_document('<html lang="en" class="a"><body><p>x</p></body></html>')
     assert dict(root.attrib) == {"lang": "en", "class": "a"}
+
+
+def test_html5_copy_keeps_first_on_attribute_collision():
+    root = html5tree.parse_document('<svg><use href="a" xlink:href="b"/></svg>')
+    use = next(el for el in root.iter() if el.tag.endswith("use"))
+    assert dict(use.attrib) == {"href": "a"}
+    assert html5tree.last_parse_normalized() is True
+
+
+def test_dump_tree_skips_comments_between_text():
+    from lxml.etree import Comment
+
+    root = HtmlElement()
+    root.tag = "div"
+    root.text = "a"
+    comment = Comment("c")
+    comment.tail = "b"
+    root.append(comment)
+    assert treedump.dump_tree(root) == 'div\n  #text "a"\n  #text "b"\n'
+
+
+def _page(source: str) -> tuple[dict, dict]:
+    return {"id": source.replace("/", "__"), "source": source, "valid_utf8": True}, {"source": source}
+
+
+def _sources(pin_dir) -> list[str]:
+    return [p["source"] for p in json.loads((pin_dir / "index.json").read_text())["pages"]]
+
+
+def test_filtered_run_merges_instead_of_wiping(tmp_path):
+    meta = {"pin": "p", "max_date": "d", "lock_sha256": "l"}
+    generate.store(tmp_path, meta, [_page("tests/a.html"), _page("tests/b.html")], full=True)
+    (tmp_path / "f1.json").write_text("{}")
+    generate.store(tmp_path, meta, [_page("tests/b.html")], full=False)
+    assert _sources(tmp_path) == ["tests/a.html", "tests/b.html"]
+    assert (tmp_path / "pages" / "tests__a.html.json").is_file()
+    assert (tmp_path / "f1.json").is_file()
+    generate.store(tmp_path, meta, [_page("tests/c.html")], full=True)
+    assert _sources(tmp_path) == ["tests/c.html"]
+    assert not (tmp_path / "pages" / "tests__a.html.json").exists()
+
+
+def test_filtered_run_drops_pages_from_another_lock(tmp_path):
+    generate.store(tmp_path, {"lock_sha256": "old"}, [_page("tests/a.html")], full=True)
+    generate.store(tmp_path, {"lock_sha256": "new"}, [_page("tests/b.html")], full=False)
+    assert _sources(tmp_path) == ["tests/b.html"]
+
+
+def test_variant_records_upstream_exception(monkeypatch):
+    import trafilatura
+
+    def boom(*_, **__):
+        raise KeyError("uppercase")
+
+    monkeypatch.setattr(trafilatura, "extract", boom)
+    result = generate.run_variant(b"<html><body><p>x</p></body></html>", True)
+    assert result["formats"]["html"] is None
+    assert result["errors"]["html"] == "KeyError: 'uppercase'"

@@ -1,3 +1,7 @@
 # Shell scripts run under bash on every platform, including Git Bash on Windows CI, where a CRLF
 # checkout breaks them.
 *.sh text eol=lf
+
+# Python sources and the lock file hash must be identical on every checkout (lock_sha256 in the fixtures)
+*.py text eol=lf
+tools/parity/uv.lock text eol=lf

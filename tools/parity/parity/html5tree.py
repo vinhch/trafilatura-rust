@@ -54,10 +54,11 @@ def _copy_attributes(source) -> dict[str, str]:
     attrib = {}
     for key, value in source.attrib.items():
         name = key.rpartition("}")[2]
-        if _ATTRIBUTE_NAME.fullmatch(name):
-            attrib[name] = _strip_invalid(value)
-        else:
+        if not _ATTRIBUTE_NAME.fullmatch(name) or name in attrib:
+            # invalid name, or `href` vs `xlink:href` collision: the first one wins
             _normalized = True
+        else:
+            attrib[name] = _strip_invalid(value)
     return attrib
 
 

@@ -33,6 +33,8 @@ def pinned_commit() -> str:
 def head_commit(upstream_root: Path) -> str:
     "HEAD of a git checkout, read from .git (the slim Docker image has no git binary)."
     git_dir = upstream_root / ".git"
+    if git_dir.is_file():
+        raise SystemExit(f"{upstream_root} is a git worktree or submodule (.git is a file); use a normal clone")
     try:
         head = (git_dir / "HEAD").read_text().strip()
         if not head.startswith("ref: "):
@@ -120,20 +122,31 @@ def run_variant(data: bytes, extensive_date_search: bool) -> dict:
 
     from .treedump import dump_tree
 
-    def guarded(fn):
+    errors: dict[str, str] = {}
+
+    def guarded(key, fn):
+        "An upstream exception is recorded under errors[key] and the value is null, unlike a plain None return."
         try:
             return fn()
-        except Exception as err:  # a crash is part of upstream's behavior; recorded as null
-            print(f"  {type(err).__name__}: {err}", file=sys.stderr)
+        except Exception as err:
+            errors[key] = f"{type(err).__name__}: {err}"
+            print(f"  {key}: {errors[key]}", file=sys.stderr)
             return None
 
-    tree = guarded(lambda: load_html(data))
-    formats = {f: guarded(lambda f=f: extract(data, options=_options(f, False, extensive_date_search))) for f in FORMATS}
-    doc = guarded(lambda: bare_extraction(data, options=_options("python", True, extensive_date_search)))
+    tree = guarded("tree", lambda: load_html(data))
+    formats = {
+        f: guarded(f, lambda f=f: extract(data, options=_options(f, False, extensive_date_search))) for f in FORMATS
+    }
+    doc = guarded("metadata", lambda: bare_extraction(data, options=_options("python", True, extensive_date_search)))
     metadata = None
     if doc is not None:
         metadata = {k: v for k, v in doc.as_dict().items() if k not in _NOT_METADATA}
-    return {"tree": dump_tree(tree) if tree is not None else None, "formats": formats, "metadata": metadata}
+    return {
+        "tree": dump_tree(tree) if tree is not None else None,
+        "formats": formats,
+        "metadata": metadata,
+        "errors": errors,
+    }
 
 
 def valid_utf8(data: bytes) -> bool:
@@ -177,6 +190,33 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, ensure_ascii=True, indent=1) + "\n", encoding="utf-8")
 
 
+def store(pin_dir: Path, meta: dict, pages: list[tuple[dict, dict]], full: bool) -> None:
+    """Write page files and index.json under pin_dir.
+
+    A full run removes stale page files and lists exactly `pages`. A filtered run overwrites only
+    its pages and merges their entries into the existing index (when it came from the same lock
+    file and max_date), so earlier pages and f1.json stay valid.
+    """
+    pages_dir = pin_dir / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    entries = {entry["id"]: entry for entry, _ in pages}
+    if full:
+        for stale in pages_dir.glob("*.json"):
+            stale.unlink()
+    else:
+        try:
+            old = json.loads((pin_dir / "index.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = {}
+        if all(old.get(k) == v for k, v in meta.items()):
+            kept = {e["id"]: e for e in old["pages"] if (pages_dir / f"{e['id']}.json").is_file()}
+            entries = kept | entries
+    for entry, page in pages:
+        _write_json(pages_dir / f"{entry['id']}.json", page)
+    ordered = sorted(entries.values(), key=lambda e: e["source"])
+    _write_json(pin_dir / "index.json", {**meta, "pages": ordered})
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--upstream", type=Path, required=True)
@@ -194,42 +234,32 @@ def main(argv: list[str] | None = None) -> int:
     from trafilatura.settings import DEFAULT_CONFIG
 
     extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
-    pages_dir = args.out / pin / "pages"
-    pages_dir.mkdir(parents=True, exist_ok=True)
-    for stale in pages_dir.glob("*.json"):
-        stale.unlink()
-
-    index_pages = []
+    pin_dir = args.out / pin
+    results = []
     for path in corpus(upstream_root):
         source = path.relative_to(upstream_root).as_posix()
         if args.only not in source:
             continue
-        page_id = source.replace("/", "__")
         print(source, file=sys.stderr)
         data = path.read_bytes()
         lxml_result = run_variant(data, extensive)
         normalized: list[bool] = []
         with html5_parsers(normalized):
             html5_result = run_variant(data, extensive)
-        _write_json(
-            pages_dir / f"{page_id}.json",
-            {"source": source, "normalized": any(normalized), "lxml": lxml_result, "html5": html5_result},
-        )
-        index_pages.append({"id": page_id, "source": source, "valid_utf8": valid_utf8(data)})
+        page = {"source": source, "normalized": any(normalized), "lxml": lxml_result, "html5": html5_result}
+        results.append(({"id": source.replace("/", "__"), "source": source, "valid_utf8": valid_utf8(data)}, page))
 
-    if not args.only:
-        _write_json(args.out / pin / "f1.json", f1_scores(upstream_root))
-    _write_json(
-        args.out / pin / "index.json",
-        {
-            "pin": pin,
-            "upstream_version": trafilatura.__version__,
-            "max_date": MAX_DATE,
-            "lock_sha256": hashlib.sha256(LOCK_FILE.read_bytes()).hexdigest(),
-            "pages": index_pages,
-        },
-    )
-    print(f"wrote {len(index_pages)} pages to {args.out / pin}", file=sys.stderr)
+    full = not args.only
+    meta = {
+        "pin": pin,
+        "upstream_version": trafilatura.__version__,
+        "max_date": MAX_DATE,
+        "lock_sha256": hashlib.sha256(LOCK_FILE.read_bytes()).hexdigest(),
+    }
+    store(pin_dir, meta, results, full)
+    if full:
+        _write_json(pin_dir / "f1.json", f1_scores(upstream_root))
+    print(f"wrote {len(results)} pages to {pin_dir}", file=sys.stderr)
     return 0
 
 
