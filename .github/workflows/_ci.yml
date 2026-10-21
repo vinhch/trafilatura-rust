@@ -26,6 +26,49 @@ jobs:
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-deny@0.20.2
+      # The parity fixtures come from running upstream, which is generated on Linux only (AGENTS.md,
+      # Parity harness); the Windows job skips the parity tests because no fixtures exist there.
+      - name: Read the upstream pin
+        if: matrix.os == 'ubuntu-latest'
+        id: pin
+        shell: bash
+        run: echo "commit=$(sed -n 's/^commit = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - name: Check out upstream at the pin
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: adbar/trafilatura
+          ref: ${{ steps.pin.outputs.commit }}
+          path: upstream
+      - name: Install uv
+        if: matrix.os == 'ubuntu-latest'
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Cache the parity fixtures
+        if: matrix.os == 'ubuntu-latest'
+        id: fixtures
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .temp/fixtures
+          key: fixtures-${{ steps.pin.outputs.commit }}-${{ hashFiles('tools/parity/uv.lock', 'tools/parity/parity/**') }}
+      - name: Generate the parity fixtures
+        if: matrix.os == 'ubuntu-latest' && steps.fixtures.outputs.cache-hit != 'true'
+        shell: bash
+        run: scripts/fixtures.sh --upstream upstream
+      - name: Test the fixture generator
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
+        run: uv run --frozen --project tools/parity pytest tools/parity/tests -q
       - name: Run every check
         shell: bash
+        env:
+          TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
         run: scripts/test.sh
+      - name: Upload the parity report
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parity-report
+          path: .temp/parity/report.md
+          if-no-files-found: ignore

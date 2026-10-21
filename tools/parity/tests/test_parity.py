@@ -52,6 +52,12 @@ def test_html5_copy_drops_invalid_names():
     assert html5tree.last_parse_normalized() is True
 
 
+def test_html5_parse_drops_leading_bom():
+    root = html5tree.parse_document("\ufeff<!DOCTYPE html><html><head><title>t</title></head><body><p>x</p></body></html>")
+    assert [child.tag for child in root] == ["head", "body"]
+    assert root.find("body").text is None
+
+
 def test_html5_tree_accepted_by_bare_extraction():
     sentence = "The quick brown fox jumps over the lazy dog while the committee reviews the long report. "
     html = (

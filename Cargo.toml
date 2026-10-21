@@ -45,3 +45,10 @@ expect_used = "deny"
 panic = "deny"
 indexing_slicing = "warn"
 string_slice = "deny"
+
+[dev-dependencies]
+serde_json = "1"
+
+[[test]]
+name = "parity"
+required-features = ["__internals"]

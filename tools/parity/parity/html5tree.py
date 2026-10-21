@@ -92,10 +92,14 @@ def _copy_tree(source, tag: str) -> HtmlElement:
 
 
 def parse_document(text: str) -> HtmlElement:
-    "Parse a full document with the HTML5 algorithm; returns the `html` element."
+    """Parse a full document with the HTML5 algorithm; returns the `html` element.
+
+    A leading U+FEFF is dropped first: WHATWG's decode step discards a BOM, but html5lib keeps it
+    when given a str and then starts the body at it (html5ever and libxml2 both skip it).
+    """
     global _normalized
     _normalized = False
-    tree = html5lib.parse(text, treebuilder="etree", namespaceHTMLElements=False)
+    tree = html5lib.parse(text.removeprefix("\ufeff"), treebuilder="etree", namespaceHTMLElements=False)
     return _copy_tree(tree, tree.tag)
 
 
