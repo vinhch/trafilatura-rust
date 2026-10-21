@@ -79,7 +79,7 @@ def host() -> dict:
 
 
 def run(upstream_root: Path, out: Path, only: str) -> None:
-    from . import import_path
+    from . import import_path, page_id
     from .generate import check_pin, corpus
 
     pin = check_pin(upstream_root)
@@ -94,7 +94,7 @@ def run(upstream_root: Path, out: Path, only: str) -> None:
         if only not in source:
             continue
         print(source, file=sys.stderr)
-        pages.append({"id": source.replace("/", "__"), "source": source, **measure_page(load_html, path.read_bytes())})
+        pages.append({"id": page_id(source), "source": source, **measure_page(load_html, path.read_bytes())})
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"{pin}-python.json"
     document = {"pin": pin, "host": host(), "extra": {"runs": RUNS}, "pages": pages}

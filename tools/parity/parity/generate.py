@@ -2,7 +2,8 @@
 
     python -m parity.generate --upstream PATH --out DIR [--only SUBSTRING]
 
-Output: DIR/<pin>/index.json, DIR/<pin>/pages/<id>.json, DIR/<pin>/f1.json. Each page is extracted
+Output: DIR/<version>/index.json, DIR/<version>/pages/<id>.json, DIR/<version>/f1.json, where <version>
+is the upstream release pinned in Cargo.toml. Each page is extracted
 twice: `lxml` (upstream as is) and `html5` (document and fragment parsers swapped for html5lib).
 """
 
@@ -16,7 +17,7 @@ import tomllib
 import warnings
 from pathlib import Path
 
-from . import MAX_DATE, import_path
+from . import MAX_DATE, import_path, page_id
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOCK_FILE = Path(__file__).resolve().parents[1] / "uv.lock"
@@ -25,9 +26,19 @@ FORMATS = ("txt", "markdown", "html", "xml", "xmltei", "json")
 _NOT_METADATA = {"body", "commentsbody", "comments", "raw_text", "text"}
 
 
-def pinned_commit() -> str:
+def _upstream_table() -> dict:
+    "The `[package.metadata.upstream]` table: its `version` is not the package's own `version`."
     with open(REPO_ROOT / "Cargo.toml", "rb") as f:
-        return tomllib.load(f)["package"]["metadata"]["upstream"]["commit"]
+        return tomllib.load(f)["package"]["metadata"]["upstream"]
+
+
+def pinned_commit() -> str:
+    return _upstream_table()["commit"]
+
+
+def pinned_version() -> str:
+    "Upstream release the port follows; names the fixture archive and directory."
+    return _upstream_table()["version"]
 
 
 def head_commit(upstream_root: Path) -> str:
@@ -238,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     from trafilatura.settings import DEFAULT_CONFIG
 
     extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
-    pin_dir = args.out / pin
+    pin_dir = args.out / pinned_version()
     results = []
     for path in corpus(upstream_root):
         source = path.relative_to(upstream_root).as_posix()
@@ -251,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         with html5_parsers(normalized):
             html5_result = run_variant(data, extensive)
         page = {"source": source, "normalized": any(normalized), "lxml": lxml_result, "html5": html5_result}
-        results.append(({"id": source.replace("/", "__"), "source": source, "valid_utf8": valid_utf8(data)}, page))
+        results.append(({"id": page_id(source), "source": source, "valid_utf8": valid_utf8(data)}, page))
 
     full = not args.only
     meta = {

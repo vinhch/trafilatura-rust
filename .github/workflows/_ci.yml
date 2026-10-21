@@ -26,8 +26,8 @@ jobs:
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-deny@0.20.2
-      # The parity fixtures come from running upstream, which is generated on Linux only (AGENTS.md,
-      # Parity harness); the Windows job skips the parity tests because no fixtures exist there.
+      # The parity fixtures are unpacked from the tracked archive (AGENTS.md, Parity harness); the
+      # Windows job skips the parity tests because it does not unpack them.
       - name: Read the upstream pin
         if: matrix.os == 'ubuntu-latest'
         id: pin
@@ -43,17 +43,10 @@ jobs:
       - name: Install uv
         if: matrix.os == 'ubuntu-latest'
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - name: Cache the parity fixtures
+      - name: Unpack the parity fixtures
         if: matrix.os == 'ubuntu-latest'
-        id: fixtures
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .temp/fixtures
-          key: fixtures-${{ steps.pin.outputs.commit }}-${{ hashFiles('tools/parity/uv.lock', 'tools/parity/parity/**') }}
-      - name: Generate the parity fixtures
-        if: matrix.os == 'ubuntu-latest' && steps.fixtures.outputs.cache-hit != 'true'
         shell: bash
-        run: scripts/fixtures.sh --upstream upstream
+        run: scripts/fixtures.sh
       - name: Test the fixture generator
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -64,7 +57,7 @@ jobs:
         shell: bash
         env:
           TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
-          # Ubuntu generated the fixtures above: a missing set must fail here, not skip the parity test.
+          # Ubuntu unpacked the fixtures above: a missing set must fail here, not skip the parity test.
           PARITY_REQUIRE_FIXTURES: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
         run: scripts/test.sh
       - name: Upload the parity report

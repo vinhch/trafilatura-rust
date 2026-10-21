@@ -7,6 +7,7 @@
 //! Parity of the crate's parsed tree with the html5 fixtures generated from upstream (AGENTS.md,
 //! Parity harness). Skips when the fixtures or the upstream checkout are missing.
 
+#[allow(dead_code)]
 mod common;
 
 use std::fmt::Write as _;

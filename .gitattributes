@@ -5,3 +5,6 @@
 # Python sources and the lock file hash must be identical on every checkout (lock_sha256 in the fixtures)
 *.py text eol=lf
 tools/parity/uv.lock text eol=lf
+
+# Parity fixture archive: tracked, byte-exact
+*.tar.zst binary
