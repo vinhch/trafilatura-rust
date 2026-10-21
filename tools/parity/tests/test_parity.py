@@ -19,7 +19,10 @@ def _upstream_root() -> Path:
 
 
 UPSTREAM = _upstream_root()
-sys.path.insert(0, str(UPSTREAM))
+
+from parity import import_path  # noqa: E402
+
+import_path(UPSTREAM)
 
 from lxml.html import HtmlElement, fromstring  # noqa: E402
 from parity import generate, html5tree, treedump  # noqa: E402
