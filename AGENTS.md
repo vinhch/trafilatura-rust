@@ -51,15 +51,15 @@ typed rejection and can run a fallback of their own.
 
 ## Module map
 
-Python module (under upstream `trafilatura/`) → Rust module (under `src/`). Rust modules carry the
-upstream name so a diff of one Python file points at one Rust file. Scope says what the port covers.
+Python module (under upstream `trafilatura/`) → Rust module (under `src/`). One Rust module per
+upstream file, so a diff of one Python file points at one Rust file. Scope says what the port covers.
 
 | Upstream | Rust | Scope |
 | --- | --- | --- |
-| `core.py` | `core.rs` | `extract`, `bare_extraction`, the extraction cascade in fast mode |
+| `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | `extract`, `bare_extraction`, the extraction cascade in fast mode |
 | `settings.py`, `settings.cfg` | `settings.rs` | `Extractor` options and the `settings.cfg` defaults |
 | `main_extractor.py` | `main_extractor.rs` | content and comment extraction, the element handlers |
-| `htmlprocessing.py` | `htmlprocessing.rs` | tree cleaning, pruning, link density, `convert_tags` |
+| `htmlprocessing.py` | `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags` |
 | `xpaths.py` | `xpaths.rs` | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported yet: the readability and jusText fallbacks run only when `fast=False` (Fast mode only, for now) |
@@ -69,10 +69,11 @@ upstream name so a diff of one Python file points at one Rust file. Scope says w
 | `xml.py` | `xml.rs` | tree helpers (`delete_element`) and output: TXT, Markdown, HTML, XML, XML-TEI, JSON, CSV |
 | `meta.py` | none | `reset_caches` clears module-global caches here and in htmldate and courlan; this crate has no global caches (Runtime contract) |
 | `downloads.py`, `feeds.py`, `sitemaps.py`, `spider.py`, `cli.py`, `cli_utils.py` | none | out of scope: fetching and crawling belong to the caller |
+| none | `dom/`, `cancel.rs`, `error.rs`, `async_api.rs` | infrastructure upstream gets from lxml or does not have: the arena tree and its html5ever tree sink (`dom/parse.rs`), `CancelToken` and `Call`, the error types, `extract_async` (feature `tokio`) |
 
 Upstream's own dependencies carry extraction logic, so the parts trafilatura calls are ported with it:
-`htmldate` (date extraction), `courlan` (URL normalization and filtering), `charset_normalizer`
-(decoding bytes). The Rust module for each is named after the package. `justext` is not ported yet:
+`htmldate` (date extraction) and `courlan` (URL normalization and filtering). The Rust module for
+each is named after the package. `charset_normalizer` is replaced by `chardetng` (D-3). `justext` is not ported yet:
 only the fallbacks use it. The language check (`py3langid`, optional upstream) is tracked in
 `docs/phase-plan.md`.
 
@@ -102,8 +103,12 @@ test points at one Rust test.
 
 ## Porting rules
 
-- Port behavior function by function and keep upstream names in snake_case. Keep upstream's order of
-  steps: the extraction pipeline mutates one tree, so the order of operations is behavior.
+- Port behavior function by function. Keep upstream's order of steps: the extraction pipeline mutates
+  one tree, so the order of operations is behavior.
+- Names follow Rust style, not upstream spelling: rename where it reads better (`xmltotxt` becomes
+  `xml_to_text`), drop the leading `_` of private helpers (visibility says private), `HtmlParser`
+  not `HTMLParser`, a suffix for a Rust keyword (`ref_`). The trace comment below is the link to
+  upstream, so a rename never loses it.
 - Each ported function carries one trace comment naming its source:
   `// upstream: main_extractor.py::handle_paragraphs`. No line numbers; they drift every release.
 - A departure from upstream, deliberate or forced, is a row in `docs/deviations.md` with an id, and
@@ -111,7 +116,7 @@ test points at one Rust test.
 - Upstream bugs are ported as they are, unless a row in `docs/deviations.md` says otherwise. Parity
   comes first; a fix belongs upstream.
 - A named upstream constant keeps its upstream name and lives in the Rust module of the upstream file
-  that defines it (`ESCALATION_MAX_LENGTH` in `core.rs`); `settings.cfg` values go in `settings.rs`.
+  that defines it (`ESCALATION_MAX_LENGTH` in `extraction.rs`); `settings.cfg` values go in `settings.rs`.
   Never inline one at its use.
 - A call into a module a later phase ports stays in place: it calls a stub with the upstream
   signature that returns the neutral value (no duplicate, no metadata), marked
@@ -135,15 +140,21 @@ upstream has no equivalent.
 - Cancellable. Every public extraction entry point takes a cancellation and deadline handle. It
   travels inside the per-call context passed where upstream passes `options`, and is checked at stage
   boundaries and inside every loop over nodes; a ported function that checks it returns `Result`.
-  The Phase 1 design fixes the types. A check only returns early with a distinct error; it never changes
-  a branch, so a run that completes gives the same output as one without a handle.
+  The handle is `Call` (`cancel.rs`): an optional `CancelToken` (`Arc<AtomicBool>`, no dependency) and
+  an optional deadline `Instant`. Loops check it about every 256 nodes (one atomic load and one
+  `Instant::now()`), a constant tuned by benchmarks; cancel gives `ExtractError::Cancelled`, the
+  deadline `ExtractError::DeadlineExceeded`. A check only returns early with a distinct error; it never
+  changes a branch, so a run that completes gives the same output as one without a handle.
 - Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them
   (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
-  means no limit). Limits the port adds (input node count, nesting depth) are API-layer options, off
-  by default; a caller that turns one on accepts rejections upstream would not make. No recursion
-  whose depth follows the input, so callers never need large thread stacks.
+  means no limit). Nesting depth stops at 256 as libxml2 does: parsing ends at the cut and the
+  partial tree is kept. That is upstream behavior, always on. Limits the port adds (`max_input_bytes`,
+  `max_nodes` counted while parsing) are options, off by default; a caller that turns one on accepts
+  rejections upstream would not make. No recursion whose depth follows the input, so callers never
+  need large thread stacks.
 - No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`); here it is an
-  option whose default the API layer computes, and parity fixtures pin it.
+  option (`Call`) whose default is computed on each `extract` call, never when the extractor is built,
+  and parity fixtures pin it.
 - Panic-free on any input. The crate runs behind FFI, where a panic aborts the host process.
   `unwrap`, `expect` and `panic` fail clippy outside tests; `string_slice` fails everywhere, tests
   included; `indexing_slicing` is a warning, and CI denies warnings. `clippy.toml` exempts only
@@ -156,9 +167,13 @@ upstream has no equivalent.
   caller owns. `Send + Sync` options and results, so concurrent calls need no locking.
 - `unsafe` is forbidden.
 - The public API is this crate's own; the pipeline under it follows upstream function by function.
-  `extract` and `bare_extraction` keep upstream's names and meaning, while the extractor handle,
-  the cancellation handle, byte input and the error types belong to the API layer and never leak
-  into ported functions beyond the context they pass down.
+  `Options` (with `format`, as upstream `Extractor`) builds an immutable `Extractor` once, which
+  resolves the effective `formatting` and `with_metadata` as upstream does. `Extractor::extract(input,
+  &call)` is upstream `bare_extraction` plus the `id` and fingerprint step of upstream `extract`;
+  `Extractor::render(&doc)` is `determine_returnstring` in the extractor's format. `Input` is bytes or
+  a string with an optional URL and record id; `Call` carries the cancel token, deadline, `max_date`
+  and the caller-owned `DedupCache`. These API types never leak into ported functions beyond the
+  context they pass down.
 
 ## Performance and memory
 
@@ -188,7 +203,7 @@ would is a deviation and needs the user's approval before it lands.
   for it.
 - A Rust crate named after a Python package is not that package. Where upstream calls `htmldate` or
   `courlan`, port the logic it uses; take a crate only for infrastructure with no upstream logic in it
-  (HTML tokenizing, regex, encoding tables). Encoding detection is open item OI-2.
+  (HTML parsing, regex, encoding tables and detection).
 - Take a crate only when it is actively maintained (a release in the last 12 months and issues being
   answered), widely used or backed by an organization, and under a license `deny.toml` allows.
 - One version of each crate in `Cargo.lock`: `cargo deny check` fails on duplicates, advisories,
@@ -209,10 +224,18 @@ Traps found while reading upstream. Each one silently changes output.
   decides per call site, `lxml.etree.strip_tags` merges children's text into the parent, and a plain
   `parent.remove(child)` drops the tail. Port the exact operation each call site uses.
 - The parser is not html5. Upstream parses with `lxml.html.HTMLParser` (libxml2), configured in
-  `utils.py` (`HTML_PARSER`: comments and processing instructions removed). libxml2 builds a
-  different tree from an html5 parser for malformed markup: no implied `tbody`, different handling
-  of misnested and stray tags. Parity fixtures expose this; record parser-caused differences as
-  deviations. Upstream may switch parsers: check OI-5 on every sync.
+  `utils.py` (`HTML_PARSER`: comments and processing instructions removed). libxml2 2.14+ tokenizes
+  as HTML5 but builds the tree with its own rules: no implied `tbody`, no adoption agency, different
+  handling of misnested and stray tags. This crate uses html5ever (D-2). lxml wheels bundle libxml2
+  2.14.6 on Linux and macOS but 2.11.9 on Windows, so upstream itself differs by platform: fixtures
+  come from Linux. Upstream may switch parsers: check OI-5 on every sync.
+- html5ever's tree sink cannot stop the parse. After the depth cut it must ignore every later call,
+  and depth is checked again when html5ever moves a subtree (reparenting, foster parenting, the
+  adoption agency). Attribute values are stored as `String`: `StrTendril` is not `Send`.
+- Decode strictly. Upstream tries each guessed codec and falls back to UTF-8 with replacement only
+  when all fail; `encoding_rs`'s `Encoding::decode` sniffs a BOM and replaces silently, which skips
+  that fallback. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
+  first and last 5000).
 - XPath semantics. `contains(@class, "x")` is a substring test, not a class-token test;
   `translate(...)` is the case-folding idiom; results come in document order. Port each predicate
   exactly, including the substrings that look like accidents.
