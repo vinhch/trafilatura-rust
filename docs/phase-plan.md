@@ -22,8 +22,8 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 1 | Core design: tree model with text and tail, public API (options, results, errors), cancellation and deadline handle, resource limits, module layout, first dependency choices | Next | Design spec approved in `docs/specs/`; `docs/dependencies.md` lists each chosen crate with its reason | OI-1, OI-2 |
-| 2 | Parity harness: a script that runs upstream Python at the pinned commit over a page corpus and writes fixtures; a Rust test that compares crate output with them | Not started | `scripts/test.sh` runs the comparison; fixture generation is reproducible from the pin | 1, OI-3 |
+| 1 | Core design: tree model with text and tail, public API (options, results, errors), cancellation and deadline handle, resource limits, module layout, first dependency choices. API goals for bindings: byte input with encoding detection, a reusable `Send + Sync` extractor handle built once from options, only the requested output formats rendered, a flat result read field by field (no JSON on the hot path), typed errors a binding maps one to one, the dedup cache as a caller-owned value, an optional `tokio` feature with `extract_async` | Next | Design spec approved in `docs/specs/`; `docs/dependencies.md` lists each chosen crate with its reason | OI-1, OI-2 |
+| 2 | Parity harness: a script that runs upstream Python at the pinned commit over a page corpus and writes fixtures; a Rust test that compares crate output with them; a measurement run that records time, peak heap and allocation count per page | Not started | `scripts/test.sh` runs the comparison; fixture generation is reproducible from the pin; the measurement run produces a baseline | 1, OI-3 |
 | 3 | Extraction core: `settings`, `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core` with TXT, Markdown and HTML output | Not started | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | 2 |
 | 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
 | 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
@@ -55,7 +55,7 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | --- | --- | --- |
 | F-1 | Generate the selectors from upstream `xpaths.py`: parse its token tuples and expressions at build time (or in a checked-in generator) so a changed upstream selector shows as a diff, not a manual translation. | Phase 3 |
 | F-2 | Fuzzing: `cargo-fuzz` targets for parse plus extract, asserting no panic, bounded time and bounded memory on arbitrary bytes. | Phase 3 |
-| F-3 | Benchmarks: a criterion suite over the parity corpus, with a recorded baseline and a CI job that reports regressions. | Phase 3 |
+| F-3 | Benchmarks in CI: a criterion suite over the parity corpus covering time, peak heap and allocations, compared with the Phase 2 baseline, and a job that reports regressions. | Phase 3 |
 | F-4 | Mutation testing with `cargo-mutants` in the weekly quality workflow. | Phase 3 |
 | F-5 | A scheduled upstream watch: a workflow that runs `scripts/upstream.sh` weekly and opens an issue when a new upstream tag appears. | Phase 7 |
 | F-6 | `fast=False` (closes D-1): port `external.py` and `readability_lxml.py`, add the `fast` option, fill every `// deviation: D-1` branch, regenerate parity fixtures in both modes. Decide between porting the used parts of `justext` and a maintained jusText crate, judged on parity fixtures and the dependency policy. Likely behind a cargo feature. | Phase 7 |

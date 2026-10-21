@@ -116,11 +116,15 @@ points at one Rust test.
 
 These hold for the whole crate and are not departures from upstream; upstream has no equivalent.
 
-- Synchronous and CPU-bound. No async runtime in the crate: the caller decides where it runs
-  (a thread pool, `spawn_blocking`, a .NET worker).
+- Synchronous and CPU-bound. The pipeline never uses `async`: there is nothing to await, and async
+  would change every signature on the way down. The optional `tokio` feature adds `extract_async`, a
+  thin wrapper that runs the sync call on `spawn_blocking` and cancels it when the future is dropped.
+  Without it the caller decides where the call runs (a thread pool, `spawn_blocking`, a .NET worker).
 - Cancellable. Every public extraction entry point takes a cancellation and deadline handle, checked
   at stage boundaries and inside every loop over nodes, returning a distinct error when it fires.
-  A runaway page must stop inside the crate, not by the caller abandoning the thread.
+  A runaway page must stop inside the crate, not by the caller abandoning the thread. A check only
+  returns early; it never changes a branch, so a run that completes gives the same output as one
+  without a handle.
 - Bounded. Input size, tree size and nesting depth have limits (upstream's `MAX_FILE_SIZE`,
   `MAX_TREE_SIZE`, plus a depth limit the port adds); exceeding one is an error, not a slow path.
   No recursion whose depth follows the input.
@@ -131,11 +135,41 @@ These hold for the whole crate and are not departures from upstream; upstream ha
 - No process-global mutable state. Anything upstream keeps in a module global is an explicit value the
   caller owns. `Send + Sync` options and results, so concurrent calls need no locking.
 - `unsafe` is forbidden.
+- The public API is this crate's own; the pipeline under it follows upstream function by function.
+  `extract` and `bare_extraction` keep upstream's names and meaning, while the extractor handle,
+  the cancellation handle, byte input and the error types belong to the API layer and never leak
+  into ported functions beyond the handle they pass down.
+
+## Performance and memory
+
+CPU time and peak memory per page matter: the crate runs many pages at once inside services that
+budget both. Order of priority: parity, then code that maps onto upstream, then speed and memory.
+An optimization is worth doing when a measurement shows it, and it never changes output.
+
+- Measure, do not guess: time, peak heap and allocation count per page on the parity corpus. An
+  optimization lands with its numbers in the commit message.
+- Optimize in the shared layers first (tree, text buffers, selectors, decoding), where it costs the
+  ported functions nothing. Inside a ported function, keep upstream's steps and their order; a reshape
+  there carries a comment saying what it does and why it is equivalent.
+- Upstream deep-copies trees (`copy(tree)`, the cleaned backup). Port each copy with the same
+  semantics, but a copy that is only read afterwards may be a borrow, and a real copy should be a
+  cheap arena clone, not a node-by-node rebuild.
+- Memory is bounded by the input limits: no growth that does not follow input size, no cache that
+  outlives a call unless the caller owns it, everything freed when the call returns.
+- No recursion whose depth follows the input (Runtime contract), so callers never need large thread
+  stacks.
+- Borrow the caller's input bytes; decode to a new buffer only when the input is not already UTF-8.
+- The library never sets a global allocator; that choice belongs to the binary or binding.
+- An optimization that changes output is a deviation and needs a `docs/deviations.md` row and the
+  user's approval first.
 
 ## Dependency policy
 
 - Fewest dependencies that do the job. Write a small piece (a few hundred lines) before taking a crate
   for it.
+- A Rust crate named after a Python package is not that package. Where upstream calls `htmldate` or
+  `courlan`, port the logic it uses; take a crate only for infrastructure with no upstream logic in it
+  (HTML tokenizing, regex, encoding tables). Encoding detection is open item OI-2.
 - Take a crate only when it is actively maintained (a release in the last 12 months and issues being
   answered), widely used or backed by an organization, and under a license `deny.toml` allows.
 - One version of each crate in `Cargo.lock`: `cargo deny check` fails on duplicates, advisories,
