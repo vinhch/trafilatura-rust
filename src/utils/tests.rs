@@ -140,6 +140,20 @@ fn decode_mostly_utf8_keeps_valid_text() {
 }
 
 #[test]
+fn mostly_utf8_needs_more_than_ten_valid_chars_per_invalid_sequence() {
+    // Each "é" is one valid non-ASCII character; the lone 0xE9 is one invalid sequence.
+    let page = |valid: usize| {
+        let mut bytes = "é".repeat(valid).into_bytes();
+        bytes.extend_from_slice(b"x\xe9x");
+        bytes
+    };
+    assert!(!is_mostly_utf8(&page(10)));
+    assert!(detect_encoding(&page(10)).len() == 1);
+    assert!(is_mostly_utf8(&page(11)));
+    assert!(detect_encoding(&page(11)).is_empty());
+}
+
+#[test]
 fn decode_falls_back_to_replacement() {
     // A Shift_JIS lead byte before a space is malformed, so strict decoding fails and U+FFFD takes over.
     let junk = b"<p>\x81 ok</p>";

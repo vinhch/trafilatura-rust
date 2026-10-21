@@ -275,7 +275,7 @@ fn tree_dump_matches_html5_fixture() {
         Err(message) => panic!("{message}"),
         Ok(false) => {
             eprintln!(
-                "parity: fixtures or the upstream checkout are missing; run scripts/fixtures.sh                  (or set TRAFILATURA_FIXTURES and TRAFILATURA_UPSTREAM) to enable this test"
+                "parity: fixtures or the upstream checkout are missing; run scripts/fixtures.sh (or set TRAFILATURA_FIXTURES and TRAFILATURA_UPSTREAM) to enable this test"
             );
             return;
         }

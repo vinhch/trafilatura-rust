@@ -179,10 +179,11 @@ pub fn detect_encoding(content: &[u8]) -> Vec<&'static Encoding> {
     vec![detector.guess(None, Utf8Detection::Deny)]
 }
 
-/// Whether the bytes are UTF-8 text with a few stray invalid sequences: at least ten times as many
-/// valid non-ASCII characters as invalid sequences.
-// deviation: D-3 (charset_normalizer rejects every single-byte decoding of such text as mojibake,
-// so upstream has no candidate and decodes UTF-8 with replacement; chardetng always guesses one)
+/// Whether the bytes are UTF-8 text with a few stray invalid sequences: more than ten valid
+/// non-ASCII characters per invalid sequence.
+// deviation: D-3 (a heuristic standing in for charset_normalizer's mojibake check, which often leaves
+// such text without a candidate so upstream decodes UTF-8 with replacement; chardetng always guesses
+// one, so at a ratio of ten or less the crate takes that single-byte guess)
 fn is_mostly_utf8(content: &[u8]) -> bool {
     let (mut valid_non_ascii, mut invalid) = (0_usize, 0_usize);
     for chunk in content.utf8_chunks() {
