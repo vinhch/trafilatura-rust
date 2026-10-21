@@ -7,7 +7,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
@@ -80,6 +80,9 @@ struct Inner {
     /// Set at the depth cut or on abort: every later sink call changes nothing.
     stopped: bool,
     abort: Option<ExtractError>,
+    /// Short attribute values by content: tendrils of up to 8 bytes are inline, so a clone of
+    /// `id=7` has no shared buffer to recognize.
+    short_values: HashSet<Arc<str>>,
     /// Long attribute values by (address, length) of the buffer html5ever hands over. html5ever
     /// clones the open formatting elements' attributes (tendrils share one buffer) for every block
     /// element, so one value would otherwise be copied once per clone. The address is only a
@@ -110,6 +113,7 @@ impl Inner {
             elements: 0,
             stopped: false,
             abort: None,
+            short_values: HashSet::new(),
             values: HashMap::new(),
         };
         inner.new_node(Kind::Document, empty_name());
@@ -139,7 +143,12 @@ impl Inner {
 
     fn share(&mut self, value: &str) -> Arc<str> {
         if value.len() < SHARED_VALUE_BYTES {
-            return Arc::from(value);
+            if let Some(shared) = self.short_values.get(value) {
+                return Arc::clone(shared);
+            }
+            let shared: Arc<str> = Arc::from(value);
+            self.short_values.insert(Arc::clone(&shared));
+            return shared;
         }
         let key = (value.as_ptr() as usize, value.len());
         match self.values.get(&key) {
@@ -628,6 +637,21 @@ mod tests {
         let distinct: HashSet<*const u8> = values.iter().map(|v| v.as_ptr()).collect();
         assert!(values.len() > 20 * 50, "{} elements carry t", values.len());
         assert_eq!(distinct.len(), 20);
+
+        let ids: Vec<&Arc<str>> = inner
+            .nodes
+            .iter()
+            .flat_map(|node| node.attrs.iter())
+            .filter(|(name, _)| &**name == "id")
+            .map(|(_, value)| value)
+            .collect();
+        let distinct_ids: HashSet<*const u8> = ids.iter().map(|v| v.as_ptr()).collect();
+        assert!(ids.len() > 20 * 50);
+        assert_eq!(
+            distinct_ids.len(),
+            20,
+            "short values are interned by content"
+        );
     }
 
     #[test]
