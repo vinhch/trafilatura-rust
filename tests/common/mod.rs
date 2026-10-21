@@ -19,8 +19,11 @@ fn upstream_commit(manifest: &str) -> Option<String> {
         let line = line.trim();
         if line.starts_with('[') {
             in_table = line == "[package.metadata.upstream]";
-        } else if in_table && let Some(value) = line.strip_prefix("commit") {
-            let value = value.trim_start().strip_prefix('=')?;
+        } else if in_table
+            && let Some(value) = line
+                .strip_prefix("commit")
+                .and_then(|rest| rest.trim_start().strip_prefix('='))
+        {
             return Some(value.trim().trim_matches('"').to_string());
         }
     }
@@ -71,6 +74,7 @@ commit = "also wrong"
 
 [package.metadata.upstream]
 version = "1"
+commits = "not the key"
 commit = "abc123"
 
 [dependencies]
