@@ -97,6 +97,24 @@ fn load_html_rejects_dubious_single_block() {
 }
 
 #[test]
+fn load_html_counts_ins_del_noscript_as_inline() {
+    // lxml 6 (libxml2) gives `len == 1` for each of these, so they are rejected like `t <b>a</b>`;
+    // a real block element makes the implied `p` a second child.
+    for html in [
+        "t <ins>a</ins>",
+        "t <del>a</del>",
+        "t <noscript>a</noscript>",
+    ] {
+        assert_eq!(
+            load(html).unwrap_err(),
+            ExtractError::Rejected(Rejection::EmptyTree),
+            "{html}"
+        );
+    }
+    assert!(load("t <div>a</div>").is_ok());
+}
+
+#[test]
 fn load_html_rejects_blank() {
     for blank in ["", "  \n"] {
         assert_eq!(

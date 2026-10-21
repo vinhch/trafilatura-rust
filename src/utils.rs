@@ -374,7 +374,9 @@ fn lxml_len(tree: &Tree, is_full_html: bool) -> usize {
     }
 }
 
-/// Whether `name` is in `lxml.html.defs.block_tags`.
+/// Whether `name` makes libxml2 end the implied `p` that wraps leading body text: the entries of
+/// `lxml.html.defs.block_tags` except `ins`, `del` and `noscript`, which libxml2 treats as inline
+/// there, so `t <ins>a</ins>` keeps one child.
 // upstream: lxml/html/defs.py::block_tags
 fn is_block_tag(name: &str) -> bool {
     matches!(
@@ -382,7 +384,6 @@ fn is_block_tag(name: &str) -> bool {
         "address"
             | "blockquote"
             | "center"
-            | "del"
             | "div"
             | "h1"
             | "h2"
@@ -391,9 +392,7 @@ fn is_block_tag(name: &str) -> bool {
             | "h5"
             | "h6"
             | "hr"
-            | "ins"
             | "isindex"
-            | "noscript"
             | "p"
             | "pre"
             | "dir"
