@@ -206,6 +206,8 @@ would is a deviation and needs the user's approval before it lands.
   (HTML parsing, regex, encoding tables and detection).
 - Take a crate only when it is actively maintained (a release in the last 12 months and issues being
   answered), widely used or backed by an organization, and under a license `deny.toml` allows.
+  Dev-only crates (tests, benchmarks, measurement) never reach users: stable and widely used is
+  enough, without a recent release.
 - One version of each crate in `Cargo.lock`: `cargo deny check` fails on duplicates, advisories,
   unmaintained crates, unknown sources and unknown licenses.
 - Each dependency has a row in `docs/dependencies.md`: what it replaces upstream and why this crate.
@@ -266,11 +268,45 @@ Traps found while reading upstream. Each one silently changes output.
   iterating a dict, keep the order (an ordered map or a `Vec`); where it iterates a set, the order is
   undefined upstream too, so sort and record it in `docs/deviations.md`.
 
+## Parity harness
+
+How crate output is compared with upstream. Fixtures are generated, never committed.
+
+- Corpus: pages are read from an upstream checkout at the pin (`$TRAFILATURA_UPSTREAM`, else
+  `../trafilatura`): every HTML page in `tests/eval/` and `tests/cache/`, and the HTML files of
+  `tests/resources/` listed by name in `tools/parity/`. No page is copied into this repo: they are
+  third-party content upstream's license does not cover. Extra local pages come in through an
+  environment variable pointing outside the repo.
+- Fixtures: `tools/parity/` (the only Python in the repo, locked by `uv.lock`) runs upstream at the pin
+  on Linux, where lxml bundles libxml2 2.14.6, and writes `.temp/fixtures/<pin>/`. Two per page:
+  `lxml` is upstream as is and is only reported; `html5` is upstream with `utils.fromstring` and
+  `baseline.fragment_fromstring` replaced by an HTML5 parse copied into `lxml.html` elements, and
+  crate output must match it exactly.
+- Each fixture holds the output of every format, the metadata fields, the rejection if any, and the
+  parsed tree dump. Generation is deterministic: `fast=True`, a full `date_params` dict with a fixed
+  `max_date`, `dedup=False`, one fresh extractor per page. The crate gets the same `max_date`.
+- Copy rule for the `html5` tree: attributes whose name is not a valid XML name are dropped and
+  XML-invalid characters are stripped, because lxml cannot store them. The comparator applies the same
+  rule to crate output; the crate keeps everything.
+- Tree dump: one line per node in document order, indented by depth; local name (namespace only for
+  SVG and MathML), attributes sorted by name, text and tail as JSON strings with whitespace kept; no
+  comments, doctype or processing instructions.
+- Every mismatch gets a class: `port-bug` (crate differs from `html5`), `parser` (the two fixtures
+  differ, D-2), `python-parser` (html5lib predates a WHATWG rule html5ever follows), `encoding` (input
+  not valid UTF-8, D-3), `decompress` (D-4), `normalized` (the copy rule touched the page; check by
+  hand). Only `port-bug` fails the test. The report is `.temp/parity/report.md`.
+- The parity test checks for fixtures when it runs and returns early, naming `scripts/fixtures.sh`, when
+  they are missing, so `cargo test` works without Python or Docker.
+- F1 against upstream's `tests/evaldata.json`, resolved as upstream's `eval_common.py` does, is
+  reported for crate and upstream as a quality signal, not a gate.
+
 ## Commands
 
 | Command | Does |
 | --- | --- |
-| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, fmt, clippy `-D warnings`, tests, `cargo deny check` |
+| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, fmt, clippy `-D warnings`, tests (the parity test when fixtures exist), `cargo deny check` |
+| `scripts/fixtures.sh` / `scripts/fixtures.ps1` | generates parity fixtures for the pin: `uv` on Linux, Docker elsewhere, both from `tools/parity/uv.lock` |
+| `scripts/measure.sh` / `scripts/measure.ps1` | time, peak heap and allocation count per page for crate and upstream, into `.temp/measure/<pin>.json`; run by hand |
 | `scripts/upstream.sh` / `scripts/upstream.ps1` | upstream changes since the pin (`--to REF`, `--patch`) |
 | `scripts/version.sh` / `scripts/version.ps1` | prints the crate version; `--check`, `--tag vX.Y.Z` |
 
@@ -282,7 +318,9 @@ SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by h
 `rust-version` (OI-6 in `docs/phase-plan.md`).
 
 Scripts come in `.sh` and `.ps1` pairs with the same arguments; change both together. The CI test job
-only calls `scripts/test.sh`, so CI and a local run execute the same checks.
+calls `scripts/test.sh`, so CI and a local run execute the same checks. On Ubuntu a step before it
+runs `scripts/fixtures.sh`, cached by pin and `tools/parity/uv.lock`, so the parity test runs there;
+the Windows job runs without fixtures. The parity report is uploaded as an artifact.
 
 ## Commits
 

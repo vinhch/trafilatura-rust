@@ -23,8 +23,8 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 2 | Parity harness: a script that runs upstream Python at the pinned commit over a page corpus and writes fixtures; a Rust test that compares crate output with them; a measurement run that records time, peak heap and allocation count per page | Next | `scripts/test.sh` runs the comparison; fixture generation is reproducible from the pin; the measurement run produces a baseline | OI-3 |
-| 3 | Extraction core: `settings`, `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | Not started | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | 2 |
+| 2 | Parity harness (`AGENTS.md`, Parity harness): fixture generator in `tools/parity/`, `scripts/fixtures` and `scripts/measure`, the parity test and its report; plus what it needs on the Rust side: `dom/` (arena tree, html5ever parse, depth and node limits), `utils::decode_file`, skeleton `error.rs` and `cancel.rs` | Next | `scripts/test.sh` runs the comparison; the crate's tree dump matches the `html5` fixture on every page or the page has a class other than `port-bug`; fixture generation is reproducible from the pin and lock file; the measurement run produces a decode and parse baseline for crate and upstream | none |
+| 3 | Extraction core: `settings`, the rest of `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | Not started | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | 2 |
 | 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
 | 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
 | 6 | Output formats: `xml` (XML, XML-TEI, JSON, CSV) | Not started | Upstream `xml_tei_tests.py` cases ported by name pass | 3 |
@@ -41,7 +41,6 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Id | Item | Needed by |
 | --- | --- | --- |
-| OI-3 | Parity corpus. Choose pages that can be committed (license) or fetched from a pinned source, covering upstream's `tests/resources` and `tests/eval` cases. | Phase 2 |
 | OI-4 | Language check. Upstream's `target_language` uses the optional `py3langid`. Decide whether the port includes it, behind a feature, and with which model. | Phase 4 |
 | OI-5 | Open upstream changes to watch on each sync: the proposed switch from `lxml.html` to another parser, the Markdown and XML output fixes, and the concurrent `extract()` crash report. A merged one changes Phases 3 and 6. | Each sync |
 | OI-6 | The CI toolchain pin (`dtolnay/rust-toolchain`, 1.98.1) and `rust-version` must move together; Dependabot cannot move the action because its ref is a branch tip. | Each toolchain bump |

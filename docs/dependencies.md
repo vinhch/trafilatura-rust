@@ -13,3 +13,4 @@ Why each dependency in `Cargo.toml` is there. The policy that admits one is in `
 | `brotli-decompressor` | feature `decompress` | `brotli` | Decompress-only, forbids `unsafe` by default (D-4) |
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |
 | `tokio` (`rt`) | feature `tokio` | none | `spawn_blocking` for `extract_async` |
+| `dhat` | dev | `tracemalloc` | Peak heap and allocation count per page for `scripts/measure`; dev-only, so stable and widely used is enough (Dependency policy) |
