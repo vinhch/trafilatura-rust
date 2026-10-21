@@ -338,31 +338,35 @@ impl Sink<'_> {
 
 impl TreeSink for Sink<'_> {
     type Handle = u32;
-    type Output = Tree;
+    /// The tree, or the abort (limit, cancel, deadline) an element creation hit while `finish` ran.
+    type Output = Result<Tree, ExtractError>;
     type ElemName<'a>
         = std::cell::Ref<'a, QualName>
     where
         Self: 'a;
 
-    fn finish(self) -> Tree {
+    fn finish(self) -> Self::Output {
         let mut inner = self.inner.into_inner();
+        if let Some(error) = inner.abort.take() {
+            return Err(error);
+        }
         let empty = || Tree::new(local_name!("html"), Ns::Html, Vec::new());
         let Some(html) = inner.document_element() else {
-            return empty();
+            return Ok(empty());
         };
         if self.fragment {
             // The context element is `div`; the tree builder's `html` root holds the result.
             let mut tree = Tree::new(local_name!("div"), Ns::Html, Vec::new());
             let root = tree.root();
             inner.convert(html, &mut tree, root);
-            return tree;
+            return Ok(tree);
         }
         let node = inner.node_mut(html);
         let attrs = mem::take(&mut node.attrs);
         let mut tree = Tree::new(node.qual.local.clone(), ns_of(&node.qual), attrs);
         let root = tree.root();
         inner.convert(html, &mut tree, root);
-        tree
+        Ok(tree)
     }
 
     fn parse_error(&self, _msg: Cow<'static, str>) {}
@@ -544,7 +548,7 @@ fn drive(
         start = end;
     }
     call.check()?;
-    let tree = parser.finish();
+    let tree = parser.finish()?;
     if limits.max_nodes.is_some_and(|max| tree.len() > max) {
         return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
     }
@@ -588,6 +592,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::cancel::CancelToken;
 
     // `<p>` then `n` formatting elements with a long attribute, then `m` paragraphs: each `<p>`
     // makes html5ever clone every open formatting element.
@@ -643,5 +648,52 @@ mod tests {
         let with_attrs = inner.nodes.iter().filter(|n| !n.attrs.is_empty()).count();
         assert!(with_attrs <= 5_000, "{with_attrs} nodes kept attributes");
         assert!(inner.elements > 50_000, "the input must outgrow the limit");
+    }
+
+    fn limited(max: usize) -> ParseLimits {
+        ParseLimits {
+            max_nodes: Some(max),
+            ..ParseLimits::default()
+        }
+    }
+
+    // Elements created while input ends (`<html>` at end of input makes `body`; the empty string
+    // makes all three) must count against the limit: html5ever builds them inside `finish`.
+    #[test]
+    fn node_limit_is_exact_for_elements_created_at_end_of_input() {
+        for html in ["", "<html>", "<html><body><di"] {
+            let call = Call::default();
+            let count = parse_document(html, &ParseLimits::default(), &call)
+                .unwrap()
+                .len();
+            assert!(
+                parse_document(html, &limited(count), &call).is_ok(),
+                "{html:?}: limit == count"
+            );
+            assert_eq!(
+                parse_document(html, &limited(count - 1), &call).unwrap_err(),
+                ExtractError::Rejected(Rejection::TreeTooLarge),
+                "{html:?}: limit == count - 1"
+            );
+        }
+    }
+
+    // `drive` checks the token before `finish`, so an abort raised inside `finish` is set directly.
+    #[test]
+    fn abort_raised_while_finishing_is_reported() {
+        for error in [ExtractError::Cancelled, ExtractError::DeadlineExceeded] {
+            let call = Call::default();
+            let limits = ParseLimits::default();
+            let parser = feed_whole("<html>", &limits, &call);
+            parser.tokenizer.sink.sink.inner.borrow_mut().abort = Some(error.clone());
+            assert_eq!(parser.finish().unwrap_err(), error);
+        }
+        let token = CancelToken::new();
+        token.cancel();
+        let call = Call::default().cancel(&token);
+        assert_eq!(
+            parse_document("", &ParseLimits::default(), &call).unwrap_err(),
+            ExtractError::Cancelled
+        );
     }
 }
