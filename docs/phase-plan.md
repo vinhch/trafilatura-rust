@@ -34,7 +34,7 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Phase | Shipped in |
 | --- | --- |
-| 0. Scaffold: Apache-2.0 license and NOTICE, crate skeleton with panic and unsafe lints, `cargo-deny` policy, `.sh`/`.ps1` scripts, CI, release and quality workflows, Dependabot, `AGENTS.md` | the first commit after `c2404f3` |
+| 0. Scaffold: Apache-2.0 license and NOTICE, crate skeleton with panic and unsafe lints, `cargo-deny` policy, `.sh`/`.ps1` scripts, CI, release and quality workflows, Dependabot, `AGENTS.md` | `eac2d8d` |
 
 ## Open items register
 
