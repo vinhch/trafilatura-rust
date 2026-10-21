@@ -5,17 +5,15 @@ main-text, comment and metadata extraction from web pages. Behavior parity with 
 bar. A Rust function is correct when it returns what the upstream function returns for the same input,
 not when it looks similar or scores well on a benchmark.
 
-This file says where the port starts, how to follow upstream when it changes, and the traps that make a
-faithful port go wrong. `docs/phase-plan.md` holds what ships next and the open items;
-`docs/deviations.md` lists every place the port departs from upstream on purpose; `docs/dependencies.md`
-records why each dependency is there.
+This file holds the porting rules, how to follow upstream, and the traps. Plans, deviations and
+dependencies live under `docs/` (listed in `README.md`).
 
 ## Upstream reference
 
 - The pinned release is in `Cargo.toml` under `[package.metadata.upstream]` (`version`, `commit`). That
   table is the only place it is stated: never repeat the version in code, comments or docs.
 - Upstream checkout: `../trafilatura` beside this repository, or the path in `TRAFILATURA_UPSTREAM`.
-  Read upstream code at the pinned commit (`git -C ../trafilatura show <commit>:trafilatura/core.py`),
+  Read upstream code at the pinned commit (`git -C <checkout> show <commit>:trafilatura/core.py`),
   not at its working tree, which may be ahead.
 - Upstream Python is the only reference for behavior. Other ports may supply technique and code
   (Borrowing from other ports), but their output is never evidence of upstream behavior.
@@ -30,9 +28,9 @@ structures, infrastructure code, test tooling, performance techniques, ported lo
 - Most other ports translate the Go port, which follows an older Python release and has changes of
   its own. Borrowed logic is checked against the upstream Python function before it lands: same
   branches, constants and order. A difference is fixed, or recorded in `docs/deviations.md`.
-- Borrowed code is written to fit this crate and reads like the rest of it: it keeps its
-  `// upstream: file.py::fn` comment, and where the logic is not obvious a comment explains what it
-  does and why.
+- Borrowed code is written to fit this crate and reads like the rest of it: it carries the
+  `// upstream: file.py::fn` comment of the function it ports, and where the logic is not obvious a
+  comment explains what it does and why.
 - Agreement with another port's output is not parity; parity is upstream Python output only.
 
 ## Fast mode only, for now
@@ -44,8 +42,9 @@ typed rejection and can run a fallback of their own.
 
 - `Options` has no `fast` field while only fast mode exists.
 - At each upstream `if not options.fast` (or `if options.fast`), port the fast branch only and mark
-  the spot `// deviation: D-1`, so F-6 finds every place the slow branch goes. Expressions that read `options.fast` as a value (for example
-  `keep_teasers=options.fast` in `main_extractor.py`) take `true`.
+  the spot `// deviation: D-1`, so F-6 finds every place the slow branch goes. An expression that
+  reads `options.fast` as a value (`keep_teasers=options.fast` in `main_extractor.py`, the `fast`
+  argument `core.py` passes to `extract_metadata`) takes `true`.
 - An upstream test that runs with the default `fast=False` is ported with the fast-mode result. When
   that differs from the upstream assertion, the test asserts the fast-mode output from upstream Python
   and says so in a comment citing D-1.
@@ -58,7 +57,7 @@ upstream name so a diff of one Python file points at one Rust file. Scope says w
 | Upstream | Rust | Scope |
 | --- | --- | --- |
 | `core.py` | `core.rs` | `extract`, `bare_extraction`, the extraction cascade in fast mode |
-| `settings.py`, `settings.cfg` | `settings.rs` | `Extractor` options and every default value; one place for all of them |
+| `settings.py`, `settings.cfg` | `settings.rs` | `Extractor` options and the `settings.cfg` defaults |
 | `main_extractor.py` | `main_extractor.rs` | content and comment extraction, the element handlers |
 | `htmlprocessing.py` | `htmlprocessing.rs` | tree cleaning, pruning, link density, `convert_tags` |
 | `xpaths.py` | `xpaths.rs` | the content, comment, discard and metadata selectors |
@@ -67,31 +66,33 @@ upstream name so a diff of one Python file points at one Rust file. Scope says w
 | `metadata.py`, `json_metadata.py` | `metadata.rs`, `json_metadata.rs` | metadata from meta tags, JSON-LD, the tree |
 | `deduplication.py` | `deduplication.rs` | the duplicate test, simhash and content fingerprint |
 | `utils.py` | `utils.rs` | text normalization, trimming, language and size checks |
-| `xml.py` | `xml.rs` | output: TXT, Markdown, HTML, XML, XML-TEI, JSON, CSV |
+| `xml.py` | `xml.rs` | tree helpers (`delete_element`) and output: TXT, Markdown, HTML, XML, XML-TEI, JSON, CSV |
 | `meta.py` | none | `reset_caches` clears module-global caches here and in htmldate and courlan; this crate has no global caches (Runtime contract) |
 | `downloads.py`, `feeds.py`, `sitemaps.py`, `spider.py`, `cli.py`, `cli_utils.py` | none | out of scope: fetching and crawling belong to the caller |
 
 Upstream's own dependencies carry extraction logic, so the parts trafilatura calls are ported with it:
 `htmldate` (date extraction), `courlan` (URL normalization and filtering), `charset_normalizer`
-(decoding bytes). The Rust module for each is named after the package. `justext` is not ported yet: only
-the fallbacks use it. The language check (`py3langid`, optional upstream) is tracked in
+(decoding bytes). The Rust module for each is named after the package. `justext` is not ported yet:
+only the fallbacks use it. The language check (`py3langid`, optional upstream) is tracked in
 `docs/phase-plan.md`.
 
-Tests: upstream `tests/*_tests.py` are the specification. Port a test case by case and keep its name
-(`test_extract_with_metadata` becomes `fn test_extract_with_metadata`), so a changed upstream test
-points at one Rust test.
+Tests: the upstream `tests/<name>_tests.py` of each module in the map is its specification; tests of
+out-of-scope modules are not ported. It becomes `tests/<name>_tests.rs`, case by case, keeping each
+test name (`test_extract_with_metadata` becomes `fn test_extract_with_metadata`), so a changed upstream
+test points at one Rust test.
 
 ## Syncing to a new upstream release
 
-1. `git -C ../trafilatura fetch --tags`, then `scripts/upstream.sh` (or `.ps1`). It prints the pin,
-   the newest tag, the commits and the files changed under `trafilatura/` and `tests/`.
+1. `git -C <checkout> fetch --tags`, then `scripts/upstream.sh` (or `.ps1`). It prints the pin, the
+   newest tag, the commits and the files changed under `trafilatura/` and `tests/`.
 2. For each changed upstream file, find its Rust module in the map above. Read the upstream diff
-   (`scripts/upstream.sh --patch`, or `git diff <pin> <tag> -- trafilatura/<file>`) and port each
-   hunk to the function that carries its `upstream:` trace comment.
-3. Port the changed upstream tests the same way. A test upstream deleted is deleted here.
+   (`scripts/upstream.sh --patch` covers `trafilatura/` and `tests/`) and port each hunk to the
+   function that carries its `upstream:` trace comment.
+3. Port the changed upstream tests to their Rust tests by name. A test upstream deleted is deleted
+   here.
 4. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,
-   `charset_normalizer`, `lxml`): a dependency release can change extraction output with
-   no change in trafilatura itself. Diff the ported parts of that package too.
+   `charset_normalizer`, `lxml`): a dependency release can change extraction output with no change in
+   trafilatura itself. Diff the ported parts of that package too.
 5. Regenerate the parity fixtures from upstream Python at the new tag and run `scripts/test.sh`.
    A fixture that changed without a matching upstream change is a parser or port difference: fix it,
    or record it in `docs/deviations.md`.
@@ -109,59 +110,77 @@ points at one Rust test.
   the code carries `// deviation: D-n` at the spot. An unrecorded difference is a bug.
 - Upstream bugs are ported as they are, unless a row in `docs/deviations.md` says otherwise. Parity
   comes first; a fix belongs upstream.
-- Every default value and threshold lives in `settings.rs`, named after its upstream key
-  (`MIN_EXTRACTED_SIZE`), never inline at its use.
+- A named upstream constant keeps its upstream name and lives in the Rust module of the upstream file
+  that defines it (`ESCALATION_MAX_LENGTH` in `core.rs`); `settings.cfg` values go in `settings.rs`.
+  Never inline one at its use.
+- A call into a module a later phase ports stays in place: it calls a stub with the upstream
+  signature that returns the neutral value (no duplicate, no metadata), marked
+  `// todo(phase N): <module>`. Tests that depend on it are `#[ignore = "phase N"]`. Never delete the
+  call site to make a test pass.
+- Exceptions. An upstream `raise` that upstream itself catches becomes an `Err` that reaches the same
+  handler (the `raise ValueError` rejections in `bare_extraction` become typed rejections). An
+  exception that escapes upstream becomes a typed error, never a panic. Arithmetic and indexing where
+  Python would raise (`ZeroDivisionError`, `IndexError`) or where Rust would overflow use checked
+  forms.
 
 ## Runtime contract
 
-These hold for the whole crate and are not departures from upstream; upstream has no equivalent.
+These hold for the whole crate. They change no output of a completed run, so they are not deviations;
+upstream has no equivalent.
 
 - Synchronous and CPU-bound. The pipeline never uses `async`: there is nothing to await, and async
   would change every signature on the way down. The optional `tokio` feature adds `extract_async`, a
   thin wrapper that runs the sync call on `spawn_blocking` and cancels it when the future is dropped.
   Without it the caller decides where the call runs (a thread pool, `spawn_blocking`, a .NET worker).
-- Cancellable. Every public extraction entry point takes a cancellation and deadline handle, checked
-  at stage boundaries and inside every loop over nodes, returning a distinct error when it fires.
-  A runaway page must stop inside the crate, not by the caller abandoning the thread. A check only
-  returns early; it never changes a branch, so a run that completes gives the same output as one
-  without a handle.
-- Bounded. Input size, tree size and nesting depth have limits (upstream's `MAX_FILE_SIZE`,
-  `MAX_TREE_SIZE`, plus a depth limit the port adds); exceeding one is an error, not a slow path.
-  No recursion whose depth follows the input.
-- Panic-free on any input. `unwrap`, `expect`, `panic`, string slicing and indexing fail clippy
-  outside tests (`indexing_slicing` is a warning, and CI denies warnings). The crate runs behind FFI,
-  where a panic aborts the host process. `clippy.toml` exempts only `#[test]` and `#[cfg(test)]`
-  code: a shared helper under `tests/` starts with `#![allow(clippy::unwrap_used, clippy::expect_used)]`.
+- Cancellable. Every public extraction entry point takes a cancellation and deadline handle. It
+  travels inside the per-call context passed where upstream passes `options`, and is checked at stage
+  boundaries and inside every loop over nodes; a ported function that checks it returns `Result`.
+  The Phase 1 spec fixes the types. A check only returns early with a distinct error; it never changes
+  a branch, so a run that completes gives the same output as one without a handle.
+- Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them
+  (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
+  means no limit). Limits the port adds (input node count, nesting depth) are API-layer options, off
+  by default; a caller that turns one on accepts rejections upstream would not make. No recursion
+  whose depth follows the input, so callers never need large thread stacks.
+- No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`); here it is an
+  option whose default the API layer computes, and parity fixtures pin it.
+- Panic-free on any input. The crate runs behind FFI, where a panic aborts the host process.
+  `unwrap`, `expect` and `panic` fail clippy outside tests; `string_slice` fails everywhere, tests
+  included; `indexing_slicing` is a warning, and CI denies warnings. `clippy.toml` exempts only
+  `#[test]` and `#[cfg(test)]` code: a shared helper under `tests/` starts with
+  `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]`.
+  Clippy does not catch arithmetic overflow, division by zero or a `RefCell` double borrow: use
+  checked arithmetic (Exceptions in Porting rules) and never let two `RefCell` borrows overlap.
+- Every `pub` item has a doc comment: `missing_docs` warns and CI denies warnings.
 - No process-global mutable state. Anything upstream keeps in a module global is an explicit value the
   caller owns. `Send + Sync` options and results, so concurrent calls need no locking.
 - `unsafe` is forbidden.
 - The public API is this crate's own; the pipeline under it follows upstream function by function.
   `extract` and `bare_extraction` keep upstream's names and meaning, while the extractor handle,
   the cancellation handle, byte input and the error types belong to the API layer and never leak
-  into ported functions beyond the handle they pass down.
+  into ported functions beyond the context they pass down.
 
 ## Performance and memory
 
 CPU time and peak memory per page matter: the crate runs many pages at once inside services that
 budget both. Order of priority: parity, then code that maps onto upstream, then speed and memory.
-An optimization is worth doing when a measurement shows it, and it never changes output.
+An optimization is worth doing when a measurement shows it, and it never changes output; one that
+would is a deviation and needs the user's approval before it lands.
 
 - Measure, do not guess: time, peak heap and allocation count per page on the parity corpus. An
   optimization lands with its numbers in the commit message.
 - Optimize in the shared layers first (tree, text buffers, selectors, decoding), where it costs the
-  ported functions nothing. Inside a ported function, keep upstream's steps and their order; a reshape
-  there carries a comment saying what it does and why it is equivalent.
+  ported functions nothing. Keep upstream's function boundaries: do not merge, split or inline ported
+  functions for speed, so an upstream diff still lands on one Rust function. Inside a ported function,
+  keep upstream's steps and their order; a reshape there carries a comment saying what it does and why
+  it is equivalent.
 - Upstream deep-copies trees (`copy(tree)`, the cleaned backup). Port each copy with the same
   semantics, but a copy that is only read afterwards may be a borrow, and a real copy should be a
   cheap arena clone, not a node-by-node rebuild.
 - Memory is bounded by the input limits: no growth that does not follow input size, no cache that
   outlives a call unless the caller owns it, everything freed when the call returns.
-- No recursion whose depth follows the input (Runtime contract), so callers never need large thread
-  stacks.
 - Borrow the caller's input bytes; decode to a new buffer only when the input is not already UTF-8.
 - The library never sets a global allocator; that choice belongs to the binary or binding.
-- An optimization that changes output is a deviation and needs a `docs/deviations.md` row and the
-  user's approval first.
 
 ## Dependency policy
 
@@ -183,10 +202,9 @@ An optimization is worth doing when a measurement shows it, and it never changes
 Traps found while reading upstream. Each one silently changes output.
 
 - lxml text and tail. Text after an element's closing tag belongs to that element (`.tail`), not to
-  the parent. `.tail` appears about 46 times in `main_extractor.py`, 58 in `xml.py` and 11 in
-  `htmlprocessing.py`.
-  The Rust tree must model text and tail directly. Emulating them through text nodes needs
-  care at every move, strip and delete.
+  the parent. `main_extractor.py`, `xml.py` and `htmlprocessing.py` use `.tail` throughout. The Rust
+  tree must model text and tail directly; emulating them through text nodes needs care at every move,
+  strip and delete.
 - Deleting keeps or drops the tail. Upstream's `delete_element(element, keep_tail=...)` (`xml.py`)
   decides per call site, `lxml.etree.strip_tags` merges children's text into the parent, and a plain
   `parent.remove(child)` drops the tail. Port the exact operation each call site uses.
@@ -194,7 +212,7 @@ Traps found while reading upstream. Each one silently changes output.
   `utils.py` (`HTML_PARSER`: comments and processing instructions removed). libxml2 builds a
   different tree from an html5 parser for malformed markup: no implied `tbody`, different handling
   of misnested and stray tags. Parity fixtures expose this; record parser-caused differences as
-  deviations. An upstream proposal to switch parsers is open, so check the parser on every sync.
+  deviations. Upstream may switch parsers: check OI-5 on every sync.
 - XPath semantics. `contains(@class, "x")` is a substring test, not a class-token test;
   `translate(...)` is the case-folding idiom; results come in document order. Port each predicate
   exactly, including the substrings that look like accidents.
@@ -211,7 +229,8 @@ Traps found while reading upstream. Each one silently changes output.
   literal behavior and keep a comment saying so.
 - Lengths are code points. Python `len(text)` and `text[:n]` count code points; Rust `str::len` counts
   bytes and byte slicing panics mid-character. Every size threshold (`MIN_EXTRACTED_SIZE` and the
-  others) compares `chars().count()`.
+  others) compares `chars().count()`. On an lxml element, `len(element)` is its child count, not a
+  text length (`len(postbody)` in `core.py`).
 - Truthiness. `if text:` is false for both `None` and `""`; `if element:` on an lxml element is
   false when it has no children, even when it has text. Port the test upstream wrote, not the one it
   reads like.
@@ -228,7 +247,7 @@ Traps found while reading upstream. Each one silently changes output.
 
 | Command | Does |
 | --- | --- |
-| `scripts/test.sh` / `scripts/test.ps1` | every CI check: fmt, clippy `-D warnings`, tests, `cargo deny check` |
+| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, fmt, clippy `-D warnings`, tests, `cargo deny check` |
 | `scripts/upstream.sh` / `scripts/upstream.ps1` | upstream changes since the pin (`--to REF`, `--patch`) |
 | `scripts/version.sh` / `scripts/version.ps1` | prints the crate version; `--check`, `--tag vX.Y.Z` |
 
@@ -239,8 +258,8 @@ the `crates-io` environment. `quality.yml` re-checks advisories weekly. Actions 
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with
 `rust-version` (OI-6 in `docs/phase-plan.md`).
 
-Scripts come in `.sh` and `.ps1` pairs with the same arguments; change both together. Workflows only
-call scripts, so CI and a local run execute the same commands.
+Scripts come in `.sh` and `.ps1` pairs with the same arguments; change both together. The CI test job
+only calls `scripts/test.sh`, so CI and a local run execute the same checks.
 
 ## Commits
 

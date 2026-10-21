@@ -14,7 +14,7 @@ error.
 
 ## Why another Rust port
 
-Other Rust ports exist, but they translate the Go port, which follows an older Python release. This
+Other Rust ports exist, but most translate the Go port, which follows an older Python release. This
 one ports Python directly:
 
 - Upstream tracking: one Rust module per Python module, each function names its Python source, and
@@ -33,7 +33,7 @@ makes each Python release cheaper to follow.
 - `docs/deviations.md`: every departure from upstream behavior.
 - `docs/dependencies.md`: why each dependency is there.
 
-Run every check CI runs: `scripts/test.sh` (or `scripts/test.ps1`).
+Run the checks CI runs: `scripts/test.sh` (or `scripts/test.ps1`).
 
 ## License
 
