@@ -47,8 +47,15 @@ indexing_slicing = "warn"
 string_slice = "deny"
 
 [dev-dependencies]
+dhat = "0.3"
 serde_json = "1"
 
 [[test]]
 name = "parity"
+required-features = ["__internals"]
+
+# Replaces the default harness: it is a measurement, not a test (scripts/measure.{sh,ps1}).
+[[test]]
+name = "measure"
+harness = false
 required-features = ["__internals"]
