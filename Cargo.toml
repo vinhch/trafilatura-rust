@@ -20,6 +20,11 @@ version = "2.3.1"
 commit = "e2f85c965662c7df26b73290ef175b2c2a5fdca6"
 
 [dependencies]
+html5ever = "0.40"
+
+[features]
+# Hidden, unstable: lets the crate's own integration tests reach internals. Not public API.
+__internals = []
 
 [lints.rust]
 unsafe_code = "forbid"

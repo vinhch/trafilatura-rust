@@ -71,6 +71,8 @@ upstream file, so a diff of one Python file points at one Rust file. Scope says 
 | `downloads.py`, `feeds.py`, `sitemaps.py`, `spider.py`, `cli.py`, `cli_utils.py` | none | out of scope: fetching and crawling belong to the caller |
 | none | `dom/`, `cancel.rs`, `error.rs`, `async_api.rs` | infrastructure upstream gets from lxml or does not have: the arena tree and its html5ever tree sink (`dom/parse.rs`), `CancelToken` and `Call`, the error types, `extract_async` (feature `tokio`) |
 
+The hidden feature `__internals` exposes `parse_document`, `parse_fragment`, `dump` and the tree types as `__internals`: unstable, for the crate's own integration tests only.
+
 Upstream's own dependencies carry extraction logic, so the parts trafilatura calls are ported with it:
 `htmldate` (date extraction) and `courlan` (URL normalization and filtering). The Rust module for
 each is named after the package. `charset_normalizer` is replaced by `chardetng` (D-3). `justext` is not ported yet:
