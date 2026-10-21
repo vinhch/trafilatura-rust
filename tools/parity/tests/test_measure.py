@@ -90,7 +90,7 @@ def test_table_names_the_platform_of_each_side():
 
 
 def test_combine_rust_joins_time_and_heap_and_ands_loaded():
-    time_run = {"pin": "p", "host": HOST, "extra": {"runs": 5}, "pages": [{"id": "a", "loaded": True, "median_ns": 7}]}
+    time_run = {"pin": "p", "upstream_version": "v", "host": HOST, "extra": {"runs": 5}, "pages": [{"id": "a", "loaded": True, "median_ns": 7}]}
     heap_run = {
         "pin": "p",
         "host": HOST,
@@ -103,7 +103,7 @@ def test_combine_rust_joins_time_and_heap_and_ands_loaded():
 
 def test_combine_rust_fails_on_a_page_in_only_one_run():
     def run(*ids):
-        return {"pin": "p", "host": HOST, "extra": {}, "pages": [{"id": i, "loaded": True} for i in ids]}
+        return {"pin": "p", "upstream_version": "v", "host": HOST, "extra": {}, "pages": [{"id": i, "loaded": True} for i in ids]}
 
     with pytest.raises(ValueError, match="1 only in time, 2 only in heap"):
         measure.combine_rust(run("a", "b"), run("a", "c", "d"))

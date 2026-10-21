@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Measure decode + parse, Rust against upstream Python: time (5-run median) and heap per page over
-# the parity corpus. The Rust targets write .temp/measure/<pin>-rust-time.json and <pin>-rust-heap.json,
-# the Python side <pin>-python.json; --merge writes <pin>-rust.json and the merged <pin>.json and
+# the parity corpus. The Rust targets write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json,
+# the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
 # prints a Markdown table. Needs the fixtures (scripts/fixtures.sh): their index.json
 # lists the pages. Run it by hand; the numbers depend on the machine.
 set -euo pipefail
@@ -20,7 +20,7 @@ Usage: scripts/$script_name [--upstream PATH] [--docker] [--only SUBSTRING]
 
 Runs tests/measure_time.rs and tests/measure_heap.rs (release build, feature __internals; two binaries,
 because the dhat allocator of the heap one would slow the timings), then tools/parity (parity.measure) against
-the upstream checkout at PATH, then merges both into .temp/measure/<pin>.json. The Python side runs
+the upstream checkout at PATH, then merges both into .temp/measure/<version>.json. The Python side runs
 where scripts/fixtures.sh runs: uv on Linux, Docker elsewhere. On Windows and macOS the two sides
 therefore run on different systems (host and container): compare ratios between runs, not absolutes.
 

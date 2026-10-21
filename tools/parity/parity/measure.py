@@ -4,10 +4,10 @@
     python -m parity.measure --merge --out DIR [--rows N]
 
 The first form times `trafilatura.utils.load_html(bytes)` (5-run median) and measures its heap with
-tracemalloc, per page of the fixture corpus, into DIR/<pin>-python.json. The second form combines
-the crate's DIR/<pin>-rust-time.json and DIR/<pin>-rust-heap.json (tests/measure_time.rs,
-tests/measure_heap.rs) into DIR/<pin>-rust.json, merges that with the Python file into
-DIR/<pin>.json and prints a Markdown table.
+tracemalloc, per page of the fixture corpus, into DIR/<version>-python.json. The second form combines
+the crate's DIR/<version>-rust-time.json and DIR/<version>-rust-heap.json (tests/measure_time.rs,
+tests/measure_heap.rs) into DIR/<version>-rust.json, merges that with the Python file into
+DIR/<version>.json and prints a Markdown table.
 
 Time is comparable. Heap is not: tracemalloc sees only memory allocated through Python allocators,
 and lxml builds its tree with the libxml2 C allocator, so the Python heap columns miss the tree itself
@@ -80,7 +80,7 @@ def host() -> dict:
 
 def run(upstream_root: Path, out: Path, only: str) -> None:
     from . import import_path, page_id
-    from .generate import check_pin, corpus
+    from .generate import check_pin, corpus, pinned_version
 
     pin = check_pin(upstream_root)
     import_path(upstream_root)
@@ -96,8 +96,9 @@ def run(upstream_root: Path, out: Path, only: str) -> None:
         print(source, file=sys.stderr)
         pages.append({"id": page_id(source), "source": source, **measure_page(load_html, path.read_bytes())})
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"{pin}-python.json"
-    document = {"pin": pin, "host": host(), "extra": {"runs": RUNS}, "pages": pages}
+    version = pinned_version()
+    target = out / f"{version}-python.json"
+    document = {"pin": pin, "upstream_version": version, "host": host(), "extra": {"runs": RUNS}, "pages": pages}
     target.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
     print(f"wrote {len(pages)} pages to {target}", file=sys.stderr)
 
@@ -119,6 +120,7 @@ def combine_rust(time_run: dict, heap_run: dict) -> dict:
         pages.append({**h, **t, "loaded": t["loaded"] and h["loaded"]})
     return {
         "pin": time_run["pin"],
+        "upstream_version": time_run["upstream_version"],
         "host": time_run["host"],
         "extra": {**time_run["extra"], **heap_run["extra"]},
         "pages": pages,
@@ -221,12 +223,12 @@ def _read(path: Path) -> dict:
 
 
 def merge(out: Path, rows: int) -> int:
-    from .generate import pinned_commit
+    from .generate import pinned_commit, pinned_version
 
-    pin = pinned_commit()
+    version = pinned_version()
     try:
-        rust = combine_rust(_read(out / f"{pin}-rust-time.json"), _read(out / f"{pin}-rust-heap.json"))
-        python = _read(out / f"{pin}-python.json")
+        rust = combine_rust(_read(out / f"{version}-rust-time.json"), _read(out / f"{version}-rust-heap.json"))
+        python = _read(out / f"{version}-python.json")
     except OSError as err:
         print(f"measure: {err}; run scripts/measure.sh first", file=sys.stderr)
         return 1
@@ -238,16 +240,17 @@ def merge(out: Path, rows: int) -> int:
         print("measure: no page loaded on both sides", file=sys.stderr)
         return 1
     hosts = {"rust": rust["host"], "python": python["host"]}
-    (out / f"{pin}-rust.json").write_text(json.dumps(rust, indent=1) + "\n", encoding="utf-8")
+    (out / f"{version}-rust.json").write_text(json.dumps(rust, indent=1) + "\n", encoding="utf-8")
     merged = {
-        "pin": pin,
+        "pin": pinned_commit(),
+        "upstream_version": version,
         "host": hosts,
         "extra": {"rust": rust["extra"], "python": python["extra"], "heap_note": HEAP_NOTE},
         "dropped": dropped,
         "totals": totals(pages),
         "pages": pages,
     }
-    (out / f"{pin}.json").write_text(json.dumps(merged, indent=1) + "\n", encoding="utf-8")
+    (out / f"{version}.json").write_text(json.dumps(merged, indent=1) + "\n", encoding="utf-8")
     print(format_table(pages, rows, dropped, hosts))
     return 0
 

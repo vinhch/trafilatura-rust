@@ -37,7 +37,7 @@ pub fn load(bytes: &[u8]) -> Result<Tree, ExtractError> {
 }
 
 /// Calls `measure` on each corpus page whose source contains `$TRAFILATURA_MEASURE_ONLY`, then
-/// writes `.temp/measure/<pin>-rust-<kind>.json`.
+/// writes `.temp/measure/<version>-rust-<kind>.json`.
 pub fn run(kind: &str, extra: Value, measure: impl Fn(&[u8]) -> Value) {
     let upstream = common::upstream_root().expect("upstream checkout not found");
     let fixtures = common::fixture_dir().expect("fixtures missing: run scripts/fixtures.sh first");
@@ -61,12 +61,13 @@ pub fn run(kind: &str, extra: Value, measure: impl Fn(&[u8]) -> Value) {
             page
         })
         .collect();
-    let pin = common::pin();
+    let version = common::upstream_release();
     let out: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp/measure");
     std::fs::create_dir_all(&out).unwrap();
-    let path = out.join(format!("{pin}-rust-{kind}.json"));
+    let path = out.join(format!("{version}-rust-{kind}.json"));
     let document = json!({
-        "pin": pin,
+        "pin": common::pin(),
+        "upstream_version": version,
         "host": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "runtime": "native" },
         "extra": extra,
         "pages": pages,
