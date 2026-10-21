@@ -20,11 +20,19 @@ version = "2.3.1"
 commit = "e2f85c965662c7df26b73290ef175b2c2a5fdca6"
 
 [dependencies]
+brotli-decompressor = { version = "6.1", optional = true }
+chardetng = "1"
+encoding_rs = "0.8"
+flate2 = { version = "1.1", optional = true }
 html5ever = "0.40"
+regex = "1"
+ruzstd = { version = "0.9", optional = true }
 
 [features]
 # Hidden, unstable: lets the crate's own integration tests reach internals. Not public API.
 __internals = []
+# Decompresses gzip, zstd, brotli and zlib input before decoding (D-4).
+decompress = ["dep:flate2", "dep:brotli-decompressor", "dep:ruzstd"]
 
 [lints.rust]
 unsafe_code = "forbid"

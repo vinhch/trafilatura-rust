@@ -8,7 +8,7 @@ Why each dependency in `Cargo.toml` is there. The policy that admits one is in `
 | `html5ever` | always | `lxml.html` parsing | Servo's WHATWG parser, widely used; feeds the crate's own tree through `TreeSink` (D-2) |
 | `encoding_rs` | always | Python codecs | The WHATWG encodings, maintained by Firefox's encoding owner |
 | `chardetng` | always | `charset_normalizer` | Firefox's detector, same maintainer as `encoding_rs` (D-3) |
-| `regex` | always, from Phase 3 | `re` | rust-lang regex; lookaround and backreferences are written by hand (Gotchas) |
+| `regex` | always, from Phase 2 | `re` | rust-lang regex; lookaround and backreferences are written by hand (Gotchas) |
 | `flate2` | feature `decompress` | `gzip`, `zlib` | rust-lang; pure-Rust `miniz_oxide` backend (D-4) |
 | `brotli-decompressor` | feature `decompress` | `brotli` | Decompress-only, forbids `unsafe` by default (D-4) |
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |

@@ -9,6 +9,10 @@ mod cancel;
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 mod dom;
 mod error;
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
+mod settings;
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
+mod utils;
 
 pub use cancel::{Call, CancelToken};
 pub use error::{ExtractError, Rejection};
@@ -20,4 +24,6 @@ pub mod __internals {
     pub use crate::dom::{
         DumpMode, Node, NodeId, Ns, ParseLimits, Tree, dump, parse_document, parse_fragment,
     };
+    pub use crate::settings::{MAX_FILE_SIZE, MIN_FILE_SIZE};
+    pub use crate::utils::{HtmlInput, decode_file, detect_encoding, load_html};
 }
