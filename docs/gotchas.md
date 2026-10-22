@@ -51,13 +51,14 @@ function.
   `\A`; `re.search` does not. `{,n}` is written `{0,n}`.
 - `\w`, `\W`, `\b` and `\s` differ. Python `\w` is letters, all numerics (`No` such as U+00B2
   included) and `_`, without combining marks; Rust `\w` includes marks and connector punctuation but
-  not `No`. `\W` and `\b` follow from `\w`. Python `\s` includes `\x1c`-`\x1f`; Rust's does not.
+  not `No`. `\W` and `\b` follow from `\w`; `\s` is Python's whitespace set (next bullet).
   Interpolate `pystr::PY_SPACE_CLASS` and `pystr::PY_WORD_CLASS` into the pattern where upstream
   writes `\s` or `\w` (`IMAGE_EXTENSION` and `RE_FILTER` in `utils.rs`).
 - `re.IGNORECASE` folds U+0130 (capital I with dot) and U+0131 (dotless i) to `i`; Rust `(?i)` does
   not. A pattern that can meet them rewrites each `i` to a class of `i`, U+0130 and U+0131
-  (`ignore_case_i` in `utils.rs`); the `re:test(..., 'i')` selectors of Phase 3b need the same. Other
-  folds that differ (U+017F long s, U+212A Kelvin sign) are tested where a pattern could meet them.
+  (`ignore_case_i` in `utils.rs`); the `re:test(..., 'i')` selectors of Phase 3b need the same. The
+  other special folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and
+  need no rewrite.
 - Whitespace and line splitting differ. Python `str.split()`, `str.strip()` and `str.isspace()` treat
   `\x1c`-`\x1f` as whitespace; Rust's `char::is_whitespace` does not. `str.splitlines()` splits on
   more than `\n`: `\r`, `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028 and U+2029, with `\r\n` one break;
@@ -65,8 +66,8 @@ function.
   and `splitlines` wherever upstream calls the Python method.
 - `str.isprintable` has no Rust equivalent. It is false for unassigned, control, format, surrogate,
   private-use and separator characters other than the ASCII space (so false for U+00A0). `pystr`
-  searches a table generated from the interpreter (Unicode 15.1, the fixtures' version); a Unicode
-  crate would follow a newer version and differ on newly assigned characters.
+  searches a table from the interpreter the fixtures were made with, because a Unicode crate would
+  follow a newer Unicode version and differ on newly assigned characters.
 - A character class upstream did not mean. `utils.py` `LINES_TRIMMING` is `(?<![p{P}>])\n`: Python
   `re` has no `\p{P}`, so the class is the literal characters `p`, `{`, `P`, `}`, `>`. Port the
   literal behavior and keep a comment saying so.

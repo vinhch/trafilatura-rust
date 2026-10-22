@@ -75,10 +75,12 @@ impl Tree {
     /// lxml. Does nothing when `anchor` has no parent or when `node` is `anchor` or one of its
     /// ancestors.
     pub fn add_next(&mut self, anchor: NodeId, node: NodeId) {
-        // deviation: D-6
+        // deviation: D-6, lxml raises TypeError for an anchor without a parent
         let Some(parent) = self.node(anchor).parent else {
             return;
         };
+        // deviation: D-6 for an ancestor of `anchor` (lxml raises ValueError); `node == anchor` is a
+        // no-op in lxml too
         if self.would_cycle(node, anchor) {
             return;
         }
@@ -92,7 +94,8 @@ impl Tree {
     /// Moves `node` to just before `anchor`, tail included. Does nothing when `anchor` has no
     /// parent or when `node` is `anchor` or one of its ancestors.
     pub fn add_previous(&mut self, anchor: NodeId, node: NodeId) {
-        // deviation: D-6
+        // deviation: D-6 for an anchor without a parent (lxml raises TypeError) and for an ancestor
+        // of `anchor` (ValueError); `node == anchor` is a no-op in lxml too
         if self.node(anchor).parent.is_none() || self.would_cycle(node, anchor) {
             return;
         }
