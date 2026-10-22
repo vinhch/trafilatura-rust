@@ -195,9 +195,9 @@ pub fn dump(tree: &Tree, mode: DumpMode) -> (String, bool) {
         };
         let child = tree.node(child_id);
         frame.2 = child.next;
-        push_element_line(&mut out, depth + 1, child);
-        push_text_line(&mut out, depth + 2, child.text.as_deref());
-        stack.push((child_id, depth + 1, child.first_child));
+        push_element_line(&mut out, depth.saturating_add(1), child);
+        push_text_line(&mut out, depth.saturating_add(2), child.text.as_deref());
+        stack.push((child_id, depth.saturating_add(1), child.first_child));
     }
     (out, changed)
 }

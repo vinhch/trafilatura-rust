@@ -11,10 +11,12 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
-use html5ever::interface::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
+use html5ever::interface::tree_builder::{
+    ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink,
+};
 use html5ever::tendril::{StrTendril, TendrilSink};
 use html5ever::tree_builder::TreeBuilderOpts;
-use html5ever::{Attribute, LocalName, ParseOpts, Parser, QualName, local_name, ns};
+use html5ever::{Attribute, LocalName, Namespace, ParseOpts, Parser, QualName, local_name, ns};
 
 use super::{Ns, Tree};
 use crate::cancel::{CHECK_INTERVAL, Call};
@@ -91,6 +93,24 @@ struct Inner {
     /// element, so one value would otherwise be copied once per clone. The address is only a
     /// hint: a hit is used after comparing content, so a reused address cannot return a wrong value.
     values: HashMap<(usize, usize), Arc<str>>,
+}
+
+/// An element name cloned out of the arena (atom clones), so html5ever may hold it across sink
+/// calls that borrow the `RefCell` mutably.
+#[derive(Debug)]
+struct OwnedName {
+    ns: Namespace,
+    local: LocalName,
+}
+
+impl ElemName for OwnedName {
+    fn ns(&self) -> &Namespace {
+        &self.ns
+    }
+
+    fn local_name(&self) -> &LocalName {
+        &self.local
+    }
 }
 
 fn empty_name() -> QualName {
@@ -200,11 +220,11 @@ impl Inner {
 
     /// Number of elements from `id` up to the root, `id` included when it is an element.
     fn depth(&self, id: u32) -> usize {
-        let mut depth = 0;
+        let mut depth = 0usize;
         let mut current = Some(id);
         while let Some(node_id) = current {
             let node = self.node(node_id);
-            depth += usize::from(node.kind == Kind::Element);
+            depth = depth.saturating_add(usize::from(node.kind == Kind::Element));
             current = node.parent;
         }
         depth
@@ -222,7 +242,7 @@ impl Inner {
             tallest = tallest.max(level);
             let mut child = node.first_child;
             while let Some(child_id) = child {
-                stack.push((child_id, level + 1));
+                stack.push((child_id, level.saturating_add(1)));
                 child = self.node(child_id).next;
             }
         }
@@ -353,7 +373,7 @@ impl TreeSink for Sink<'_> {
     /// The tree, or the abort (limit, cancel, deadline) an element creation hit while `finish` ran.
     type Output = Result<Tree, ExtractError>;
     type ElemName<'a>
-        = std::cell::Ref<'a, QualName>
+        = OwnedName
     where
         Self: 'a;
 
@@ -388,7 +408,12 @@ impl TreeSink for Sink<'_> {
     }
 
     fn elem_name<'a>(&'a self, target: &'a u32) -> Self::ElemName<'a> {
-        std::cell::Ref::map(self.inner.borrow(), |inner| &inner.node(*target).qual)
+        let inner = self.inner.borrow();
+        let qual = &inner.node(*target).qual;
+        OwnedName {
+            ns: qual.ns.clone(),
+            local: qual.local.clone(),
+        }
     }
 
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> u32 {
@@ -675,6 +700,28 @@ mod tests {
         let with_attrs = inner.nodes.iter().filter(|n| !n.attrs.is_empty()).count();
         assert!(with_attrs <= 5_000, "{with_attrs} nodes kept attributes");
         assert!(inner.elements > 50_000, "the input must outgrow the limit");
+    }
+
+    // html5ever holds a name from `elem_name` across later sink calls that mutate the arena.
+    #[test]
+    fn elem_name_held_across_create_element() {
+        let call = Call::default();
+        let sink = new_sink(&ParseLimits::default(), &call, false);
+        let first = sink.create_element(
+            QualName::new(None, ns!(html), local_name!("div")),
+            Vec::new(),
+            ElementFlags::default(),
+        );
+        let name = sink.elem_name(&first);
+        let second = sink.create_element(
+            QualName::new(None, ns!(html), local_name!("p")),
+            Vec::new(),
+            ElementFlags::default(),
+        );
+        sink.append(&0, NodeOrText::AppendNode(first));
+        sink.append(&first, NodeOrText::AppendNode(second));
+        assert_eq!(*name.local_name(), local_name!("div"));
+        assert_eq!(*name.ns(), ns!(html));
     }
 
     fn limited(max: usize) -> ParseLimits {
