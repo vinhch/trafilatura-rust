@@ -5,6 +5,7 @@
 //! `__internals` module.
 
 mod dump;
+mod mutate;
 mod parse;
 
 use std::sync::Arc;
@@ -110,8 +111,11 @@ impl Tree {
         &self.nodes[id.0 as usize]
     }
 
+    /// The element behind `id`, for editing `text`, `tail`, `attrs` and `name`. The links between
+    /// nodes change only through `append`, `insert`, `add_next`, `add_previous`, `remove` and
+    /// `clear`.
     #[allow(clippy::indexing_slicing)] // same invariant as `node`
-    fn node_mut(&mut self, id: NodeId) -> &mut Node {
+    pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
         &mut self.nodes[id.0 as usize]
     }
 
@@ -134,17 +138,16 @@ impl Tree {
         ns: Ns,
         attrs: Vec<(LocalName, Arc<str>)>,
     ) -> NodeId {
-        // Saturating: the parser rejects or stops long before u32::MAX elements.
+        let id = self.push(Node::new(name, ns, attrs));
+        self.link_last(parent, id);
+        id
+    }
+
+    /// Stores a detached node; its id saturates because the parser rejects or stops long before
+    /// u32::MAX elements.
+    fn push(&mut self, node: Node) -> NodeId {
         let id = NodeId(u32::try_from(self.nodes.len()).unwrap_or(u32::MAX));
-        let mut node = Node::new(name, ns, attrs);
-        node.parent = Some(parent);
-        node.prev = self.node(parent).last_child;
         self.nodes.push(node);
-        match self.node(parent).last_child {
-            Some(last) => self.node_mut(last).next = Some(id),
-            None => self.node_mut(parent).first_child = Some(id),
-        }
-        self.node_mut(parent).last_child = Some(id);
         id
     }
 
