@@ -41,6 +41,7 @@ impl Tree {
     /// Moves `child` to the end of `parent`'s children, tail included. Does nothing when `child`
     /// is `parent` or one of its ancestors.
     pub fn append(&mut self, parent: NodeId, child: NodeId) {
+        // deviation: D-6
         if self.would_cycle(child, parent) {
             return;
         }
@@ -53,6 +54,7 @@ impl Tree {
     /// counts it at its old place, as lxml does. Does nothing when `child` is `parent` or one of
     /// its ancestors.
     pub fn insert(&mut self, parent: NodeId, index: usize, child: NodeId) {
+        // deviation: D-6
         if self.would_cycle(child, parent) {
             return;
         }
@@ -73,6 +75,7 @@ impl Tree {
     /// lxml. Does nothing when `anchor` has no parent or when `node` is `anchor` or one of its
     /// ancestors.
     pub fn add_next(&mut self, anchor: NodeId, node: NodeId) {
+        // deviation: D-6
         let Some(parent) = self.node(anchor).parent else {
             return;
         };
@@ -89,6 +92,7 @@ impl Tree {
     /// Moves `node` to just before `anchor`, tail included. Does nothing when `anchor` has no
     /// parent or when `node` is `anchor` or one of its ancestors.
     pub fn add_previous(&mut self, anchor: NodeId, node: NodeId) {
+        // deviation: D-6
         if self.node(anchor).parent.is_none() || self.would_cycle(node, anchor) {
             return;
         }

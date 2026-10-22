@@ -23,11 +23,24 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 3 | Extraction core: `settings`, the rest of `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | Next | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | none |
+| 3 | Extraction core: `settings`, the rest of `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | In progress, by sub-phase below | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | none |
 | 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
 | 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
 | 6 | Output formats: `xml` (XML, XML-TEI, JSON, CSV) | Not started | Upstream `xml_tei_tests.py` cases ported by name pass | 3 |
 | 7 | First release: lift `publish = false`, set the version, publish 0.1.0 through `release.yml`, move the .NET binding onto this crate | Not started | Crate on crates.io; the .NET binding builds and passes its tests against it | 3, 4, 5 |
+
+Phase 3 sub-phases. Each brings its modules to parity with unit tests before the next starts; the
+corpus parity check for main text turns on in 3f. Each sub-phase after 3b gets a short design addendum
+before its code.
+
+| Sub-phase | Scope | Status |
+| --- | --- | --- |
+| 3a Foundations | `dom/` mutation, walks and copy in lxml semantics; `pystr`; `settings.rs`; the text helpers of `utils.rs`; the `xml.py` tree helpers | done |
+| 3b Selectors | `xpaths.rs` (content and comment selectors), `BASIC_CLEAN_XPATH` | next |
+| 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | not started |
+| 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | not started |
+| 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | not started |
+| 3f `baseline.rs`, `extraction.rs`, public API | `baseline`, `html2txt`, the cascade, `bare_extraction`, `extract`, `Options`, `Extractor`, `Input`, `Document`; corpus parity on `txt`, `markdown`, `html`; memory measurement of the arena copies | not started |
 
 ### Shipped phases
 
@@ -63,4 +76,4 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-10 | Minimal-versions check: a CI job runs `cargo +nightly update -Z direct-minimal-versions` and the tests, so each declared minimum really builds; add the rule to the Policy in `docs/dependencies.md`. Matters once the crate is published and resolved by ranges instead of this repo's `Cargo.lock`. | Phase 2, before Phase 7 |
 | F-12 | Tighten parity classification: a page in class `encoding`, `normalized` or `python-parser` is excluded whole today; classify each differing line and fail on any line no class explains. | Phase 3 |
 | F-13 | Harness hardening: restore logging and warnings state after the generator tests; write fixture pages and index atomically (temp directory, then rename); parametrize the identity test over pin, upstream version, `max_date` and lock hash. | Phase 3 |
-| F-14 | `dom/`: replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `dom`, `settings` and `utils` as callers land. | Phase 3 |
+| F-14 | `dom/`: replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `context`, `dom`, `pystr`, `settings`, `utils` and `xml` as callers land. | Phase 3 |
