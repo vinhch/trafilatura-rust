@@ -9,6 +9,9 @@ mod cancel;
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 mod dom;
 mod error;
+// No caller until `utils` and the extraction modules land; the crate's own tests are its only users.
+#[allow(dead_code, unused_imports)]
+mod pystr;
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 mod settings;
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
