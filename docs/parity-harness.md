@@ -2,7 +2,7 @@
 
 How crate output is compared with upstream Python: the fixture generator, the archive, the classes of
 mismatch, the test and the measurement. Read it before touching `tools/parity/`, `tests/parity.rs`,
-`tests/common/`, `scripts/fixtures.*`, `scripts/measure.*` or the fixture archive.
+`tests/common/`, `scripts/fixtures.*`, `scripts/measure.*`, `scripts/oracle.*` or the fixture archive.
 
 Today the parity test compares the parsed tree only. The fixtures also hold every output format and
 the metadata fields; the extraction phases in `phase-plan.md` start comparing them.
@@ -84,6 +84,9 @@ line is followup F-12. The report is `.temp/parity/report.md`.
 - `scripts/measure.sh` (or `.ps1`) times decode plus parse per page for crate and upstream and
   measures heap per page, into `.temp/measure/<version>.json`. Heap is comparable only on the Rust
   side: tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine.
+- `scripts/oracle.sh 'CODE'` (or `.ps1`) runs one Python snippet with upstream importable at the pin
+  and prints its stdout: the way to get an expected value for a ported test. It runs where
+  `scripts/fixtures.sh` runs (uv on Linux, Docker elsewhere), so lxml is libxml2 2.14.6 in both.
 
 | Variable | Used by | Effect |
 | --- | --- | --- |
