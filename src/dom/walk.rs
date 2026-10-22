@@ -4,21 +4,22 @@
 use super::{Node, NodeId, Tree};
 
 /// A live `tree.iter(tags)`: it reads the tree on each step, so the caller may edit the tree
-/// between steps. As in lxml, the successor of a node is computed before the node is returned.
-/// When the caller then removes that node with its subtree, the walk still continues at the
-/// precomputed successor, and the nodes below the removed one are never visited. The walk ends
-/// when it climbs above `start` or above the root of the subtree the successor lies in.
+/// between steps. As in lxml, the successor of a node is computed before the node is returned, so
+/// when the caller removes that node with its subtree, the walk continues at the successor, which
+/// may lie inside the removed subtree, and the matches after that subtree are never visited. The
+/// walk ends when it climbs above `start` or above the root of the subtree the successor lies in.
+/// It does not borrow the tree.
 #[derive(Clone, Debug)]
-pub struct LiveIter {
+pub struct LiveIter<'t> {
     start: NodeId,
     next: Option<NodeId>,
-    tags: &'static [&'static str],
+    tags: &'t [&'t str],
 }
 
-impl LiveIter {
+impl<'t> LiveIter<'t> {
     /// Walks `start` and its descendants in document order, yielding the elements named in `tags`
     /// (every element when `tags` is empty).
-    pub fn new(tree: &Tree, start: NodeId, tags: &'static [&'static str]) -> Self {
+    pub fn new(tree: &Tree, start: NodeId, tags: &'t [&'t str]) -> Self {
         let next = std::iter::successors(Some(start), |&id| tree.step(id, start))
             .find(|&id| tree.matches(id, tags));
         Self { start, next, tags }

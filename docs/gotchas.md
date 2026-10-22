@@ -51,7 +51,7 @@ function.
   `\A`; `re.search` does not. `{,n}` is written `{0,n}`.
 - `\w`, `\W`, `\b` and `\s` differ. Python `\w` is letters, all numerics (`No` such as U+00B2
   included) and `_`, without combining marks; Rust `\w` includes marks and connector punctuation but
-  not `No`. `\W` and `\b` follow from `\w`; `\s` is Python's whitespace set (next bullet).
+  not `No`. `\W` and `\b` follow from `\w`; `\s` is Python's whitespace set (whitespace bullet below).
   Interpolate `pystr::PY_SPACE_CLASS` and `pystr::PY_WORD_CLASS` into the pattern where upstream
   writes `\s` or `\w` (`IMAGE_EXTENSION` and `RE_FILTER` in `utils.rs`).
 - `re.IGNORECASE` folds U+0130 (capital I with dot) and U+0131 (dotless i) to `i`; Rust `(?i)` does
@@ -59,8 +59,9 @@ function.
   (`ignore_case_i` in `utils.rs`); the `re:test(..., 'i')` selectors of Phase 3b need the same. The
   other special folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and
   need no rewrite.
-- Whitespace and line splitting differ. Python `str.split()`, `str.strip()` and `str.isspace()` treat
-  `\x1c`-`\x1f` as whitespace; Rust's `char::is_whitespace` does not. `str.splitlines()` splits on
+- Whitespace and line splitting differ. Python `str.split()`, `str.strip()`, `str.isspace()` and the
+  `re` class `\s` treat `\x1c`-`\x1f` as whitespace; Rust's `char::is_whitespace` and `regex` `\s` do
+  not. `str.splitlines()` splits on
   more than `\n`: `\r`, `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028 and U+2029, with `\r\n` one break;
   Rust's `lines` splits on `\n` and `\r\n` only. Use `pystr::is_space`, `split_whitespace`, `strip`
   and `splitlines` wherever upstream calls the Python method.

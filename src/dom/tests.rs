@@ -518,6 +518,19 @@ fn iter_live_skips_after_deleted_nested() {
 }
 
 #[test]
+fn iter_live_accepts_a_runtime_tag_list() {
+    let tree = fragment("<q></q><i></i><q></q>");
+    let root = tree.root();
+    let wanted: Vec<&str> = vec!["q"];
+    let mut live = LiveIter::new(&tree, root, &wanted);
+    let mut seen = 0;
+    while live.next(&tree).is_some() {
+        seen += 1;
+    }
+    assert_eq!(seen, 2);
+}
+
+#[test]
 fn iter_live_removing_current_still_visits_later_siblings() {
     // oracle: b = etree.fromstring("<body><a/><a/><a/></body>"); n = 0
     //   for e in b.iter("a"): n += 1; b.remove(e)   -> n == 3, tostring(b) == b"<body/>"
