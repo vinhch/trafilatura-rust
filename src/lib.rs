@@ -19,6 +19,8 @@ mod pystr;
 mod settings;
 #[allow(dead_code)]
 mod utils;
+#[allow(dead_code)]
+mod xml;
 
 pub use cancel::{Call, CancelToken};
 pub use error::{ExtractError, Rejection};
