@@ -145,6 +145,78 @@ impl Tree {
         node.attrs.clear();
     }
 
+    /// Removes the descendants of `id` named in `tags` at every depth and keeps their content, like
+    /// lxml's `strip_tags`: the text of a stripped element joins the tail of its previous sibling,
+    /// or the text of its parent; its children take its place; its tail joins the tail of its last
+    /// child, or goes where its text went. `id` itself is never stripped, and an empty `tags` strips
+    /// nothing.
+    pub fn strip_tags(&mut self, id: NodeId, tags: &[&str]) {
+        if tags.is_empty() {
+            return;
+        }
+        let mut current = self.step(id, id);
+        while let Some(node) = current {
+            // Fixed before the splice: the first child of a stripped element takes its place in
+            // the walk, so nested matches are stripped too.
+            current = self.step(node, id);
+            if tags.contains(&&*self.node(node).name) {
+                self.splice(node);
+            }
+        }
+    }
+
+    /// Removes the descendants of `id` named in `tags` with their subtrees, like lxml's
+    /// `strip_elements`. With `with_tail` their tail goes too; without it the tail joins the tail
+    /// of the previous sibling, or the text of the parent. `id` itself is never removed, and an
+    /// empty `tags` removes nothing.
+    pub fn strip_elements(&mut self, id: NodeId, tags: &[&str], with_tail: bool) {
+        if tags.is_empty() {
+            return;
+        }
+        let mut current = self.step(id, id);
+        while let Some(node) = current {
+            if !tags.contains(&&*self.node(node).name) {
+                current = self.step(node, id);
+                continue;
+            }
+            current = self.after(node, id);
+            let tail = self.node_mut(node).tail.take();
+            if !with_tail {
+                self.join_before(node, tail);
+            }
+            self.detach(node);
+        }
+    }
+
+    /// Replaces the attached `node` by its content, as `strip_tags` describes.
+    fn splice(&mut self, node: NodeId) {
+        let data = self.node_mut(node);
+        let (text, tail) = (data.text.take(), data.tail.take());
+        self.join_before(node, text);
+        match self.node(node).last_child {
+            Some(last) => {
+                while let Some(child) = self.node(node).first_child {
+                    self.detach(child);
+                    self.link_before(node, child);
+                }
+                join(&mut self.node_mut(last).tail, tail);
+            }
+            None => self.join_before(node, tail),
+        }
+        self.detach(node);
+    }
+
+    /// Appends `text` to the tail of the previous sibling of `node`, or to the text of its parent
+    /// when it is the first child. Does nothing for a node without a parent.
+    fn join_before(&mut self, node: NodeId, text: Option<String>) {
+        let data = self.node(node);
+        match (data.prev, data.parent) {
+            (Some(prev), _) => join(&mut self.node_mut(prev).tail, text),
+            (None, Some(parent)) => join(&mut self.node_mut(parent).text, text),
+            (None, None) => {}
+        }
+    }
+
     /// Whether moving `node` under `target` (or next to it) would put a node inside itself.
     fn would_cycle(&self, node: NodeId, target: NodeId) -> bool {
         node == target || self.is_ancestor(node, target)
@@ -197,5 +269,12 @@ impl Tree {
             (None, None) => {}
         }
         self.node_mut(at).prev = Some(id);
+    }
+}
+
+/// Appends `text` to `slot`, which stays `None` when there is nothing to add.
+fn join(slot: &mut Option<String>, text: Option<String>) {
+    if let Some(text) = text {
+        slot.get_or_insert_with(String::new).push_str(&text);
     }
 }

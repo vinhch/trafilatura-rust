@@ -7,11 +7,14 @@
 mod dump;
 mod mutate;
 mod parse;
+mod walk;
 
 use std::sync::Arc;
 
 pub use html5ever::LocalName;
 pub use parse::{ParseLimits, parse_document};
+#[cfg(any(feature = "__internals", test))]
+pub use walk::LiveIter;
 
 // Only the `__internals` module and the tests use these until the pipeline lands.
 #[cfg(any(feature = "__internals", test))]
