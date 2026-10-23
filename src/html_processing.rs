@@ -670,7 +670,8 @@ pub fn process_node(tree: &mut Tree, elem: NodeId, ctx: &Ctx<'_>) -> Option<Node
     Some(elem)
 }
 
-/// Tags `convert_tags` converts through `CONVERSIONS`.
+/// The keys of `CONVERSIONS`; `convert` holds the function of each.
+// upstream: htmlprocessing.py::CONVERSIONS
 const CONVERSION_TAGS: &[&str] = &[
     "dl",
     "ol",
@@ -796,7 +797,8 @@ pub fn convert_details(tree: &mut Tree, elem: NodeId, call: &Call<'_>) -> Result
     Ok(())
 }
 
-/// The conversion `CONVERSIONS` holds for the tag of `elem`.
+/// The conversion `CONVERSIONS` holds for the tag of `elem`; one arm per entry of `CONVERSION_TAGS`.
+// upstream: htmlprocessing.py::CONVERSIONS
 fn convert(tree: &mut Tree, elem: NodeId, call: &Call<'_>) -> Result<(), ExtractError> {
     match tree.tag(elem) {
         Some("dl" | "ol" | "ul") => convert_lists(tree, elem, call),

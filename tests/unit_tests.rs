@@ -834,5 +834,4 @@ fn test_convert_tags_links_off_keeps_contained_links() {
     assert_eq!(ref_texts(&options), ["para", "cell"]);
     options.tables = false;
     assert_eq!(ref_texts(&options), ["para"]);
-    // phase 3f: the `extract` assertion of the upstream test
 }

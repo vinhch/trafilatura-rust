@@ -572,3 +572,164 @@ fn convert_tags_stops_when_cancelled() {
         Err(ExtractError::Cancelled)
     );
 }
+
+#[test]
+fn convert_line_breaks_renames_and_keeps_attributes() {
+    // oracle: convert_line_breaks(etree.fromstring(source)) for each source
+    for (source, expected) in [
+        ("<br>", "<lb/>"),
+        (r#"<hr class="c">"#, r#"<lb class="c"/>"#),
+    ] {
+        let (mut tree, elem) = fragment(source);
+        convert_line_breaks(&mut tree, elem);
+        assert_eq!(xml(&tree, elem), expected, "{source}");
+    }
+}
+
+#[test]
+fn convert_deletions_sets_overstrike() {
+    // oracle: convert_deletions(etree.fromstring('<{tag} class="c">x</{tag}>')) for s, strike, del
+    for tag in ["s", "strike", "del"] {
+        let (mut tree, elem) = fragment(&format!(r#"<{tag} class="c">x</{tag}>"#));
+        convert_deletions(&mut tree, elem);
+        assert_eq!(
+            xml(&tree, elem),
+            r#"<del class="c" rend="overstrike">x</del>"#,
+            "{tag}"
+        );
+    }
+}
+
+#[test]
+fn convert_details_renames_summaries() {
+    // oracle: convert_details(etree.fromstring(source)); the nested details stays, its summary changes
+    let source = "<details><summary>a</summary>b<details><summary>c</summary>d</details></details>";
+    let (mut tree, elem) = fragment(source);
+    convert_details(&mut tree, elem, &Call::default()).unwrap();
+    assert_eq!(
+        xml(&tree, elem),
+        "<div><head>a</head>b<details><head>c</head>d</details></div>"
+    );
+}
+
+#[test]
+fn convert_tags_dispatches_every_conversion() {
+    // oracle: convert_tags(html.fromstring(source), Extractor())
+    let source = concat!(
+        r#"<div><h1 id="a">1</h1><h2>2</h2><h3>3</h3><h4>4</h4><h5>5</h5><h6>6</h6>"#,
+        "a<br>b<hr>c<blockquote>bq</blockquote><pre>pre</pre><q>q</q><s>s</s><strike>st</strike>",
+        "<del>d</del><details><summary>sum</summary>det</details>",
+        "<ul><li>a<ol><li>b</li></ol></li></ul><dl><dt>t</dt><dd>d</dd></dl></div>",
+    );
+    let expected = concat!(
+        r#"<div><head rend="h1">1</head><head rend="h2">2</head><head rend="h3">3</head>"#,
+        r#"<head rend="h4">4</head><head rend="h5">5</head><head rend="h6">6</head>"#,
+        "a<lb/>b<lb/>c<quote>bq</quote><quote>pre</quote><quote>q</quote>",
+        r#"<del rend="overstrike">s</del><del rend="overstrike">st</del><del rend="overstrike">d</del>"#,
+        "<div><head>sum</head>det</div>",
+        r#"<list rend="ul"><item>a<list rend="ol"><item>b</item></list></item></list>"#,
+        r#"<list rend="dl"><item rend="dt-1">t</item><item rend="dd-1">d</item></list></div>"#,
+    );
+    assert_eq!(converted(source, |_| {}), expected);
+}
+
+#[test]
+fn every_conversion_tag_changes_under_convert_tags() {
+    // a tag listed in CONVERSION_TAGS without an arm in `convert` would stay as it is
+    for &tag in CONVERSION_TAGS {
+        let source = if matches!(tag, "br" | "hr") {
+            format!("<div><{tag}></div>")
+        } else {
+            format!("<div><{tag}>x</{tag}></div>")
+        };
+        let (mut tree, root) = fragment(&source);
+        let before = xml(&tree, root);
+        let options = options();
+        let call = Call::default();
+        let ctx = Ctx {
+            options: Cow::Borrowed(&options),
+            call: &call,
+        };
+        convert_tags(&mut tree, root, &ctx, None).unwrap();
+        // `del` keeps its name and gains `rend`, so compare the whole element
+        assert_ne!(xml(&tree, root), before, "{tag} was not converted");
+    }
+}
+
+#[test]
+fn convert_tags_resolves_links_against_the_page_url() {
+    // oracle: convert_tags(html.fromstring(source), Extractor(links=True), url) for each url; the base
+    // is the scheme and host (and port) of the page, its path, query and fragment do not count
+    let source = concat!(
+        r#"<div><p><a href="../x" class="k">1</a><a href="/y">2</a><a href="z">3</a>"#,
+        r#"<a href="//cdn.x/a">4</a><a href="">5</a><a>6</a></p></div>"#,
+    );
+    let convert = |url: Option<&str>, links: bool| {
+        let (mut tree, root) = fragment(source);
+        let mut options = options();
+        options.links = links;
+        let call = Call::default();
+        let ctx = Ctx {
+            options: Cow::Borrowed(&options),
+            call: &call,
+        };
+        convert_tags(&mut tree, root, &ctx, url).unwrap();
+        xml(&tree, root)
+    };
+    let with_base = |host: &str, cdn: &str| {
+        format!(
+            concat!(
+                r#"<div><p><ref target="{0}/x">1</ref><ref target="{0}/y">2</ref>"#,
+                r#"<ref target="{0}/z">3</ref><ref target="{1}">4</ref><ref>5</ref><ref>6</ref></p></div>"#
+            ),
+            host, cdn
+        )
+    };
+    assert_eq!(
+        convert(Some("https://ex.com/a/b.html"), true),
+        with_base("https://ex.com", "http://cdn.x/a")
+    );
+    assert_eq!(
+        convert(Some("https://ex.com:8080/p/q.html?a=1#frag"), true),
+        with_base("https://ex.com:8080", "http://cdn.x/a")
+    );
+    // no usable base (an unparsable url, an empty url, none): targets stay as written
+    let raw = concat!(
+        r#"<div><p><ref target="../x">1</ref><ref target="/y">2</ref><ref target="z">3</ref>"#,
+        r#"<ref target="//cdn.x/a">4</ref><ref>5</ref><ref>6</ref></p></div>"#,
+    );
+    for url in [Some("http://[::1"), Some(""), None] {
+        assert_eq!(convert(url, true), raw, "{url:?}");
+    }
+    // oracle: convert_tags(html.fromstring('<div><p><a href="../x">1</a></p></div>'),
+    // Extractor(links=False), "https://ex.com/a/b.html"): the link is kept as ref, untouched
+    let (mut tree, root) = fragment(r#"<div><p><a href="../x">1</a></p></div>"#);
+    let options = options();
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    convert_tags(&mut tree, root, &ctx, Some("https://ex.com/a/b.html")).unwrap();
+    assert_eq!(
+        xml(&tree, root),
+        r#"<div><p><ref href="../x">1</ref></p></div>"#
+    );
+}
+
+#[test]
+fn formatting_maps_every_rend_tag() {
+    // oracle: convert_tags(html.fromstring(source), Extractor(formatting=True)); attributes are dropped
+    let source = concat!(
+        r#"<div><p><em class="x">1</em><i>2</i><b id="y">3</b><strong>4</strong><u>5</u>"#,
+        "<kbd>6</kbd><samp>7</samp><tt>8</tt><var>9</var><sub>a</sub><sup>b</sup></p></div>",
+    );
+    assert_eq!(
+        converted(source, |options| options.formatting = true),
+        concat!(
+            r##"<div><p><hi rend="#i">1</hi><hi rend="#i">2</hi><hi rend="#b">3</hi>"##,
+            r##"<hi rend="#b">4</hi><hi rend="#u">5</hi><hi rend="#t">6</hi><hi rend="#t">7</hi>"##,
+            r##"<hi rend="#t">8</hi><hi rend="#t">9</hi><hi rend="#sub">a</hi><hi rend="#sup">b</hi></p></div>"##,
+        )
+    );
+}
