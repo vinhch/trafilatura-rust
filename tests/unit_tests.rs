@@ -12,8 +12,8 @@ use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput,
     MANUALLY_CLEANED, MANUALLY_STRIPPED, MIN_DUPLICATE_LENGTH, NodeId, OVERALL_DISCARD_XPATH,
     PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt, convert_tags,
-    delete_by_link_density, delete_element, dump, handle_formatting, handle_image, handle_lists,
-    handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_textnode,
+    delete_by_link_density, delete_element, dump, extract_content, handle_formatting, handle_image,
+    handle_lists, handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_textnode,
     handle_titles, link_density_test, link_density_test_tables, load_html, parse_document,
     parse_fragment, process_node, prune_html, prune_unwanted_nodes, prune_unwanted_sections,
     recover_wild_text, sanitize, span, textfilter, tree_cleaning, tree_cleaning_with, trim,
@@ -1572,4 +1572,22 @@ fn test_prune_keep_teasers() {
     let (mut tree, root) = lxml_fromstring(page);
     prune_unwanted_sections(&mut tree, root, &["p"], &ctx, true).unwrap();
     assert!(tree.find(root, "p").is_some());
+}
+
+#[test]
+fn test_no_duplicate_content_list_item() {
+    // regression T6: a <p> already folded into a <list> item by the main pass must not be re-added
+    // by recover_wild_text; backup_tree is a snapshot taken before the main pass marks consumed
+    // tags 'done'.
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let para = "This is a moderately long description paragraph exceeding the fifty character dedup threshold here.";
+    let (mut tree, root) = lxml_fromstring(&format!(
+        "<html><body><article><dl><dt>Term</dt><dd><p>{para}</p></dd></dl></article></body></html>"
+    ));
+    let root = tree_cleaning(&mut tree, root, &ctx).unwrap();
+    convert_tags(&mut tree, root, &ctx, None).unwrap();
+    let (_, text) = extract_content(&mut tree, root, &ctx).unwrap();
+    assert_eq!(text.matches(para).count(), 1);
 }

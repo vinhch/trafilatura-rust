@@ -17,14 +17,15 @@ use crate::html_processing::{
 use crate::pystr;
 use crate::pyurl::urljoin;
 use crate::settings::{
-    DEDUPE_SCAN_CAP, Extractor, Focus, INLINE_CARRIED, INLINE_CONSUMING, MIN_DUPLICATE_LENGTH,
-    TAG_CATALOG,
+    DEDUPE_SCAN_CAP, Extractor, Focus, INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE,
+    MIN_DUPLICATE_LENGTH, TAG_CATALOG,
 };
-use crate::utils::{FORMATTING_PROTECTED, image_src, text_chars_test, trim};
+use crate::utils::{FORMATTING_PROTECTED, SPACING_PROTECTED, image_src, text_chars_test, trim};
 use crate::xml::{delete_element, separates_inline};
 use crate::xpaths::select;
 use crate::xpaths::{
-    DISCARD_IMAGE_ELEMENTS, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, TEASER_DISCARD_XPATH,
+    BODY_XPATH, COMMENTS_DISCARD_XPATH, COMMENTS_XPATH, DISCARD_IMAGE_ELEMENTS,
+    OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, TEASER_DISCARD_XPATH,
 };
 
 /// Cell tags of a table row.
@@ -1131,6 +1132,290 @@ pub fn recover_wild_text(
         existing_elems.insert(text);
     }
     Ok(())
+}
+
+/// `" ".join(element.itertext()).strip()`: lxml's empty text nodes count as pieces, so two adjacent
+/// separators can leave a double space.
+fn joined_text(tree: &Tree, element: NodeId) -> String {
+    let pieces: Vec<&str> = tree.itertext_lxml(element).collect();
+    pystr::strip(&pieces.join(" ")).to_string()
+}
+
+/// `subtree.xpath("//p//text()")`: whether the text nodes of the paragraphs of the whole document
+/// exist at all (an empty one counts), and their joined length in code points. A paragraph inside
+/// another is read once, with the outer one.
+fn paragraph_text(
+    tree: &Tree,
+    document: NodeId,
+    call: &Call<'_>,
+) -> Result<(bool, usize), ExtractError> {
+    let mut visited = 0usize;
+    let mut found = false;
+    let mut length = 0usize;
+    for paragraph in tree.iter(document, &["p"]) {
+        tick(&mut visited, call)?;
+        if tree.iterancestors(paragraph, &["p"]).next().is_some() {
+            continue;
+        }
+        for piece in tree.itertext_lxml(paragraph) {
+            tick(&mut visited, call)?;
+            found = true;
+            length = length.saturating_add(piece.chars().count());
+        }
+    }
+    Ok((found, length))
+}
+
+/// Finds the main content below `root` with the `BODY_XPATH` expressions and returns the body it
+/// builds, its text and the tags it allowed.
+// upstream: main_extractor.py::_extract
+fn extract_body(
+    tree: &mut Tree,
+    root: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<(NodeId, String, Vec<&'static str>), ExtractError> {
+    let call = ctx.call;
+    let options = &ctx.options;
+    let mut potential_tags: Vec<&'static str> = TAG_CATALOG.to_vec();
+    if options.tables {
+        potential_tags.extend(["table", "td", "th", "tr"]);
+    }
+    if options.images {
+        potential_tags.push("graphic");
+    }
+    if options.links {
+        potential_tags.push("ref");
+    }
+    let result_body = tree.new_element("body");
+    // `//` from any node reads the document the node is in, and the frame may be detached from it
+    // by the time it is read
+    let document = tree.root_of(root);
+    let factor = if options.focus == Focus::Precision {
+        1
+    } else {
+        3
+    };
+    for expr in BODY_XPATH {
+        let Some(subtree) = expr(tree, root, call)?.into_iter().next() else {
+            continue;
+        };
+        prune_unwanted_sections(tree, subtree, &potential_tags, ctx, false)?;
+        // skip an empty tree
+        if tree.child_count(subtree) == 0 {
+            continue;
+        }
+        // no paragraphs containing text, or not enough
+        let (has_text, text_len) = paragraph_text(tree, document, call)?;
+        if (!has_text || text_len < options.min_extracted_size.saturating_mul(factor))
+            && !potential_tags.contains(&"div")
+        {
+            potential_tags.push("div");
+        }
+
+        let mut subelems = select::descendants(tree, subtree, call, |_, _| true)?;
+        // a single text run (only lb or inline elements): process the frame itself. A foreign
+        // element (svg, math) is neither, as its tag is a namespaced string upstream.
+        let (mut only_lb, mut only_inline) = (!subelems.is_empty(), true);
+        let mut visited = 0usize;
+        for &subelem in &subelems {
+            tick(&mut visited, call)?;
+            let tag = tree.tag(subelem);
+            only_lb &= tag == Some("lb");
+            only_inline &= tag.is_some_and(|tag| tag == "lb" || INLINE_FORMATTABLE.contains(&tag));
+        }
+        let single_run = only_lb
+            || (tree.tag(subtree) == Some("div") && potential_tags.contains(&"div") && only_inline);
+        if single_run {
+            subelems = vec![subtree];
+        }
+        // the frame's own text before its first child, kept if the frame is accepted
+        let start = tree.child_count(result_body);
+        let lead = if !single_run && text_chars_test(tree.node(subtree).text.as_deref()) {
+            let lead = tree.new_element("p");
+            tree.node_mut(lead).text = tree.node(subtree).text.clone();
+            process_node(tree, lead, ctx)
+        } else {
+            None
+        };
+        for elem in subelems {
+            tick(&mut visited, call)?;
+            // a text-bearing div moves into result_body as a whole, and its descendants are still
+            // in `subelems`: revisiting one would emit its text twice
+            if tree.root_of(elem) == result_body {
+                continue;
+            }
+            // handlers may rename the element to "done", so read these first
+            let rebuilt = in_tags(tree, elem, REBUILT_BLOCKS);
+            let tail = tree.node(elem).tail.clone();
+            let processed = handle_textelem(tree, elem, &potential_tags, ctx)?;
+            if let Some(processed) = processed {
+                tree.append(result_body, processed);
+                // a copy leaves its source behind for a later, wider subtree
+                if tree.root_of(elem) != result_body {
+                    tree.set_name(elem, "done");
+                }
+            }
+            // text right after a rebuilt block is a paragraph of its own, like an lb tail, unless
+            // the handler already carried it over (a code block copied as a whole)
+            if rebuilt
+                && text_chars_test(tail.as_deref())
+                && processed.is_none_or(|processed| tree.node(processed).tail.is_none())
+            {
+                let tail_elem = tree.new_element("p");
+                tree.node_mut(tail_elem).text = tail;
+                if process_node(tree, tail_elem, ctx).is_some() {
+                    tree.append(result_body, tail_elem);
+                }
+            }
+        }
+        // remove trailing titles
+        while let Some(last) = tree.last_child(result_body)
+            && in_tags(tree, last, NOT_AT_THE_END)
+        {
+            tick(&mut visited, call)?;
+            delete_element(tree, last, false);
+        }
+        // exit once there is real content, not just a lone image
+        let content = tree
+            .children(result_body)
+            .filter(|&child| tree.tag(child) != Some("graphic"))
+            .take(2)
+            .count();
+        if content > 1 {
+            if let Some(lead) = lead {
+                tree.insert(result_body, start, lead);
+            }
+            break;
+        }
+    }
+    let temp_text = joined_text(tree, result_body);
+    Ok((result_body, temp_text, potential_tags))
+}
+
+/// Finds the main content of a page using a set of XPath expressions, then extracts relevant
+/// elements, strips them of unwanted subparts and converts them. Returns the body and the text
+/// taken before the final cleanup; the tree is edited in place.
+// upstream: main_extractor.py::extract_content
+pub fn extract_content(
+    tree: &mut Tree,
+    cleaned_root: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<(NodeId, String), ExtractError> {
+    let call = ctx.call;
+    call.check()?;
+    let backup = tree.copy(cleaned_root);
+    // source order before the main pass moves elements, the backup keeps it
+    let mut visited = 0usize;
+    let mut order = Vec::new();
+    for node in tree.iter(cleaned_root, &[]) {
+        tick(&mut visited, call)?;
+        order.push(node);
+    }
+
+    let (result_body, mut temp_text, potential_tags) = extract_body(tree, cleaned_root, ctx)?;
+
+    // try parsing wild <p> elements if nothing found or text too short
+    if tree.child_count(result_body) == 0
+        || temp_text.chars().count() < ctx.options.min_extracted_size
+    {
+        // copies of what the main pass consumed are not recovered again. Both walks cover the same
+        // tree, taken before anything moved, so the pairs line up.
+        let mut consumed = HashSet::new();
+        for (&elem, twin) in order.iter().zip(tree.iter(backup, &[])) {
+            tick(&mut visited, call)?;
+            if tree.tag(elem) == Some("done") {
+                consumed.insert(twin);
+            }
+        }
+        recover_wild_text(
+            tree,
+            backup,
+            result_body,
+            ctx,
+            Some(potential_tags.as_slice()),
+            Some(&consumed),
+        )?;
+        temp_text = joined_text(tree, result_body);
+    }
+    // drop substantial elements repeating the previous one (overlapping-candidate or recovery
+    // artifact); length-gated so short genuine repeats stay for the dedup and the tree-size guards
+    let mut previous: Option<String> = None;
+    let children: Vec<NodeId> = tree.children(result_body).collect();
+    for child in children {
+        tick(&mut visited, call)?;
+        let current = elem_text(tree, child);
+        if !current.is_empty()
+            && previous.as_deref() == Some(current.as_str())
+            && current.chars().count() > MIN_DUPLICATE_LENGTH
+        {
+            delete_element(tree, child, false);
+        } else {
+            previous = Some(current);
+        }
+    }
+    // filter output
+    tree.strip_elements(result_body, &["done"], true);
+    tree.strip_tags(result_body, &["div"]);
+    // stripping the divs merges their indentation into the preceding lb's tail, so an lb that only
+    // separated pruned blocks ends up carrying a run of whitespace. Inside code that whitespace is
+    // the indentation itself.
+    let mut linebreaks = Vec::new();
+    for linebreak in tree.iter(result_body, &["lb"]) {
+        tick(&mut visited, call)?;
+        linebreaks.push(linebreak);
+    }
+    for linebreak in linebreaks {
+        let tail = tree.node(linebreak).tail.as_deref();
+        if has_content(tail)
+            && !text_chars_test(tail)
+            && tree
+                .iterancestors(linebreak, SPACING_PROTECTED)
+                .next()
+                .is_none()
+        {
+            tree.node_mut(linebreak).tail = None;
+        }
+    }
+    Ok((result_body, temp_text))
+}
+
+/// Tries to extract the comments out of the potential sections of the page; the section the
+/// comments came from is deleted from the tree.
+// upstream: main_extractor.py::extract_comments
+pub fn extract_comments(
+    tree: &mut Tree,
+    root: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<(NodeId, String), ExtractError> {
+    let call = ctx.call;
+    let comments_body = tree.new_element("body");
+    // TAG_CATALOG, not div: trouble with <div class="comment-author meta">
+    for expr in COMMENTS_XPATH {
+        let Some(subtree) = expr(tree, root, call)?.into_iter().next() else {
+            continue;
+        };
+        prune_unwanted_nodes(tree, subtree, COMMENTS_DISCARD_XPATH, false, call)?;
+        // todo: unified stripping function, taking include_links into account
+        tree.strip_tags(subtree, &["ref", "span"]);
+        // collected first: an element moved into the body leaves its place in the section
+        let mut visited = 0usize;
+        for elem in select::descendants(tree, subtree, call, |_, _| true)? {
+            tick(&mut visited, call)?;
+            if !in_tags(tree, elem, TAG_CATALOG) {
+                continue;
+            }
+            if let Some(processed) = handle_textnode(tree, elem, ctx, true, false) {
+                tree.clear_attrs(processed);
+                tree.append(comments_body, processed);
+            }
+        }
+        if tree.child_count(comments_body) > 0 {
+            delete_element(tree, subtree, false);
+            break;
+        }
+    }
+    let text = joined_text(tree, comments_body);
+    Ok((comments_body, text))
 }
 
 #[cfg(test)]
