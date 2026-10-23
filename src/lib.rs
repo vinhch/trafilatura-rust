@@ -16,6 +16,8 @@ mod error;
 #[allow(dead_code)]
 mod pystr;
 #[allow(dead_code)]
+mod pyurl;
+#[allow(dead_code)]
 mod settings;
 #[allow(dead_code)]
 mod utils;
