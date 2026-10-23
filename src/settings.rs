@@ -2,6 +2,16 @@
 //! defaults and the element lists the pipeline shares.
 
 use std::collections::HashSet;
+use std::sync::LazyLock;
+
+use regex::Regex;
+
+use crate::cancel::Call;
+use crate::dom::{NodeId, Tree};
+use crate::error::ExtractError;
+use crate::pystr::ignore_case_i;
+use crate::xpaths::Selector;
+use crate::xpaths::select::{attr, descendants, first_attr, is_html, re_test};
 
 /// Largest input, compressed or not, that decoding accepts, in bytes.
 // upstream: settings.cfg::MAX_FILE_SIZE
@@ -341,3 +351,48 @@ pub const INLINE_FORMATTABLE: &[&str] = &["hi", "ref", "del", "code"];
 /// `INLINE_FORMATTABLE` plus `graphic`: no text, rendered as image markup.
 // upstream: settings.py::INLINE_CARRIED
 pub const INLINE_CARRIED: &[&str] = &["hi", "ref", "del", "code", "graphic"];
+
+/// Class and id vocabulary of consent banners: high-signal compounds and consent-platform vendors,
+/// not the bare word `cookie`, which also sits on content classes.
+// upstream: settings.py::_COOKIE_CONSENT_RE
+const COOKIE_CONSENT_RE: &str = concat!(
+    "cookie[-_]?(?:banner|bar|consent|law|notice|policy|description)|notice[-_]{0,2}cookie",
+    "|consent[-_]?(?:banner|manager|sdk)|borlabs|cookiebot|cmplz|onetrust|moove[-_]?gdpr"
+);
+
+// `re:test(..., 'i')`: Python folds U+0130 and U+0131 to `i`, so each `i` is widened (`ignore_case_i`).
+// A pattern that did not compile is `None`, which `re_test` reads as false.
+pub(crate) static COOKIE_CONSENT: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(&format!("(?i){}", ignore_case_i(COOKIE_CONSENT_RE))).ok());
+
+/// The elements removed by the basic clean-up, whatever their content.
+// upstream: settings.py::BASIC_CLEAN_XPATH
+pub const BASIC_CLEAN_XPATH: Selector = basic_clean_xpath;
+
+// upstream: settings.py::BASIC_CLEAN_XPATH
+fn basic_clean_xpath(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    // `.//aside|.//div[...]|...|.//*[...]`: a union of walks over the same descendants is one walk
+    // with an or-predicate, in document order.
+    descendants(tree, ctx, call, |tree, id| {
+        is_html(
+            tree,
+            id,
+            &[
+                "aside",
+                "fencedframe",
+                "footer",
+                "script",
+                "style",
+                "svg",
+                "template",
+            ],
+        ) || (is_html(tree, id, &["div"])
+            && first_attr(tree, id, &["id", "class"]).contains("footer"))
+            || re_test(attr(tree, id, "class"), &COOKIE_CONSENT)
+            || re_test(attr(tree, id, "id"), &COOKIE_CONSENT)
+    })
+}

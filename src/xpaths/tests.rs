@@ -1,12 +1,13 @@
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use regex::Regex;
 
 use super::cases::{CASES, SELECTOR_NAMES};
-use super::select::*;
 use super::*;
 use crate::dom::{DumpMode, ParseLimits, dump, parse_document};
+use crate::settings::{BASIC_CLEAN_XPATH, COOKIE_CONSENT};
 use crate::{Call, CancelToken, ExtractError};
 
 fn parse(html: &str) -> Tree {
@@ -217,9 +218,9 @@ fn comments_lookahead_matches_python() {
     }
 }
 
-/// Every selector ported so far, named as in `SELECTOR_NAMES`.
+/// Every selector, named as in `SELECTOR_NAMES`.
 fn ported() -> Vec<(String, Selector)> {
-    let lists: [(&str, &[Selector]); 5] = [
+    let lists: [(&str, &[Selector]); 10] = [
         ("BODY_XPATH", BODY_XPATH),
         ("COMMENTS_XPATH", COMMENTS_XPATH),
         ("REMOVE_COMMENTS_XPATH", REMOVE_COMMENTS_XPATH),
@@ -228,7 +229,13 @@ fn ported() -> Vec<(String, Selector)> {
             REMOVE_COMMENTS_AND_LISTS_XPATH,
         ),
         ("RAW_TREE_PRUNE_XPATH", RAW_TREE_PRUNE_XPATH),
+        ("OVERALL_DISCARD_XPATH", OVERALL_DISCARD_XPATH),
+        ("TEASER_DISCARD_XPATH", TEASER_DISCARD_XPATH),
+        ("PRECISION_DISCARD_XPATH", PRECISION_DISCARD_XPATH),
+        ("DISCARD_IMAGE_ELEMENTS", DISCARD_IMAGE_ELEMENTS),
+        ("COMMENTS_DISCARD_XPATH", COMMENTS_DISCARD_XPATH),
     ];
+    let single = ("BASIC_CLEAN_XPATH".to_string(), BASIC_CLEAN_XPATH);
     lists
         .iter()
         .flat_map(|(name, list)| {
@@ -236,6 +243,7 @@ fn ported() -> Vec<(String, Selector)> {
                 .enumerate()
                 .map(move |(i, &selector)| (format!("{name}[{i}]"), selector))
         })
+        .chain([single])
         .collect()
 }
 
@@ -275,7 +283,7 @@ fn cases_match_upstream() {
 }
 
 #[test]
-fn patterns_compile() {
+fn every_pattern_compiles() {
     for pattern in [
         &ARTICLE_CONTENT_ID,
         &ARTICLE_CONTENT_CLASS,
@@ -294,7 +302,64 @@ fn patterns_compile() {
         &REMOVE_COMMENTS_CLASS,
         &MVP_POST_ADD_OR_SCROLL,
         &MVP_POST_ADD,
+        &OVERALL_CONSENT,
+        &OVERALL_ID,
+        &OVERALL_CLASS,
+        &PRECISION_BOTTOM,
+        &PRECISION_LINK,
+        &COMMENTS_DISCARD_CLASS,
+        &COMMENTS_DISCARD_REPLY,
+        &COOKIE_CONSENT,
     ] {
         assert!(pattern.is_some());
+    }
+}
+
+#[test]
+fn every_upstream_selector_is_ported() {
+    let ported: HashSet<String> = ported().into_iter().map(|(name, _)| name).collect();
+    let upstream: HashSet<String> = SELECTOR_NAMES
+        .iter()
+        .map(|&name| name.to_string())
+        .collect();
+    assert_eq!(ported, upstream);
+}
+
+#[test]
+fn precision_boundaries_match_python() {
+    // oracle: re.search(r"(^|\s)bottom|bottom(\s|$)", s) and re.search(r"(^|\s)link(\s|$)", s)
+    let table = [
+        ("{}", true),
+        ("{}\n", true),
+        ("a\x1c{}", true),
+        ("{}\x1c", true),
+        ("\u{85}{}", true),
+        ("Padding-{}-lg", false),
+    ];
+    for (template, expected) in table {
+        for (word, pattern) in [("bottom", &PRECISION_BOTTOM), ("link", &PRECISION_LINK)] {
+            let input = template.replace("{}", word);
+            assert_eq!(re_test(&input, pattern), expected, "{word} on {input:?}");
+        }
+    }
+}
+
+#[test]
+fn cookie_consent_folds_like_python() {
+    // oracle: re.search(_COOKIE_CONSENT_RE, s, re.I)
+    let table = [
+        ("cook\u{130}e-banner", true),
+        ("cook\u{131}e-notice", true),
+        ("COOKIE_LAW", true),
+        ("cooKie-bar", true),
+        ("notice__cookie", true),
+        ("notice___cookie", false),
+        // oracle: True
+        ("coo\u{212A}ie-banner", true),
+        // oracle: True
+        ("con\u{17F}ent-manager", true),
+    ];
+    for (input, expected) in table {
+        assert_eq!(re_test(input, &COOKIE_CONSENT), expected, "on {input:?}");
     }
 }
