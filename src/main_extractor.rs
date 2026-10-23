@@ -10,12 +10,22 @@ use crate::cancel::Call;
 use crate::context::Ctx;
 use crate::dom::{LiveIter, LocalName, NodeId, Ns, Tree};
 use crate::error::{ExtractError, Rejection};
-use crate::html_processing::{handle_textnode, has_content, process_node, tick};
+use crate::html_processing::{
+    delete_by_link_density, handle_textnode, has_content, link_density_test_tables, process_node,
+    prune_unwanted_nodes, tick,
+};
 use crate::pystr;
 use crate::pyurl::urljoin;
-use crate::settings::{Extractor, Focus, INLINE_CARRIED, INLINE_CONSUMING};
+use crate::settings::{
+    DEDUPE_SCAN_CAP, Extractor, Focus, INLINE_CARRIED, INLINE_CONSUMING, MIN_DUPLICATE_LENGTH,
+    TAG_CATALOG,
+};
 use crate::utils::{FORMATTING_PROTECTED, image_src, text_chars_test, trim};
 use crate::xml::{delete_element, separates_inline};
+use crate::xpaths::select;
+use crate::xpaths::{
+    DISCARD_IMAGE_ELEMENTS, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, TEASER_DISCARD_XPATH,
+};
 
 /// Cell tags of a table row.
 // upstream: main_extractor.py::TABLE_ELEMS
@@ -922,6 +932,205 @@ pub fn handle_textelem(
     } else {
         handle_other_elements(tree, element, potential_tags, ctx)
     }
+}
+
+/// Rule-based deletion of targeted document sections below `root`, in place; `keep_teasers`
+/// spares the teaser-class blocks, which some sites wrap around real content.
+// upstream: main_extractor.py::prune_unwanted_sections
+pub fn prune_unwanted_sections(
+    tree: &mut Tree,
+    root: NodeId,
+    potential_tags: &[&str],
+    ctx: &Ctx<'_>,
+    keep_teasers: bool,
+) -> Result<(), ExtractError> {
+    let call = ctx.call;
+    let focus = ctx.options.focus;
+    let favor_precision = focus == Focus::Precision;
+    prune_unwanted_nodes(tree, root, OVERALL_DISCARD_XPATH, true, call)?;
+    if !potential_tags.contains(&"graphic") {
+        prune_unwanted_nodes(tree, root, DISCARD_IMAGE_ELEMENTS, false, call)?;
+    }
+    if focus != Focus::Recall {
+        if !keep_teasers {
+            prune_unwanted_nodes(tree, root, TEASER_DISCARD_XPATH, false, call)?;
+        }
+        if favor_precision {
+            prune_unwanted_nodes(tree, root, PRECISION_DISCARD_XPATH, false, call)?;
+        }
+    }
+    for _ in 0..2 {
+        delete_by_link_density(tree, root, "div", true, favor_precision, call)?;
+        delete_by_link_density(tree, root, "list", false, favor_precision, call)?;
+        delete_by_link_density(tree, root, "p", false, favor_precision, call)?;
+    }
+    if potential_tags.contains(&"table") || favor_precision {
+        // collected before deleting: a table removed mid-walk would take its nested tables with it
+        let mut visited = 0usize;
+        let mut boilerplate_tables = Vec::new();
+        for table in tree.iter(root, &["table"]) {
+            tick(&mut visited, call)?;
+            if link_density_test_tables(tree, table, call)? {
+                boilerplate_tables.push(table);
+            }
+        }
+        for table in boilerplate_tables {
+            tick(&mut visited, call)?;
+            delete_element(tree, table, false);
+        }
+    }
+    if favor_precision {
+        // trailing titles
+        let mut visited = 0usize;
+        while let Some(last) = tree.last_child(root)
+            && tree.tag(last) == Some("head")
+        {
+            tick(&mut visited, call)?;
+            delete_element(tree, last, false);
+        }
+        delete_by_link_density(tree, root, "head", false, true, call)?;
+        delete_by_link_density(tree, root, "quote", false, true, call)?;
+    }
+    // after the link density tests, which need the refs
+    let stripped: &[&str] = if potential_tags.contains(&"ref") {
+        &["span"]
+    } else {
+        &["span", "ref"]
+    };
+    tree.strip_tags(root, stripped);
+    Ok(())
+}
+
+/// The `src` of every `graphic` at or below `node`; `None` for one without it.
+fn graphic_sources<'t>(
+    tree: &'t Tree,
+    node: NodeId,
+    call: &Call<'_>,
+) -> Result<HashSet<Option<&'t str>>, ExtractError> {
+    let mut visited = 0usize;
+    let mut sources = HashSet::new();
+    for graphic in tree.iter(node, &["graphic"]) {
+        tick(&mut visited, call)?;
+        sources.insert(tree.get(graphic, "src"));
+    }
+    Ok(sources)
+}
+
+/// Looks for the wild elements the main pass left, outside the determined frame and throughout
+/// the document, and appends the ones whose text `result_body` does not hold yet. `potential_tags`
+/// defaults to `TAG_CATALOG`; `consumed` holds elements the main pass already took.
+///
+/// Do not widen the search expression without benchmarking the full suite: recovered text raises
+/// the extracted length, which can suppress the stronger rescues that run after this one.
+// upstream: main_extractor.py::recover_wild_text
+pub fn recover_wild_text(
+    tree: &mut Tree,
+    root: NodeId,
+    result_body: NodeId,
+    ctx: &Ctx<'_>,
+    potential_tags: Option<&[&str]>,
+    consumed: Option<&HashSet<NodeId>>,
+) -> Result<(), ExtractError> {
+    let call = ctx.call;
+    // a copy: the recall branch adds tags, which must not leak back to the caller
+    let mut potential_tags: Vec<&str> = potential_tags.unwrap_or(TAG_CATALOG).to_vec();
+    let recall = ctx.options.focus == Focus::Recall;
+    if recall {
+        for tag in ["div", "lb"] {
+            if !potential_tags.contains(&tag) {
+                potential_tags.push(tag);
+            }
+        }
+    }
+    // blockquote, pre and q are already renamed to quote and code by convert_tags
+    // deviation: D-1, keep_teasers is options.fast, which is true here
+    prune_unwanted_sections(tree, root, &potential_tags, ctx, true)?;
+    // `.//code|.//p|.//quote|.//table|.//div[contains(@class, 'w3-code')]`, plus
+    // `|.//div|.//lb|.//list` in recall: one walk in document order
+    let subelems = select::descendants(tree, root, call, |tree, node| match tree.tag(node) {
+        Some("code" | "p" | "quote" | "table") => true,
+        Some("div") => recall || select::attr(tree, node, "class").contains("w3-code"),
+        Some("lb" | "list") => recall,
+        _ => false,
+    })?;
+    // dedup against the snapshot taken before this pass: exact match, or a length-gated
+    // substring (a paragraph folded into its list container)
+    let elem_texts: Vec<String> = tree
+        .children(result_body)
+        .map(|element| elem_text(tree, element))
+        .collect();
+    // newline-joined (trimmed element text has no newline), so no substring match spans two
+    // elements; `existing_len` counts code points
+    let mut existing = String::new();
+    let mut existing_len = 0usize;
+    for text in elem_texts.iter().filter(|text| !text.is_empty()) {
+        if !existing.is_empty() {
+            existing.push('\n');
+            existing_len = existing_len.saturating_add(1);
+        }
+        existing.push_str(text);
+        existing_len = existing_len.saturating_add(text.chars().count());
+    }
+    let mut existing_elems: HashSet<String> = elem_texts.into_iter().collect();
+    // elements emitted or deduped whole: their descendants are covered
+    let mut handled: HashSet<NodeId> = HashSet::new();
+    let mut visited = 0usize;
+    for subelem in subelems {
+        tick(&mut visited, call)?;
+        if consumed.is_some_and(|consumed| consumed.contains(&subelem))
+            || tree
+                .iterancestors(subelem, &[])
+                .any(|ancestor| handled.contains(&ancestor))
+        {
+            continue;
+        }
+        let Some(processed) = handle_textelem(tree, subelem, &potential_tags, ctx)? else {
+            continue;
+        };
+        if processed == subelem {
+            handled.insert(subelem);
+        }
+        let text = elem_text(tree, processed);
+        // image-only blocks have no text to compare: check their sources against the live body
+        if text.is_empty() {
+            let images = graphic_sources(tree, processed, call)?;
+            if !images.is_empty() && images.is_subset(&graphic_sources(tree, result_body, call)?) {
+                continue;
+            }
+        }
+        // past the cap the substring scan is skipped and `existing` stops growing
+        let under_cap = existing_len <= DEDUPE_SCAN_CAP;
+        // a copy carrying its source tail is a fragment of a text run: no length gate
+        let tail = tree.node(processed).tail.as_deref();
+        let fragment = if text_chars_test(tail) {
+            trim(&format!("{text}{}", tail.unwrap_or_default()))
+        } else {
+            String::new()
+        };
+        if !text.is_empty()
+            && (existing_elems.contains(&text)
+                || (under_cap
+                    && ((text.chars().count() > MIN_DUPLICATE_LENGTH && existing.contains(&text))
+                        || (!fragment.is_empty() && existing.contains(&fragment)))))
+        {
+            continue;
+        }
+        tree.append(result_body, processed);
+        if under_cap {
+            let added = if fragment.is_empty() {
+                &text
+            } else {
+                &fragment
+            };
+            existing.push('\n');
+            existing.push_str(added);
+            existing_len = existing_len
+                .saturating_add(1)
+                .saturating_add(added.chars().count());
+        }
+        existing_elems.insert(text);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

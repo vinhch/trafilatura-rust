@@ -9,13 +9,14 @@
 use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
-    BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
-    MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
-    Selector, TAG_CATALOG, Tree, alt, convert_tags, delete_by_link_density, delete_element, dump,
-    handle_formatting, handle_image, handle_lists, handle_paragraphs, handle_quotes, handle_table,
-    handle_textelem, handle_textnode, handle_titles, link_density_test, link_density_test_tables,
-    load_html, parse_document, parse_fragment, process_node, prune_html, prune_unwanted_nodes,
-    sanitize, span, textfilter, tree_cleaning, tree_cleaning_with, trim,
+    BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput,
+    MANUALLY_CLEANED, MANUALLY_STRIPPED, MIN_DUPLICATE_LENGTH, NodeId, OVERALL_DISCARD_XPATH,
+    PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt, convert_tags,
+    delete_by_link_density, delete_element, dump, handle_formatting, handle_image, handle_lists,
+    handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_textnode,
+    handle_titles, link_density_test, link_density_test_tables, load_html, parse_document,
+    parse_fragment, process_node, prune_html, prune_unwanted_nodes, prune_unwanted_sections,
+    recover_wild_text, sanitize, span, textfilter, tree_cleaning, tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -1434,4 +1435,141 @@ fn test_links() {
     assert_eq!(handle_textelem(&mut tree, root, &[], &ctx), Ok(None));
     let (mut tree, link) = lxml_fromstring("<a href=\"testlink.html\">Test link text.</a>");
     assert!(handle_formatting(&mut tree, link, &ctx).is_some());
+}
+
+#[test]
+fn test_recover_wild_text_default_tags() {
+    // recover_wild_text with default tags in recall mode must not crash
+    let options = extractor(Format::Python, false, true, None, (false, false), &[], &[]);
+    let call = Call::default();
+    let (mut tree, root) = lxml_fromstring(
+        "<body><div>some wild text outside the main frame, long enough to be recovered</div></body>",
+    );
+    let body = tree.new_element("body");
+    recover_wild_text(&mut tree, root, body, &ctx_for(&options, &call), None, None).unwrap();
+    // oracle: etree.tostring(recover_wild_text(tree, etree.Element("body"), Extractor(recall=True)))
+    // The frame the parse returns is the div itself, which `.//div` does not select.
+    assert_eq!(tostring(&tree, body, false), "<body/>");
+}
+
+/// The trimmed text of each element `recover_wild_text` leaves in a new body for three divs:
+/// `filler`, `CONTAINER`, and a substring of `CONTAINER`.
+fn recovered_texts(filler: &str) -> Vec<String> {
+    const CONTAINER: &str = "The quick brown fox jumps over the lazy dog while the sun was setting slowly over the meadow today.";
+    const SUBSTRING_DUP: &str =
+        "quick brown fox jumps over the lazy dog while the sun was setting slowly";
+    let options = extractor(Format::Python, false, true, None, (false, false), &[], &[]);
+    let call = Call::default();
+    let html = format!(
+        "<html><body><div>{filler}</div><div>{CONTAINER}</div><div>{SUBSTRING_DUP}</div></body></html>"
+    );
+    let (mut tree, root) = lxml_fromstring(&html);
+    let body = tree.new_element("body");
+    recover_wild_text(&mut tree, root, body, &ctx_for(&options, &call), None, None).unwrap();
+    let children: Vec<NodeId> = tree.children(body).collect();
+    children
+        .into_iter()
+        .map(|el| trim(&tree.itertext(el).collect::<String>()))
+        .collect()
+}
+
+#[test]
+fn test_recover_wild_text_dedup_scan_cap() {
+    // DEDUPE_SCAN_CAP gates the substring scan against `existing`: a duplicate longer than
+    // MIN_DUPLICATE_LENGTH is dropped while `existing` is under the cap and kept once past it.
+    // Upstream monkeypatches the cap; the port keeps the constant and sizes the filler against it.
+    let substring_dup = "quick brown fox jumps over the lazy dog while the sun was setting slowly";
+    assert!(substring_dup.chars().count() > MIN_DUPLICATE_LENGTH);
+    let sentence =
+        "Zebra quokka platypus wallaby echidna kookaburra numbat bilby quoll dingo marsupial. ";
+    // oracle: [len(t) for t in run(filler)] is [339, 99] and substring_dup is not in it
+    let texts = recovered_texts(&sentence.repeat(4));
+    assert_eq!(
+        texts.iter().map(|t| t.chars().count()).collect::<Vec<_>>(),
+        [339, 99]
+    );
+    assert!(!texts.iter().any(|t| t == substring_dup));
+    // oracle: the same run with the filler repeated 2600 times is [220999, 99, 72], dup kept
+    let long_filler = sentence.repeat(2600);
+    assert!(long_filler.chars().count() >= DEDUPE_SCAN_CAP + 4000);
+    let texts = recovered_texts(&long_filler);
+    assert_eq!(
+        texts.iter().map(|t| t.chars().count()).collect::<Vec<_>>(),
+        [220_999, 99, 72]
+    );
+    assert!(texts.iter().any(|t| t == substring_dup));
+}
+
+const BOILERPLATE_LINK: &str =
+    r#"<ref target="/x">link text that is reasonably long over here</ref>"#;
+
+/// The page of `test_prune_boilerplate_table_after_nested`.
+fn boilerplate_page() -> String {
+    let rows = format!("<row><cell>{BOILERPLATE_LINK}</cell></row>").repeat(6);
+    let nested = "<row><cell><table><row><cell>x</cell></row></table></cell></row>";
+    let real = "Real article content paragraph that should always survive the pruning pass intact here now.";
+    format!(
+        "<html><body><table>{rows}{nested}</table><table>{rows}</table><p>{real}</p></body></html>"
+    )
+}
+
+#[test]
+fn test_prune_boilerplate_table_after_nested() {
+    // prune_unwanted_sections must not skip a boilerplate table that follows a deleted table
+    // containing a nested one.
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let page = boilerplate_page();
+    // D-2: the html5 parser foster-parents `row`, `cell` and `ref` out of the tables, so three
+    // empty tables remain where libxml2 leaves none.
+    // oracle: len(prune_unwanted_sections(h5(page), {"table", "p"}, Extractor(tables=True))
+    //   .findall(".//table")) is 3, and the p is kept
+    let (mut tree, root) = lxml_fromstring(&page);
+    prune_unwanted_sections(&mut tree, root, &["table", "p"], &ctx, false).unwrap();
+    assert_eq!(tree.iter(root, &["table"]).count(), 3);
+    assert!(tree.find(root, "p").is_some());
+    // oracle: the same call on html.fromstring(page) leaves findall(".//table") == [] and the p
+    let mut tree = xml_tree(&page);
+    let root = tree.root();
+    prune_unwanted_sections(&mut tree, root, &["table", "p"], &ctx, false).unwrap();
+    assert_eq!(tree.iter(root, &["table"]).count(), 0);
+    assert!(tree.find(root, "p").is_some());
+}
+
+#[test]
+fn test_prune_strips_span_and_ref() {
+    // spans are always flattened, refs only when links are not kept
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let page = r#"<html><body><p>One <span>two</span> <ref target="/x">three</ref> four.</p></body></html>"#;
+    let (mut tree, root) = lxml_fromstring(page);
+    prune_unwanted_sections(&mut tree, root, &["p"], &ctx, false).unwrap();
+    assert!(tree.find(root, "span").is_none());
+    assert!(tree.find(root, "ref").is_none());
+    let p = tree.find(root, "p").unwrap();
+    assert_eq!(trim(&tree.text_content(p)), "One two three four.");
+    let (mut tree, root) = lxml_fromstring(page);
+    prune_unwanted_sections(&mut tree, root, &["p", "ref"], &ctx, false).unwrap();
+    assert!(tree.find(root, "span").is_none());
+    assert!(tree.find(root, "ref").is_some());
+}
+
+#[test]
+fn test_prune_keep_teasers() {
+    // keep_teasers spares teaser-class blocks, some of which wrap real article text
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let page = concat!(
+        r#"<html><body><div class="teaser"><p>Real article body text that is long enough "#,
+        "to count as genuine content here now.</p></div></body></html>"
+    );
+    let (mut tree, root) = lxml_fromstring(page);
+    prune_unwanted_sections(&mut tree, root, &["p"], &ctx, false).unwrap();
+    assert!(tree.find(root, "p").is_none());
+    let (mut tree, root) = lxml_fromstring(page);
+    prune_unwanted_sections(&mut tree, root, &["p"], &ctx, true).unwrap();
+    assert!(tree.find(root, "p").is_some());
 }

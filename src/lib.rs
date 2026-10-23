@@ -56,11 +56,11 @@ pub mod __internals {
     pub use crate::main_extractor::{
         handle_code_blocks, handle_formatting, handle_image, handle_lists, handle_other_elements,
         handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_titles,
-        process_nested_elements, span,
+        process_nested_elements, prune_unwanted_sections, recover_wild_text, span,
     };
     pub use crate::settings::{
-        Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED, MANUALLY_STRIPPED,
-        MAX_FILE_SIZE, MIN_FILE_SIZE, TAG_CATALOG,
+        Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED,
+        MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE, TAG_CATALOG,
     };
     pub use crate::utils::{
         HtmlInput, decode_file, detect_encoding, load_html, safe_base_url, safe_relative_url,
