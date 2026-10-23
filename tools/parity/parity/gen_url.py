@@ -586,8 +586,9 @@ def checknetloc_raises(netloc: str) -> bool:
 
 def composition_cases() -> list[str]:
     """Each breaker next to a letter and to the combining marks that compose with their neighbours."""
-    neighbours = ["a", "́", "̸"]
-    strings = [b + n for b in netloc_breakers() for n in neighbours] + [n + b for b in netloc_breakers() for n in neighbours]
+    neighbours = ["a", chr(0x301), chr(0x338)]
+    breakers = netloc_breakers()
+    strings = [b + n for b in breakers for n in neighbours] + [n + b for b in breakers for n in neighbours]
     return [
         "/// A netloc and whether `urllib.parse._checknetloc` raises on it.",
         "#[rustfmt::skip]",

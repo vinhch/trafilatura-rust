@@ -835,12 +835,7 @@ fn cases_match_upstream() {
         let (parsed, normalized) = dump(&tree, DumpMode::Normalized);
         if normalized || parsed != case.dump_in {
             parser_differences.push(format!(
-                "case {index} {}
-{}
-rust:
-{parsed}
-upstream:
-{}",
+                "case {index} {}\n{}\nrust:\n{parsed}\nupstream:\n{}",
                 case.op, case.html, case.dump_in
             ));
             continue;
@@ -848,37 +843,33 @@ upstream:
         let returned = run_case(case, &mut tree);
         let (actual, _) = dump_from(&tree, returned, DumpMode::Normalized);
         if actual != case.dump_out {
+            let options = &case.options;
             mismatches.push(format!(
-                "case {index} {} {:?}
-{}
-rust:
-{actual}
-upstream:
-{}",
-                case.op, case.scope, case.html, case.dump_out
+                "case {index} {} {:?} tables={} images={} links={} formatting={} focus={}\n{}\nrust:\n{actual}\nupstream:\n{}",
+                case.op,
+                case.scope,
+                options.tables,
+                options.images,
+                options.links,
+                options.formatting,
+                options.focus,
+                case.html,
+                case.dump_out
             ));
         }
     }
     assert!(
         parser_differences.is_empty(),
-        "{} of {} snippets parse differently from html5lib (change the snippet)
-{}",
+        "{} of {} snippets parse differently from html5lib (change the snippet)\n{}",
         parser_differences.len(),
         CASES.len(),
-        parser_differences.join(
-            "
-"
-        )
+        parser_differences.join("\n")
     );
     assert!(
         mismatches.is_empty(),
-        "{} of {} cases differ from upstream
-{}",
+        "{} of {} cases differ from upstream\n{}",
         mismatches.len(),
         CASES.len(),
-        mismatches.join(
-            "
-"
-        )
+        mismatches.join("\n")
     );
 }

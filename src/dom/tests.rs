@@ -193,26 +193,16 @@ fn dump_from_detached_copy() {
     assert_eq!(tree.node(copy).parent(), None);
     // the copy is the root of its dump and its tail is left out
     let expected = concat!(
-        "div id=\"x\"
-",
-        "  #text \"t\"
-",
-        "  p class=\"a\"
-",
-        "    #text \"a\"
-",
-        "    b
-",
-        "      #text \"b\"
-",
-        "    #text \"c\"
-",
-        "  #text \"tail\"
-",
-        "  i
-",
-        "    #text \"i\"
-",
+        "div id=\"x\"\n",
+        "  #text \"t\"\n",
+        "  p class=\"a\"\n",
+        "    #text \"a\"\n",
+        "    b\n",
+        "      #text \"b\"\n",
+        "    #text \"c\"\n",
+        "  #text \"tail\"\n",
+        "  i\n",
+        "    #text \"i\"\n",
     );
     for mode in [DumpMode::Exact, DumpMode::Normalized] {
         assert_eq!(dump_from(&tree, copy, mode), (expected.to_string(), false));

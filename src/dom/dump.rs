@@ -69,15 +69,14 @@ fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, Arc<str>)> {
 /// characters are stripped. Returns the copy of the subtree at `start` and whether anything changed.
 fn normalize(source: &Tree, start: NodeId) -> (Tree, bool) {
     let mut changed = false;
-    let src_root = start;
-    let root = source.node(src_root);
+    let root = source.node(start);
     let mut out = Tree::new(root.name.clone(), root.ns, copy_attrs(root, &mut changed));
     let out_root = out.root();
     if let Some(text) = &root.text {
         out.add_text(out_root, &strip_invalid(text, &mut changed));
     }
     // (source element, output element receiving its children, next source child)
-    let mut stack = vec![(src_root, out_root, root.first_child)];
+    let mut stack = vec![(start, out_root, root.first_child)];
     while let Some(frame) = stack.last_mut() {
         let (src_id, _, next) = *frame;
         let Some(child_id) = next else {
