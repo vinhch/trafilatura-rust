@@ -305,6 +305,8 @@ fn every_pattern_compiles() {
         &OVERALL_CONSENT,
         &OVERALL_ID,
         &OVERALL_CLASS,
+        &OVERALL_HIDDEN_ID,
+        &OVERALL_HIDDEN_CLASS,
         &PRECISION_BOTTOM,
         &PRECISION_LINK,
         &COMMENTS_DISCARD_CLASS,
