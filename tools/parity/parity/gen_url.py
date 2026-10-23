@@ -150,6 +150,281 @@ UNESCAPE_INPUTS = [
 ]
 
 
+E_ACUTE = "\N{LATIN SMALL LETTER E WITH ACUTE}"
+FULLWIDTH_SOLIDUS = "\N{FULLWIDTH SOLIDUS}"
+KELVIN = "\N{KELVIN SIGN}"
+
+# (url, default scheme). Non-ASCII characters are spelled by name so the file shows what they are.
+URLSPLIT_INPUTS: list[tuple[str, str]] = [
+    (url, "")
+    for url in [
+        "",
+        "http://example.com",
+        "http://example.com/a/b?x=1&y=2#frag",
+        "\x00\x01 \x1f http://a/b",
+        "  http://a/b  ",
+        "\t\r\nhttp://a/b",
+        "ht\ttp://a/b",
+        "http://a\r\n/b\t?q#f",
+        "HTTP://Ex.com/Path",
+        "1http:x",
+        "ht~tp:x",
+        "+http:x",
+        "a+b-c.d:x",
+        ":x",
+        "http:",
+        "mailto:a@b",
+        "mailto:a@b?subject=x#y",
+        "//host/p",
+        "//host",
+        "//",
+        "///p",
+        "http:///p",
+        "http://u:p@h:80/p;q?x#f",
+        "http://h?q",
+        "http://h#f",
+        "http://h/p?q?r#f#g",
+        "/just/a/path;p?q#f",
+        "p/a;b",
+        "?q#f",
+        "#f",
+        "file:///etc/passwd",
+        "http://[::1]:8080/",
+        "http://[::1]/",
+        "http://[v1.fe]/",
+        "http://[vF.x]/",
+        "http://[v.x]/",
+        "http://[v1.]/",
+        "http://[v1x]/",
+        "http://[1v.x]/",
+        "http://[::1",
+        "http://::1]/",
+        "http://[::1]]/",
+        "http://[[::1]/",
+        "http://[127.0.0.1]/",
+        "http://[fe80::1%eth0]/",
+        "http://[fe80::1%]/",
+        "http://[fe80::1%a%b]/",
+        "http://[::ffff:1.2.3.4]/",
+        "http://[::ffff:01.2.3.4]/",
+        "http://[::ffff:1.2.3.256]/",
+        "http://[::ffff:1.2.3]/",
+        "http://[::ffff:1.2.3.4.5]/",
+        "http://[::ffff:1.2.3.04]/",
+        "http://[::ffff:1.2.3.0]/",
+        "http://[::ffff:1.2.3.00]/",
+        "http://[::ffff:1.2.3.\N{ARABIC-INDIC DIGIT FOUR}]/",
+        "http://[::ffff:1.2.3.]/",
+        "http://[::ffff:1.2.3.1000]/",
+        "http://[1:2:3:4:5:6:7:8]/",
+        "http://[1:2:3:4:5:6:7:8:9]/",
+        "http://[1:2:3:4:5:6:7]/",
+        "http://[1:2:3:4:5:6:1.2.3.4]/",
+        "http://[1:2:3:4:5:6:7:1.2.3.4]/",
+        "http://[1::2::3]/",
+        "http://[::]/",
+        "http://[:]/",
+        "http://[]/",
+        "http://[:::]/",
+        "http://[::1:]/",
+        "http://[:1::]/",
+        "http://[1::2:]/",
+        "http://[:1:2:3:4:5:6:7]/",
+        "http://[1:2:3:4:5:6:7:]/",
+        "http://[1:2:3:4:5:6::7:8]/",
+        "http://[1:2:3:4:5:6:7::8]/",
+        "http://[1:2:3:4:5::6:7:8]/",
+        "http://[1:2:3:4:5:6:7::]/",
+        "http://[::2:3:4:5:6:7:8]/",
+        "http://[::2:3:4:5:6:7]/",
+        "http://[1:2:3:4:5:6:7:8:9:10:11]/",
+        "http://[12345::1]/",
+        "http://[1234::1]/",
+        "http://[g::1]/",
+        "http://[::\N{FULLWIDTH DIGIT ONE}]/",
+        "http://[ ::1]/",
+        "http://[::1 ]/",
+        "http://[" + "1:" * 22 + "1]/",
+        "http://[1:2:3:4:5:6:7:8]x/",
+        "http://[::1]:80",
+        "http://[::1]:",
+        "http://[::1]x/",
+        "http://[::1]x:80/",
+        "http://a[::1]/",
+        "http://u@[::1]/",
+        "http://u@a[::1]/",
+        "http://[::1]@h/",
+        "http://u:p@[::1]:80/p",
+        "http://a@b@[::1]/",
+        "http://a@[::1]x/",
+        "http://[::1/",
+        "http://]/",
+        "http://[/",
+        "http://[::1]/p[1]",
+        "http://h/p[1]",
+        "http://h/p]",
+        "http://h?[#]",
+        f"http://ex{FULLWIDTH_SOLIDUS}com/",
+        "http://ex\N{ACCOUNT OF}com/",
+        "http://ex\N{CARE OF}com/",
+        "http://ex\N{FULLWIDTH COLON}com/",
+        "http://ex\N{FULLWIDTH COMMERCIAL AT}com/",
+        "http://ex\N{FULLWIDTH NUMBER SIGN}com/",
+        "http://ex\N{FULLWIDTH QUESTION MARK}com/",
+        "http://ex\N{DOUBLE QUESTION MARK}com/",
+        "http://ex\N{QUESTION EXCLAMATION MARK}com/",
+        "http://ex\N{EXCLAMATION QUESTION MARK}com/",
+        "http://u\N{FULLWIDTH COMMERCIAL AT}h/",
+        "http://u@\N{FULLWIDTH COMMERCIAL AT}h/",
+        f"http://ex{E_ACUTE}.com/",
+        f"http://{E_ACUTE}x\N{LATIN SMALL LETTER A WITH DIAERESIS}mple.com:80/{E_ACUTE}?{E_ACUTE}#{E_ACUTE}",
+        "http://ex\N{ROMAN NUMERAL ONE}.com/",
+        "http://ex\N{NO-BREAK SPACE}com/",
+        f"http://ex{KELVIN}.com/",
+        "http://\N{LATIN SMALL LIGATURE FI}x.com/",
+        "http://a\N{COMBINING ACUTE ACCENT}@b/",
+        "http://a:\N{ARABIC-INDIC DIGIT ONE}/",
+        f"{E_ACUTE}http://a/",
+        f"{E_ACUTE}:x",
+        f"h{E_ACUTE}:x",
+        f"h{KELVIN}:x",
+        "\N{FULLWIDTH LATIN SMALL LETTER H}ttp://a/",
+        "http\N{FULLWIDTH COLON}//a/",
+        "\N{ARABIC-INDIC DIGIT ONE}http:x",
+        "http://a/b c",
+        "http://a/b%20c?q=%zz#%",
+        "javascript:alert(1)",
+        "data:text/plain;base64,AAAA",
+        "HtTp:/x",
+        "ftp://u@h:21/pub/f;type=a",
+        "tel:+1-816-555-1212;ext=1",
+    ]
+] + [
+    ("x", " ftp\t"),
+    ("x", "\x00http"),
+    ("//h/p", "HTTP"),
+    ("a:b", "http"),
+    ("a:b", ""),
+    ("//[::1", "http"),
+    ("p;q", "https"),
+    ("", "ftp"),
+]
+
+# (base, url)
+URLJOIN_INPUTS: list[tuple[str, str]] = [
+    ("http://a/b/c/d;p?q", url)
+    for url in [
+        # RFC 3986 5.4.1
+        "g:h", "g", "./g", "g/", "/g", "//g", "?y", "g?y", "#s", "g#s", "g?y#s", ";x", "g;x",
+        "g;x?y#s", "", ".", "./", "..", "../", "../g", "../..", "../../", "../../g",
+        # RFC 3986 5.4.2
+        "../../../g", "../../../../g", "/./g", "/../g", "g.", ".g", "g..", "..g", "./../g",
+        "./g/.", "g/./h", "g/../h", "g;x=1/./y", "g;x=1/../y", "g?y/./x", "g?y/../x", "g#s/./x",
+        "g#s/../x", "http:g", "http:", "http://", "http:///g",
+        # edges of the path and netloc rules
+        "//other/x", "//other", "//", "///x", "//u@h:1/p?q#f", "//[::1]/x", "//[::1",
+        f"//h{FULLWIDTH_SOLIDUS}x/",
+        "?", "#", "?#", "g?", "g#", "{x}", "{x}/y", "g/{x}", "g//h", "g///h", "//g//h", "/",
+        "//g/", "../x/../y/..", "x/./.", "x/..", "x/../..", "a;b/c;d", ";", ";;", "g;", "/;x",
+        "g/;x", "http://x/y", "https://x/y", "HTTP://X/Y", "ftp://x/y", "mailto:a@b", "file:///p",
+        "g\t/h", " g", "g ", "\x00g", "g\x00",
+    ]
+] + [
+    (base, url)
+    for base, urls in [
+        ("", ["", "x", "//h/p", "http://[::1"]),
+        ("http://a/b", [""]),
+        ("http://[::1", ["x", ""]),
+        ("http://a/b", ["http://[::1", "//[::1", f"//h{FULLWIDTH_SOLIDUS}x"]),
+        (f"http://h{FULLWIDTH_SOLIDUS}x/b", ["x", "http://a/"]),
+        ("mailto:a@b", ["c", "mailto:c@d", "?q", "#f", "//h/x", "http://a/b"]),
+        ("ftp://a/b/c", ["d", "../d", "?q", "#f", "//h/x", "ftp:d", "http:d", "gopher://h/p"]),
+        ("ftp://a/b;p/c;q?r#s", ["d;e", ";e", "../d;e?x#y", "?z", ";"]),
+        ("http://a", ["b", "/b", "../b", "./b", "?q", "#f", ""]),
+        ("http://a?q", ["b", "?r", "#f", ""]),
+        ("http://a#f", ["b", "?r", "#g", ""]),
+        ("http://a/", ["b", "../b", "?r", "."]),
+        ("http://a/b/", ["c", "../c", "../../c", "."]),
+        ("http://a/b/c", ["d", "./d", "..", "../", "?q", "d/..", "d/../.."]),
+        ("http://a/b/c/d/e", ["../../x", "../../../../x", "x/../../y"]),
+        ("http://a/b//c//d", ["e", "../e", "../../e"]),
+        ("http://a/b/c?q#f", ["d?r#g", "?r", "#g", ""]),
+        ("//a/b/c", ["d", "/d", "//e/f", "?q", "http://g/h"]),
+        ("/a/b/c", ["d", "../d", "/e", "//e/f"]),
+        ("a/b/c", ["d", "../d", "../../../d", "/e"]),
+        ("a", ["b", "../b", ""]),
+        ("?q", ["b", "?r", "#f"]),
+        ("#f", ["b", "?r", "#g"]),
+        ("g:h", ["i", "g:i", "//h"]),
+        ("1http://a/b", ["c"]),
+        ("http://u:p@h:80/a/b;c?d#e", ["f", "//i/j", "?k"]),
+        ("http://[::1]:80/a/b", ["c", "//[fe80::1%eth0]/d"]),
+        ("http://a/b/c", ["http://a/x", "https://a/b/c", "HTTP://A/x", "http:x", "http:/x", "http://"]),
+        ("https://a/b/c", ["http://a/x", "https:x", "https://a/x", "//h/x"]),
+        ("tel:+1;ext=1", ["+2", "tel:+3"]),
+        ("file:///a/b", ["c", "../c", "//h/c", "file:c"]),
+        ("ws://h/a", ["b", "wss://h/b"]),
+        ("git+ssh://h/a/b", ["c", "//i/j"]),
+        ("itms-services://h/a", ["b"]),
+        ("telnet://h/a", ["b"]),
+        ("\x00 http://a/b/c", ["d"]),
+        ("http://a/b\t/c", ["d\t/e"]),
+    ]
+    for url in urls
+]
+
+
+def split_or_none(url: str, scheme: str) -> list[str] | None:
+    "`urlsplit(url, scheme)` as five strings, or None where CPython raises ValueError."
+    from urllib.parse import urlsplit
+
+    try:
+        return list(urlsplit(url, scheme))
+    except ValueError:
+        return None
+
+
+def join_or_none(base: str, url: str) -> str | None:
+    from urllib.parse import urljoin
+
+    try:
+        return urljoin(base, url)
+    except ValueError:
+        return None
+
+
+def rust_parts(parts: list[str] | None) -> str:
+    return "None" if parts is None else "Some([" + ", ".join(rust_str(p) for p in parts) + "])"
+
+
+def url_cases() -> list[str]:
+    from urllib.parse import urlunsplit
+
+    split_rows = []
+    for url, scheme in URLSPLIT_INPUTS:
+        parts = split_or_none(url, scheme)
+        unsplit = None if parts is None else urlunsplit(parts)
+        split_rows.append(f"    ({rust_str(url)}, {rust_str(scheme)}, {rust_parts(parts)}, {rust_option(unsplit)}),")
+    return [
+        "/// Input, default scheme, the five parts of `urllib.parse.urlsplit` (`None` where CPython raises",
+        "/// `ValueError`) and `urlunsplit` of those parts.",
+        "#[rustfmt::skip]",
+        "pub(crate) type UrlSplitCase = (&'static str, &'static str, Option<[&'static str; 5]>, Option<&'static str>);",
+        "",
+        "#[rustfmt::skip]",
+        "pub(crate) const URLSPLIT_CASES: &[UrlSplitCase] = &[",
+        *split_rows,
+        "];",
+        "",
+        "/// Base, URL and `urllib.parse.urljoin` of them; `None` where CPython raises `ValueError`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const URLJOIN_CASES: &[(&str, &str, Option<&str>)] = &[",
+        *[f"    ({rust_str(b)}, {rust_str(u)}, {rust_option(join_or_none(b, u))})," for b, u in URLJOIN_INPUTS],
+        "];",
+        "",
+    ]
+
+
 def unescape_or_none(s: str) -> str | None:
     "`html.unescape(s)`, or None where CPython raises ValueError."
     import html
@@ -178,6 +453,7 @@ def cases() -> None:
         "];",
         "",
         *composition_cases(),
+        *url_cases(),
     ]
     sys.stdout.write("\n".join(out))
 

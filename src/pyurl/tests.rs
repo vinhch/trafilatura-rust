@@ -1,6 +1,6 @@
 #![allow(clippy::indexing_slicing)]
 
-use super::cases::{NFKC_COMPOSITION_CASES, UNESCAPE_CASES};
+use super::cases::{NFKC_COMPOSITION_CASES, UNESCAPE_CASES, URLJOIN_CASES, URLSPLIT_CASES};
 use super::tables::{HTML5_ENTITIES, NFKC_NETLOC_BREAKERS};
 use super::*;
 
@@ -68,4 +68,59 @@ fn netloc_breakers_survive_composition() {
             .any(|c| NFKC_NETLOC_BREAKERS.binary_search(&c).is_ok());
         assert_eq!(has_breaker, raises, "{netloc:?}");
     }
+}
+
+fn parts_of(split: &SplitResult) -> [&str; 5] {
+    [
+        &split.scheme,
+        &split.netloc,
+        &split.path,
+        &split.query,
+        &split.fragment,
+    ]
+}
+
+#[test]
+fn urlsplit_matches_python() {
+    assert!(!URLSPLIT_CASES.is_empty());
+    for &(url, scheme, expected, _) in URLSPLIT_CASES {
+        let got = urlsplit(url, scheme);
+        assert_eq!(
+            got.as_ref().ok().map(parts_of),
+            expected,
+            "urlsplit({url:?}, {scheme:?})"
+        );
+    }
+}
+
+#[test]
+fn urlunsplit_round_trips_python() {
+    for &(url, scheme, _, expected) in URLSPLIT_CASES {
+        let Ok(split) = urlsplit(url, scheme) else {
+            assert_eq!(expected, None, "urlsplit({url:?}, {scheme:?}) raises");
+            continue;
+        };
+        assert_eq!(
+            Some(urlunsplit(&split)).as_deref(),
+            expected,
+            "urlunsplit of urlsplit({url:?}, {scheme:?})"
+        );
+    }
+}
+
+#[test]
+fn urljoin_matches_python() {
+    assert!(!URLJOIN_CASES.is_empty());
+    for &(base, url, expected) in URLJOIN_CASES {
+        assert_eq!(
+            urljoin(base, url).ok().as_deref(),
+            expected,
+            "urljoin({base:?}, {url:?})"
+        );
+    }
+}
+
+#[test]
+fn urlsplit_error_is_url_error() {
+    assert_eq!(urlsplit("http://[::1", ""), Err(UrlError));
 }
