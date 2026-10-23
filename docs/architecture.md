@@ -16,7 +16,7 @@ exists today; phases are in `phase-plan.md`.
 | `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | planned | `extract`, `bare_extraction`, the extraction cascade in fast mode |
 | `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, the `settings.cfg` defaults and the shared tag lists |
 | `main_extractor.py` | `main_extractor.rs` | planned | content and comment extraction, the element handlers |
-| `htmlprocessing.py` | `html_processing.rs` | partial: everything except the output part exists (tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions and `convert_tags`); `HTML_TAG_MAPPING`, `convert_to_html` and `build_html_output` are Phase 3e | tree cleaning, pruning, link density, text-node handling, `convert_tags` |
+| `htmlprocessing.py` | `html_processing.rs` | partial: everything except the output part exists (tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions and `convert_tags`); `HTML_TAG_MAPPING`, `HTML_CONVERSIONS`, `convert_to_html` and `build_html_output` are Phase 3e | tree cleaning, pruning, link density, text-node handling, `convert_tags` |
 | `xpaths.py` | `xpaths.rs` | partial: the content, comment and discard selectors exist; the metadata selectors are Phase 4 | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | planned | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported | the readability and jusText fallbacks run only when `fast=False` (D-1) |
