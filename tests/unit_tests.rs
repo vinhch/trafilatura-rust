@@ -12,10 +12,10 @@ use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
     MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
     Selector, TAG_CATALOG, Tree, alt, convert_tags, delete_by_link_density, delete_element, dump,
-    handle_formatting, handle_image, handle_lists, handle_paragraphs, handle_quotes,
-    handle_textnode, handle_titles, link_density_test, link_density_test_tables, load_html,
-    parse_document, parse_fragment, process_node, prune_html, prune_unwanted_nodes, sanitize,
-    textfilter, tree_cleaning, tree_cleaning_with, trim,
+    handle_formatting, handle_image, handle_lists, handle_paragraphs, handle_quotes, handle_table,
+    handle_textelem, handle_textnode, handle_titles, link_density_test, link_density_test_tables,
+    load_html, parse_document, parse_fragment, process_node, prune_html, prune_unwanted_nodes,
+    sanitize, span, textfilter, tree_cleaning, tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -963,11 +963,21 @@ fn image_of(html: &str) -> Option<(Tree, NodeId)> {
 
 #[test]
 fn test_images() {
-    // `is_image_file` is ported with `utils`; `handle_textelem` and `extract` come with later phases
+    // `is_image_file` is ported with `utils`; `extract` comes with a later phase
     // tag with attributes
     assert!(image_of(r#"<img src="test.jpg"/>"#).is_some());
     assert!(image_of(r#"<img data-src="test.jpg" alt="text" title="a title"/>"#).is_some());
     assert!(image_of(r#"<img other="test.jpg"/>"#).is_none());
+
+    // HTML conversion
+    let options = default_options();
+    let call = Call::default();
+    let mut tree = xml_tree("<graphic/>");
+    let root = tree.root();
+    assert_eq!(
+        handle_textelem(&mut tree, root, &[], &ctx_for(&options, &call)),
+        Ok(None)
+    );
 
     // a data: URI is no image file
     assert!(
@@ -1095,4 +1105,330 @@ fn test_handle_lists() {
             "{items}"
         );
     }
+}
+
+/// `handle_table(html.fromstring(table), TAG_CATALOG, Extractor(recall=recall))` as `tostring`, `None`
+/// where there is no table.
+fn handle_table_of(tree: &mut Tree, table: NodeId, recall: bool) -> Option<String> {
+    let options = extractor(
+        Format::Python,
+        false,
+        recall,
+        None,
+        (false, false),
+        &[],
+        &[],
+    );
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let processed = handle_table(tree, table, TAG_CATALOG, &ctx).unwrap()?;
+    Some(tostring(tree, processed, true))
+}
+
+#[test]
+fn test_handle_table() {
+    // handle_table output structure on small and broken tables.
+    let cases = [
+        // comments in a table (the html5 tree keeps none)
+        (
+            "<table><!-- c1 --><tr><td>cell text<!-- c2 --></td></tr></table>",
+            false,
+            "<row><cell>cell text</cell></row>",
+        ),
+        (
+            "<table><tr><!-- ignored --><td>visible</td></tr></table>",
+            false,
+            "<row><cell>visible</cell></row>",
+        ),
+        (
+            "<table><tr><td>cell1</td><td>cell2</td></tr><tr><td>cell3</td><td>cell4</td></tr></table>",
+            false,
+            "<row><cell>cell1</cell><cell>cell2</cell></row><row><cell>cell3</cell><cell>cell4</cell></row>",
+        ),
+        (
+            "<table><tr><td><p>text</p><p>more text</p></td></tr></table>",
+            false,
+            "<row><cell><p>text</p><p>more text</p></cell></row>",
+        ),
+        (
+            "<table><tr><td>text<lb/><p>more text</p></td></tr></table>",
+            false,
+            "<row><cell>text<p>more text</p></cell></row>",
+        ),
+        // the ref stays in the cell, a <p> wrapper detached it
+        (
+            "<table><tr><td><ref target='test'>link</ref></td></tr></table>",
+            false,
+            "<row><cell><ref target=\"test\">link</ref></cell></row>",
+        ),
+        (
+            "<table><tr><th>Month</th><th>Days</th></tr><tr><td>January</td><td>31</td></tr></table>",
+            false,
+            "<row><cell role=\"head\">Month</cell><cell role=\"head\">Days</cell></row><row><cell>January</cell><cell>31</cell></row>",
+        ),
+        (
+            "<table><tr><th>Name</th><th colspan='2'>Phone</th></tr><tr><td>J</td><td>p1</td><td>p2</td></tr></table>",
+            false,
+            "<row><cell role=\"head\">Name</cell><cell role=\"head\">Phone</cell><cell role=\"head\"/></row><row><cell>J</cell><cell>p1</cell><cell>p2</cell></row>",
+        ),
+        (
+            "<table><tr><td><hi>highlighted text</hi></td></tr></table>",
+            false,
+            "<row><cell><hi>highlighted text</hi></cell></row>",
+        ),
+        // only the outer table is processed, the extraction walk re-extracts the inner one
+        (
+            "<table><tr><td>\n<table><tr><td>1</td></tr></table>\n</td></tr></table>",
+            false,
+            "<row><cell>\n</cell></row>",
+        ),
+        (
+            "<table><tr><td>\n<table><tr><td>1</td></tr></table>\n</td><td>text1</td></tr><tr><td>text2</td></tr></table>",
+            false,
+            "<row><cell>\n</cell><cell>text1</cell></row><row><cell>text2</cell><cell/></row>",
+        ),
+        (
+            "<table><tr><td>A</td></tr><tr><td><table><tr><td>inner</td></tr></table></td></tr><tr><td>AFTER</td></tr></table>",
+            false,
+            "<row><cell>A</cell></row><row><cell>AFTER</cell></row>",
+        ),
+        // the tail after a nested table is kept, after the cell text or its last child
+        (
+            "<table><tr><td>before<table><tr><td>i</td></tr></table>after</td></tr></table>",
+            false,
+            "<row><cell>before after</cell></row>",
+        ),
+        (
+            "<table><tr><td><del>struck</del><table><tr><td>i</td></tr></table>after</td></tr></table>",
+            false,
+            "<row><cell><del>struck</del> after</cell></row>",
+        ),
+        // lists in cells are only kept in recall mode
+        (
+            "<table><tr><td><p>a list</p><list><item>one</item></list></td></tr></table>",
+            false,
+            "<row><cell><p>a list</p></cell></row>",
+        ),
+        (
+            "<table><tr><td><p>a list</p><list><item>one</item></list></td></tr></table>",
+            true,
+            "<row><cell><p>a list</p><list><item>one</item></list></cell></row>",
+        ),
+        // broken tables: orphan cells, no <tr> at all
+        (
+            "<table><td>cell1</td><tr><td>cell2</td></tr></table>",
+            false,
+            "<row><cell>cell1</cell></row><row><cell>cell2</cell></row>",
+        ),
+        (
+            "<table><td>a</td><td>b</td></table>",
+            false,
+            "<row><cell>a</cell><cell>b</cell></row>",
+        ),
+        // colgroup/col are layout hints, a whitespace-only caption is skipped
+        (
+            "<table><colgroup><col style='width:50%'><col style='width:50%'></colgroup><tr><td>a</td><td>b</td></tr></table>",
+            false,
+            "<row><cell>a</cell><cell>b</cell></row>",
+        ),
+        (
+            "<table><col span='2'><tr><td>x</td><td>y</td></tr></table>",
+            false,
+            "<row><cell>x</cell><cell>y</cell></row>",
+        ),
+        (
+            "<table><col><td>orphan</td><tr><td>normal</td></tr></table>",
+            false,
+            "<row><cell>orphan</cell></row><row><cell>normal</cell></row>",
+        ),
+        (
+            "<table><caption>  </caption><tr><td>x</td></tr></table>",
+            false,
+            "<row><cell>x</cell></row>",
+        ),
+    ];
+    for (table, recall, expected) in cases {
+        let (mut tree, element) = lxml_fromstring(table);
+        assert_eq!(
+            handle_table_of(&mut tree, element, recall).as_deref(),
+            Some(format!("<table>{expected}</table>").as_str()),
+            "{table}"
+        );
+    }
+}
+
+#[test]
+fn test_handle_table_malformed_html5() {
+    // D-2: the html5 parser repairs these three tables, so the tree is not the one libxml2 builds.
+    // Each has an `xml_tree` twin of the libxml2 shape asserting upstream's value.
+    let cases = [
+        // a td directly in the table after a tr gets a row of its own
+        (
+            "<table><tr><td>a</td></tr><td>b</td><tr><td>c</td></tr></table>",
+            Some("<row><cell>a</cell></row><row><cell>b</cell></row><row><cell>c</cell></row>"),
+            "<row><cell>a</cell><cell>b</cell></row><row><cell>c</cell></row>",
+        ),
+        // a p in a tr is foster-parented out: lxml returns the body, which is no table
+        (
+            "<table><tr><p>text</p></tr><tr><td>cell</td></tr></table>",
+            None,
+            "<row><cell>cell</cell></row>",
+        ),
+        // a td in a div in a td closes the outer cell
+        (
+            "<table><tr><td><div><td>inner</td></div></td></tr></table>",
+            Some("<row><cell/><cell>inner</cell></row>"),
+            "<row><cell><cell>inner</cell></cell></row>",
+        ),
+    ];
+    for (table, html5, upstream) in cases {
+        let (mut tree, element) = lxml_fromstring(table);
+        assert_eq!(
+            handle_table_of(&mut tree, element, false),
+            html5.map(|rows| format!("<table>{rows}</table>")),
+            "{table}"
+        );
+        let mut tree = xml_tree(table);
+        let root = tree.root();
+        assert_eq!(
+            handle_table_of(&mut tree, root, false),
+            Some(format!("<table>{upstream}</table>")),
+            "{table}"
+        );
+    }
+}
+
+#[test]
+fn test_colspan_zero_trust() {
+    // `span` must default to 1 for non-decimal values (isdigit() admits superscripts that int() rejects)
+    let cases = [
+        ("1", 1),
+        ("3", 3),
+        ("12", 12),
+        ("\u{b2}", 1),
+        ("1\u{b2}", 1),
+        ("2x", 1),
+        ("", 1),
+        ("-2", 1),
+    ];
+    for (colspan, expected) in cases {
+        let mut tree = xml_tree("<tr/>");
+        let cell = tree.new_element("td");
+        tree.set(cell, "colspan", colspan);
+        assert_eq!(span(&tree, cell, "colspan"), Ok(expected), "{colspan:?}");
+    }
+    // D-2: the html5 parser drops a td outside a table, so the parsed node carries no attribute
+    for colspan in ["3", "12"] {
+        let (tree, cell) = lxml_fromstring(&format!("<td colspan=\"{colspan}\">x</td>"));
+        assert_eq!(span(&tree, cell, "colspan"), Ok(1), "{colspan:?}");
+    }
+}
+
+#[test]
+fn test_nested_block_tail_kept() {
+    // The tail of a nested list or paragraph is kept, whether the block itself is kept or dropped.
+    let cases = [
+        (
+            "<quote>a<list><item/></list> b</quote>",
+            "<quote>a b</quote>",
+        ),
+        ("<quote>a<p><hi/></p> b</quote>", "<quote>a b</quote>"),
+        ("<quote>a<list><item/></list> </quote>", "<quote>a</quote>"),
+        (
+            "<quote>a<list><item/></list>b</quote>",
+            "<quote>a b</quote>",
+        ),
+        (
+            "<quote>a <list><item/></list>b</quote>",
+            "<quote>a b</quote>",
+        ),
+        ("<quote>a<graphic/>b</quote>", "<quote>ab</quote>"),
+        (
+            "<table><tr><td>x<list><item/></list> b</td></tr></table>",
+            "<table><row><cell>x b</cell></row></table>",
+        ),
+        (
+            "<table><tr><td>x<list><item/></list> </td></tr></table>",
+            "<table><row><cell>x</cell></row></table>",
+        ),
+        (
+            "<table><tr><td>x<list><item>i</item></list> b</td></tr></table>",
+            "<table><row><cell>x<list><item>i</item></list> b</cell></row></table>",
+        ),
+    ];
+    let options = extractor(Format::Python, false, true, None, (false, false), &[], &[]);
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let tags: Vec<&str> = TAG_CATALOG.iter().copied().chain(["table"]).collect();
+    for (block, expected) in cases {
+        let mut tree = xml_tree(block);
+        let element = tree.root();
+        let result = if tree.tag(element) == Some("quote") {
+            handle_quotes(&mut tree, element, &ctx)
+        } else {
+            handle_table(&mut tree, element, &tags, &ctx)
+        };
+        assert_eq!(
+            tostring(&tree, result.unwrap().unwrap(), true),
+            expected,
+            "{block}"
+        );
+    }
+}
+
+#[test]
+fn test_exotic_tags() {
+    // `load_mock_page`, `check_tei` and `extract` are not ported yet: `extract` comes with phase 3f,
+    // `check_tei` and the TEI output with phase 6
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    // quotes
+    let mut tree = xml_tree("<quote/>");
+    let root = tree.root();
+    assert_eq!(handle_quotes(&mut tree, root, &ctx), Ok(None));
+    let mut tree = xml_tree("<table/>");
+    let root = tree.root();
+    assert_eq!(handle_table(&mut tree, root, TAG_CATALOG, &ctx), Ok(None));
+    // p within p, and a last <lb> deleted
+    let mut tree = xml_tree("<p>1st part.<p>2nd part.</p><lb/></p>");
+    let root = tree.root();
+    let converted = handle_paragraphs(&mut tree, root, &["p"], &ctx)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        tostring(&tree, converted, true),
+        "<p>1st part. 2nd part.</p>"
+    );
+}
+
+#[test]
+fn test_input() {
+    // `detect_encoding`, `is_dubious_html`, `extract` and `bare_extraction` come with later phases
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    // text elements
+    let mut tree = xml_tree("<p>text</p>");
+    let root = tree.root();
+    let processed = handle_textelem(&mut tree, root, &[], &ctx)
+        .unwrap()
+        .unwrap();
+    assert_eq!(tree.node(processed).text.as_deref(), Some("text"));
+    let mut tree = xml_tree("<unexpected>text</unexpected>");
+    let root = tree.root();
+    assert_eq!(handle_textelem(&mut tree, root, &[], &ctx), Ok(None));
+}
+
+#[test]
+fn test_links() {
+    // the `extract` assertions come with phase 3f
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let mut tree = xml_tree("<ref/>");
+    let root = tree.root();
+    assert_eq!(handle_textelem(&mut tree, root, &[], &ctx), Ok(None));
+    let (mut tree, link) = lxml_fromstring("<a href=\"testlink.html\">Test link text.</a>");
+    assert!(handle_formatting(&mut tree, link, &ctx).is_some());
 }
