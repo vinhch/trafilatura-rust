@@ -11,10 +11,10 @@ use std::collections::HashSet;
 use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
     MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
-    Selector, Tree, alt, convert_tags, delete_by_link_density, delete_element, dump,
-    handle_textnode, link_density_test, link_density_test_tables, load_html, parse_document,
-    parse_fragment, process_node, prune_html, prune_unwanted_nodes, sanitize, textfilter,
-    tree_cleaning, tree_cleaning_with, trim,
+    Selector, TAG_CATALOG, Tree, alt, convert_tags, delete_by_link_density, delete_element, dump,
+    handle_formatting, handle_image, handle_paragraphs, handle_textnode, link_density_test,
+    link_density_test_tables, load_html, parse_document, parse_fragment, process_node, prune_html,
+    prune_unwanted_nodes, sanitize, textfilter, tree_cleaning, tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -412,6 +412,42 @@ fn test_htmlprocessing() {
         r#"<ref target="/x">link</ref> "#.repeat(5)
     ));
     assert!(!link_density_test_tables(&short_table, short_table.root(), &call).unwrap());
+
+    // handle_paragraphs: a trailing <lb> with no tail is stripped from the output
+    let mut tree = xml_tree("<p>text<lb>x</lb></p>");
+    let para = tree.root();
+    let processed = handle_paragraphs(&mut tree, para, &["p", "lb"], &ctx)
+        .unwrap()
+        .unwrap();
+    assert!(tree.find(processed, "lb").is_none());
+
+    // handle_paragraphs: non-INLINE_CARRIED children of <hi> are stripped with a leading space
+    let mut formatting = default_options();
+    formatting.formatting = true;
+    let ctx = ctx_for(&formatting, &call);
+    let mut tree = xml_tree(r##"<p><hi rend="#b">pre<quote>mid</quote>end</hi></p>"##);
+    let para = tree.root();
+    let processed = handle_paragraphs(&mut tree, para, TAG_CATALOG, &ctx)
+        .unwrap()
+        .unwrap();
+    let hi = tree
+        .children(processed)
+        .find(|&c| tree.node(c).name == *"hi")
+        .unwrap();
+    let text = tree.node(hi).text.as_deref().unwrap();
+    assert!(text.contains("pre"));
+    assert!(text.contains(" mid"));
+
+    let mut tree = xml_tree(r##"<p><hi rend="#b">start<lb/>tail</hi></p>"##);
+    let para = tree.root();
+    let processed = handle_paragraphs(&mut tree, para, TAG_CATALOG, &ctx)
+        .unwrap()
+        .unwrap();
+    let hi = tree
+        .children(processed)
+        .find(|&c| tree.node(c).name == *"hi")
+        .unwrap();
+    assert!(tree.node(hi).text.as_deref().unwrap().contains(" tail"));
 }
 
 #[test]
@@ -893,4 +929,65 @@ fn tostring_matches_lxml() {
     tree.node_mut(c).tail = Some(String::new());
     tree.node_mut(d).tail = Some("z".to_string());
     assert_eq!(tostring(&tree, root, true), "<x>t<c></c><d/>z</x>");
+}
+
+#[test]
+fn test_formatting() {
+    // upstream's `ZERO_CONFIG` changes nothing here: `handle_formatting` reads no size option
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    // handle formatting tails
+    let mut tree = xml_tree("<hi>Here is the text.</hi>");
+    let element = tree.root();
+    tree.node_mut(element).tail = Some("And a tail.".to_string());
+    let converted = handle_formatting(&mut tree, element, &ctx).unwrap();
+    assert_eq!(
+        tostring(&tree, converted, true),
+        "<p><hi>Here is the text.</hi>And a tail.</p>"
+    );
+    // no wrapper inside a protected parent
+    let mut tree = xml_tree("<item><hi>Here is the text.</hi></item>");
+    let element = tree.first_child(tree.root()).unwrap();
+    let kept = handle_formatting(&mut tree, element, &ctx).unwrap();
+    assert_eq!(tostring(&tree, kept, true), "<hi>Here is the text.</hi>");
+}
+
+/// `handle_image(html.fromstring(html))`: the tree and the new element, `None` for no image.
+fn image_of(html: &str) -> Option<(Tree, NodeId)> {
+    let (mut tree, img) = lxml_fromstring(html);
+    let image = handle_image(&mut tree, img, None).unwrap()?;
+    Some((tree, image))
+}
+
+#[test]
+fn test_images() {
+    // `is_image_file` is ported with `utils`; `handle_textelem` and `extract` come with later phases
+    // tag with attributes
+    assert!(image_of(r#"<img src="test.jpg"/>"#).is_some());
+    assert!(image_of(r#"<img data-src="test.jpg" alt="text" title="a title"/>"#).is_some());
+    assert!(image_of(r#"<img other="test.jpg"/>"#).is_none());
+
+    // a data: URI is no image file
+    assert!(
+        image_of(
+            r#"<img src="data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg==" alt="text"></img>"#
+        )
+        .is_none()
+    );
+
+    // CNN example
+    let (tree, myimage) = image_of(
+        r#"<img class="media__image media__image--responsive" alt="Harry and Meghan last March, in their final royal engagement." data-src-mini="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-small-169.jpg" data-src-xsmall="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-medium-plus-169.jpg" data-src-small="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-large-169.jpg" data-src-medium="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-exlarge-169.jpg" data-src-large="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-super-169.jpg" data-src-full16x9="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-full-169.jpg" data-src-mini1x1="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-small-11.jpg" data-demand-load="loaded" data-eq-pts="mini: 0, xsmall: 221, small: 308, medium: 461, large: 781" src="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-exlarge-169.jpg" data-eq-state="mini xsmall small medium" data-src="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-exlarge-169.jpg">"#,
+    )
+    .unwrap();
+    assert!(tree.get(myimage, "alt").is_some());
+    assert!(tree.get(myimage, "src").is_some());
+    // modified CNN example: only the `data-src-*` attributes remain
+    let (tree, myimage) = image_of(
+        r#"<img class="media__image media__image--responsive" alt="Harry and Meghan last March, in their final royal engagement." data-src-mini="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-small-169.jpg" data-src-xsmall="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-medium-plus-169.jpg" data-src-small="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-large-169.jpg" data-src-medium="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-exlarge-169.jpg" data-src-large="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-super-169.jpg" data-src-full16x9="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-full-169.jpg" data-src-mini1x1="//cdn.cnn.com/cnnnext/dam/assets/210307091919-harry-meghan-commonwealth-day-small-11.jpg" data-demand-load="loaded" data-eq-pts="mini: 0, xsmall: 221, small: 308, medium: 461, large: 781">"#,
+    )
+    .unwrap();
+    assert!(tree.get(myimage, "alt").is_some());
+    assert!(tree.get(myimage, "src").unwrap().starts_with("http"));
 }

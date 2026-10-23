@@ -26,7 +26,7 @@ pub use parse::parse_fragment;
 pub struct NodeId(u32);
 
 /// Namespace of an element.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Ns {
     /// HTML elements.
     Html,

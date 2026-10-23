@@ -20,6 +20,8 @@ mod error;
 #[allow(dead_code)]
 mod html_processing;
 #[allow(dead_code)]
+mod main_extractor;
+#[allow(dead_code)]
 mod pystr;
 #[allow(dead_code)]
 mod pyurl;
@@ -51,9 +53,13 @@ pub mod __internals {
         link_density_test, link_density_test_tables, process_node, prune_html,
         prune_unwanted_nodes, recover_math, tree_cleaning, tree_cleaning_with,
     };
+    pub use crate::main_extractor::{
+        handle_code_blocks, handle_formatting, handle_image, handle_other_elements,
+        handle_paragraphs, handle_titles,
+    };
     pub use crate::settings::{
         Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED, MANUALLY_STRIPPED,
-        MAX_FILE_SIZE, MIN_FILE_SIZE,
+        MAX_FILE_SIZE, MIN_FILE_SIZE, TAG_CATALOG,
     };
     pub use crate::utils::{
         HtmlInput, decode_file, detect_encoding, load_html, safe_base_url, safe_relative_url,

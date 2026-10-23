@@ -291,7 +291,7 @@ pub fn prune_html(
 }
 
 /// Checks `call` when `visited` is a multiple of `CHECK_INTERVAL`, then counts the node.
-fn tick(visited: &mut usize, call: &Call<'_>) -> Result<(), ExtractError> {
+pub(crate) fn tick(visited: &mut usize, call: &Call<'_>) -> Result<(), ExtractError> {
     if visited.is_multiple_of(CHECK_INTERVAL) {
         call.check()?;
     }
@@ -561,7 +561,7 @@ fn trim_or_none(value: Option<&str>) -> Option<String> {
 }
 
 /// Python truthiness of an lxml text or tail: neither `None` nor `""`.
-fn has_content(value: Option<&str>) -> bool {
+pub(crate) fn has_content(value: Option<&str>) -> bool {
     value.is_some_and(|text| !text.is_empty())
 }
 
