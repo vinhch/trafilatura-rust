@@ -56,7 +56,7 @@ function.
   writes `\s` or `\w` (`IMAGE_EXTENSION` and `RE_FILTER` in `utils.rs`).
 - `re.IGNORECASE` folds U+0130 (capital I with dot) and U+0131 (dotless i) to `i`; Rust `(?i)` does
   not. A pattern that can meet them rewrites each `i` to a class of `i`, U+0130 and U+0131
-  (`ignore_case_i` in `utils.rs`); the `re:test(..., 'i')` selectors of Phase 3b need the same. The
+  (`ignore_case_i` in `pystr.rs`); the `re:test(..., 'i')` selectors of Phase 3b need the same. The
   other special folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and
   need no rewrite.
 - Whitespace and line splitting differ. Python `str.split()`, `str.strip()`, `str.isspace()` and the

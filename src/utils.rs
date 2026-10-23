@@ -11,7 +11,7 @@ use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::context::Ctx;
 use crate::dom::{NodeId, ParseLimits, Tree, parse_document};
 use crate::error::{ExtractError, Rejection};
-use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS};
+use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS, ignore_case_i};
 use crate::settings::MAX_FILE_SIZE;
 
 /// Input accepted by `load_html`.
@@ -448,11 +448,6 @@ pub const TARGET_LANG_ATTRS: [(&str, &str); 2] = [
 /// Splits a language attribute into its two-letter codes.
 // upstream: utils.py::RE_HTML_LANG
 static RE_HTML_LANG: LazyLock<Option<Regex>> = LazyLock::new(|| compile(r"([a-z]{2})"));
-
-// Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
-fn ignore_case_i(pattern: &str) -> String {
-    pattern.replace(['i', 'I'], "[iİı]")
-}
 
 /// Matches an image file name: a non-space run, a dot, an image extension, then a non-word
 /// character or the end. `[^\s]` and `\b` take Python's `\s` and `\w`, which Rust's differ from.

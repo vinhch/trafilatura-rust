@@ -105,6 +105,11 @@ pub(crate) fn is_word(c: char) -> bool {
     in_ranges(WORD, c)
 }
 
+// Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
+pub(crate) fn ignore_case_i(pattern: &str) -> String {
+    pattern.replace(['i', 'I'], "[iİı]")
+}
+
 #[cfg(test)]
 mod tests {
     use regex::Regex;

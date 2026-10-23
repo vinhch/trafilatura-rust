@@ -21,6 +21,8 @@ mod settings;
 mod utils;
 #[allow(dead_code)]
 mod xml;
+#[allow(dead_code)]
+mod xpaths;
 
 pub use cancel::{Call, CancelToken};
 pub use error::{ExtractError, Rejection};
