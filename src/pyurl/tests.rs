@@ -1,6 +1,8 @@
 #![allow(clippy::indexing_slicing)]
 
-use super::cases::{NFKC_COMPOSITION_CASES, UNESCAPE_CASES, URLJOIN_CASES, URLSPLIT_CASES};
+use super::cases::{
+    NFKC_COMPOSITION_CASES, UNESCAPE_CASES, URLJOIN_CASES, URLSPLIT_CASES, URLUNSPLIT_CASES,
+};
 use super::tables::{HTML5_ENTITIES, NFKC_NETLOC_BREAKERS};
 use super::*;
 
@@ -123,4 +125,23 @@ fn urljoin_matches_python() {
 #[test]
 fn urlsplit_error_is_url_error() {
     assert_eq!(urlsplit("http://[::1", ""), Err(UrlError));
+}
+
+#[test]
+fn urlunsplit_matches_python_on_given_parts() {
+    assert!(!URLUNSPLIT_CASES.is_empty());
+    for &([scheme, netloc, path, query, fragment], expected) in URLUNSPLIT_CASES {
+        let parts = SplitResult {
+            scheme: scheme.to_owned(),
+            netloc: netloc.to_owned(),
+            path: path.to_owned(),
+            query: query.to_owned(),
+            fragment: fragment.to_owned(),
+        };
+        assert_eq!(
+            urlunsplit(&parts),
+            expected,
+            "urlunsplit({scheme:?}, {netloc:?}, {path:?}, {query:?}, {fragment:?})"
+        );
+    }
 }

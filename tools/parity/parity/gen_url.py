@@ -298,6 +298,11 @@ URLSPLIT_INPUTS: list[tuple[str, str]] = [
         "HtTp:/x",
         "ftp://u@h:21/pub/f;type=a",
         "tel:+1-816-555-1212;ext=1",
+        # urlunsplit branches: no netloc, so the path decides whether `//` is added
+        "mailto:/x",
+        "mailto:",
+        "////x",
+        "http:////x",
     ]
 ] + [
     ("x", " ftp\t"),
@@ -362,7 +367,9 @@ URLJOIN_INPUTS: list[tuple[str, str]] = [
         ("http://a/b/c", ["http://a/x", "https://a/b/c", "HTTP://A/x", "http:x", "http:/x", "http://"]),
         ("https://a/b/c", ["http://a/x", "https:x", "https://a/x", "//h/x"]),
         ("tel:+1;ext=1", ["+2", "tel:+3"]),
-        ("file:///a/b", ["c", "../c", "//h/c", "file:c"]),
+        ("file:///a/b", ["c", "../c", "//h/c", "file:c", ";", "g;", "d;e"]),
+        ("ws://h/a/b", ["g;", "g;x", ";"]),
+        ("http://h/a/b", ["g;"]),
         ("ws://h/a", ["b", "wss://h/b"]),
         ("git+ssh://h/a/b", ["c", "//i/j"]),
         ("itms-services://h/a", ["b"]),
@@ -397,6 +404,39 @@ def rust_parts(parts: list[str] | None) -> str:
     return "None" if parts is None else "Some([" + ", ".join(rust_str(p) for p in parts) + "])"
 
 
+# (scheme, netloc, path, query, fragment) handed to urlunsplit as is: `urlsplit` never yields a netloc
+# with a relative path, but `urlunsplit` is public.
+URLUNSPLIT_INPUTS: list[tuple[str, str, str, str, str]] = [
+    ("http", "h", "p", "", ""),
+    ("http", "h", "p/q", "a", "b"),
+    ("", "h", "p", "", ""),
+    ("mailto", "h", "p", "", ""),
+    ("http", "h", "", "", ""),
+    ("http", "h", "/p", "", ""),
+    ("http", "", "", "", ""),
+    ("http", "", "/x", "", ""),
+    ("http", "", "x", "", ""),
+    ("http", "", "//x", "", ""),
+    ("http", "", "////x", "q", "f"),
+    ("", "", "//x", "", ""),
+    ("", "", "/x", "", ""),
+    ("", "", "", "", ""),
+    ("mailto", "", "", "", ""),
+    ("mailto", "", "/x", "", ""),
+    ("mailto", "", "x", "", ""),
+    ("mailto", "", "//x", "", ""),
+    ("unknown", "", "/x", "", ""),
+    ("unknown", "", "", "q", ""),
+    ("file", "", "/x", "", ""),
+    ("file", "", "", "", ""),
+    ("", "", "x", "q", "f"),
+    ("", "", "", "q", ""),
+    ("", "", "", "", "f"),
+    ("http", "h", "p", "q", ""),
+    ("http", "h", "p", "", "f"),
+]
+
+
 def url_cases() -> list[str]:
     from urllib.parse import urlunsplit
 
@@ -414,6 +454,12 @@ def url_cases() -> list[str]:
         "#[rustfmt::skip]",
         "pub(crate) const URLSPLIT_CASES: &[UrlSplitCase] = &[",
         *split_rows,
+        "];",
+        "",
+        "/// Five components handed to `urllib.parse.urlunsplit` as they are, and its result.",
+        "#[rustfmt::skip]",
+        "pub(crate) const URLUNSPLIT_CASES: &[([&str; 5], &str)] = &[",
+        *[f"    ([{', '.join(rust_str(c) for c in parts)}], {rust_str(urlunsplit(parts))})," for parts in URLUNSPLIT_INPUTS],
         "];",
         "",
         "/// Base, URL and `urllib.parse.urljoin` of them; `None` where CPython raises `ValueError`.",

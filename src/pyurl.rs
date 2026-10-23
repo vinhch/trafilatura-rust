@@ -364,7 +364,9 @@ fn is_python_ipv6_digits(address: &str) -> bool {
     if parts.len() > MAX_PARTS {
         return false;
     }
-    let last = parts.len() - 1;
+    let Some(last) = parts.len().checked_sub(1) else {
+        return false;
+    };
     // Disregarding the endpoints, the one empty part is the `::`.
     let mut skip_index = None;
     for (i, part) in parts.iter().enumerate().take(last).skip(1) {
@@ -380,16 +382,19 @@ fn is_python_ipv6_digits(address: &str) -> bool {
     let (parts_hi, parts_lo) = match skip_index {
         Some(skip) => {
             // Parts before and after the `::`; an empty endpoint belongs to the `::` itself.
+            // `skip` is an inner index, so `skip >= 1` and `last - skip >= 1`.
             let mut hi = skip;
-            let mut lo = last - skip;
+            let Some(mut lo) = last.checked_sub(skip) else {
+                return false;
+            };
             if first_empty {
-                hi -= 1;
+                hi = hi.saturating_sub(1);
                 if hi != 0 {
                     return false;
                 }
             }
             if last_empty {
-                lo -= 1;
+                lo = lo.saturating_sub(1);
                 if lo != 0 {
                     return false;
                 }
@@ -406,8 +411,15 @@ fn is_python_ipv6_digits(address: &str) -> bool {
             (parts.len(), 0)
         }
     };
-    let (head, _) = parts.split_at(parts_hi);
-    let (_, tail) = parts.split_at(parts.len() - parts_lo);
+    let (Some(head), Some(tail)) = (
+        parts.get(..parts_hi),
+        parts
+            .len()
+            .checked_sub(parts_lo)
+            .and_then(|tail_start| parts.get(tail_start..)),
+    ) else {
+        return false;
+    };
     head.iter()
         .chain(tail)
         .all(|hextet| is_python_hextet(hextet))
