@@ -7,11 +7,12 @@ use std::collections::HashSet;
 
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::context::Ctx;
+use crate::deduplication::duplicate_test;
 use crate::dom::{LiveIter, NodeId, Tree};
 use crate::error::ExtractError;
 use crate::settings::{CUT_EMPTY_ELEMS, Focus, MANUALLY_CLEANED, MANUALLY_STRIPPED};
-use crate::utils::{LINK_FARM_RATIO, trim};
-use crate::xml::delete_element;
+use crate::utils::{LINK_FARM_RATIO, image_src, textfilter, trim};
+use crate::xml::{delete_element, separates_inline};
 use crate::xpaths::Selector;
 use crate::xpaths::select::descendants;
 
@@ -550,3 +551,121 @@ pub fn delete_by_link_density(
 
 #[cfg(test)]
 mod tests;
+
+/// Python's `trim(value) or None`: `None` stays `None`, an empty trim becomes `None`.
+fn trim_or_none(value: Option<&str>) -> Option<String> {
+    value.map(trim).filter(|trimmed| !trimmed.is_empty())
+}
+
+/// Python truthiness of an lxml text or tail: neither `None` nor `""`.
+fn has_content(value: Option<&str>) -> bool {
+    value.is_some_and(|text| !text.is_empty())
+}
+
+/// Converts, formats and probes a potential text element; `None` when it is not worth keeping.
+// upstream: htmlprocessing.py::handle_textnode
+pub fn handle_textnode(
+    tree: &mut Tree,
+    elem: NodeId,
+    ctx: &Ctx<'_>,
+    comments_fix: bool,
+    preserve_spaces: bool,
+) -> Option<NodeId> {
+    let tag = tree.tag(elem)?;
+    if tag == "graphic" && image_src(tree, elem).is_some() {
+        return Some(elem);
+    }
+    let is_lb = tag == "lb";
+    let node = tree.node(elem);
+    if tag == "done"
+        || (tree.child_count(elem) == 0
+            && !has_content(node.text.as_deref())
+            && !has_content(node.tail.as_deref())
+            && (comments_fix || !separates_inline(tree, elem)))
+    {
+        return None;
+    }
+
+    // lb bypass
+    if !comments_fix && is_lb {
+        if !preserve_spaces {
+            let tail = trim_or_none(tree.node(elem).tail.as_deref());
+            tree.node_mut(elem).tail = tail;
+        }
+        // no textfilter/dedup for lb, unlike process_node: the two probes are not interchangeable
+        return Some(elem);
+    }
+
+    if !has_content(tree.node(elem).text.as_deref()) && tree.child_count(elem) == 0 {
+        // try the tail
+        let node = tree.node_mut(elem);
+        node.text = node.tail.take();
+        node.tail = Some(String::new());
+        // handle differently for br/lb
+        if comments_fix && is_lb {
+            tree.set_name(elem, "p");
+        }
+    }
+
+    // trim
+    if !preserve_spaces {
+        let node = tree.node(elem);
+        let text = trim_or_none(node.text.as_deref());
+        let tail = if has_content(node.tail.as_deref()) {
+            trim_or_none(node.tail.as_deref())
+        } else {
+            node.tail.clone()
+        };
+        let node = tree.node_mut(elem);
+        node.text = text;
+        node.tail = tail;
+    }
+
+    // filter content
+    if (!has_content(tree.node(elem).text.as_deref()) && textfilter(tree, elem))
+        || (ctx.options.dedup && duplicate_test(tree, elem, ctx))
+    {
+        return None;
+    }
+    Some(elem)
+}
+
+/// Converts, formats and probes a potential text element (light format).
+// upstream: htmlprocessing.py::process_node
+pub fn process_node(tree: &mut Tree, elem: NodeId, ctx: &Ctx<'_>) -> Option<NodeId> {
+    let node = tree.node(elem);
+    if tree.tag(elem)? == "done"
+        || (tree.child_count(elem) == 0
+            && !has_content(node.text.as_deref())
+            && !has_content(node.tail.as_deref()))
+    {
+        return None;
+    }
+
+    // trim
+    let node = tree.node(elem);
+    let text = trim_or_none(node.text.as_deref());
+    let tail = trim_or_none(node.tail.as_deref());
+    let node = tree.node_mut(elem);
+    node.text = text;
+    node.tail = tail;
+
+    // adapt content string
+    if tree.tag(elem) != Some("lb")
+        && !has_content(tree.node(elem).text.as_deref())
+        && has_content(tree.node(elem).tail.as_deref())
+        && tree.child_count(elem) == 0
+    {
+        let node = tree.node_mut(elem);
+        node.text = node.tail.take();
+    }
+
+    // content checks
+    let node = tree.node(elem);
+    if (has_content(node.text.as_deref()) || has_content(node.tail.as_deref()))
+        && (textfilter(tree, elem) || (ctx.options.dedup && duplicate_test(tree, elem, ctx)))
+    {
+        return None;
+    }
+    Some(elem)
+}

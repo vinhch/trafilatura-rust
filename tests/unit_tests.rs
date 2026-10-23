@@ -11,9 +11,10 @@ use std::collections::HashSet;
 use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
     MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
-    Selector, Tree, alt, delete_by_link_density, delete_element, dump, link_density_test,
-    link_density_test_tables, load_html, parse_document, parse_fragment, prune_html,
-    prune_unwanted_nodes, sanitize, textfilter, tree_cleaning, tree_cleaning_with, trim,
+    Selector, Tree, alt, delete_by_link_density, delete_element, dump, handle_textnode,
+    link_density_test, link_density_test_tables, load_html, parse_document, parse_fragment,
+    process_node, prune_html, prune_unwanted_nodes, sanitize, textfilter, tree_cleaning,
+    tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -279,6 +280,13 @@ fn dump_lines(lines: &[&str]) -> String {
     lines.iter().map(|line| format!("{line}\n")).collect()
 }
 
+/// `etree.fromstring(source)[0]`: the tree and the first child of its root.
+fn first_child_of(source: &str) -> (Tree, NodeId) {
+    let tree = xml_tree(source);
+    let child = tree.children(tree.root()).next().unwrap();
+    (tree, child)
+}
+
 #[test]
 fn test_htmlprocessing() {
     // upstream's first line, `xml.xmltotxt(None, ...)`, is phase 3e
@@ -301,6 +309,41 @@ fn test_htmlprocessing() {
     delete_element(&mut tree, root, true);
     assert_eq!(dump(&tree, DumpMode::Exact), before);
     // phase 3e: merge_with_parent
+
+    // test tail of node deleted if set as text
+    let (mut tree, node) = first_child_of("<div><p></p>tail</div>");
+    process_node(&mut tree, node, &ctx);
+    assert_eq!(tree.node(node).text.as_deref(), Some("tail"));
+    assert_eq!(tree.node(node).tail, None);
+    let (mut tree, node) = first_child_of("<list><item></item>text in tail</list>");
+    process_node(&mut tree, node, &ctx);
+    assert_eq!(tree.node(node).text.as_deref(), Some("text in tail"));
+    assert_eq!(tree.node(node).tail, None);
+    let (mut tree, line_break) = first_child_of("<p><lb/>tail</p>");
+    process_node(&mut tree, line_break, &ctx);
+    assert_eq!(tree.node(line_break).text, None);
+    assert_eq!(tree.node(line_break).tail.as_deref(), Some("tail"));
+    let (mut tree, node) = first_child_of("<div><p>some text</p>tail</div>");
+    process_node(&mut tree, node, &ctx);
+    assert_eq!(tree.node(node).text.as_deref(), Some("some text"));
+    assert_eq!(tree.node(node).tail.as_deref(), Some("tail"));
+    let (mut tree, node) =
+        first_child_of("<p><ref target='url'><hi rend='#b'>bold</hi>inner</ref>outer</p>");
+    let processed = handle_textnode(&mut tree, node, &ctx, true, false).unwrap();
+    assert_eq!(tree.node(processed).tail.as_deref(), Some("outer"));
+    let (mut tree, node) = first_child_of("<p><ref target='url'>text</ref>tail</p>");
+    let processed = handle_textnode(&mut tree, node, &ctx, true, false).unwrap();
+    assert_eq!(tree.node(processed).tail.as_deref(), Some("tail"));
+    assert_eq!(tree.node(processed).text.as_deref(), Some("text"));
+    let (mut tree, node) = first_child_of("<p><ref target='url'></ref>tail</p>");
+    let processed = handle_textnode(&mut tree, node, &ctx, true, false).unwrap();
+    assert_eq!(tree.node(processed).tail.as_deref(), Some(""));
+    assert_eq!(tree.node(processed).text.as_deref(), Some("tail"));
+    let (mut tree, node) =
+        first_child_of("<p><ref target='url'>text<hi rend='#b'>bold</hi></ref>tail</p>");
+    let processed = handle_textnode(&mut tree, node, &ctx, true, false).unwrap();
+    assert_eq!(tree.node(processed).tail.as_deref(), Some("tail"));
+    assert_eq!(tree.node(processed).text.as_deref(), Some("text"));
 
     // fix for bug 807
     let (mut tree, node) = lxml_fromstring("<div><p><span>span</span> span tail</p> p tail </div>");

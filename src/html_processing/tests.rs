@@ -189,3 +189,106 @@ fn backup_counts_nested_match_once() {
     assert_eq!(tree.text_content(body), "keep keep");
     assert!(tree.find(body, "div").is_none());
 }
+
+/// Runs `handle_textnode` on the `tag` child of `<p>` given `text` and `tail`; returns whether it
+/// is kept, then the child's tag, text and tail afterwards.
+fn textnode_case(
+    tag: &str,
+    attrs_list: &[(&str, &str)],
+    text: Option<&str>,
+    tail: Option<&str>,
+    comments_fix: bool,
+    preserve_spaces: bool,
+) -> (bool, String, Option<String>, Option<String>) {
+    let name = |n: &str| LocalName::from(n);
+    let mut tree = Tree::new(name("p"), Ns::Html, vec![]);
+    let child = tree.add_child(tree.root(), name(tag), Ns::Html, attrs(attrs_list));
+    tree.node_mut(child).text = text.map(str::to_string);
+    tree.node_mut(child).tail = tail.map(str::to_string);
+    let options = options();
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    let kept = handle_textnode(&mut tree, child, &ctx, comments_fix, preserve_spaces).is_some();
+    let node = tree.node(child);
+    (
+        kept,
+        node.name.to_string(),
+        node.text.clone(),
+        node.tail.clone(),
+    )
+}
+
+#[test]
+fn textnode_empty_tail_stays_empty_string() {
+    // oracle: run('<p><x/> </p>'): handle_textnode(n, Extractor()) is None, n.text None, n.tail ''
+    let (kept, _, text, tail) = textnode_case("x", &[], None, Some(" "), true, false);
+    assert!(!kept);
+    assert_eq!(text, None);
+    assert_eq!(tail.as_deref(), Some(""));
+    // oracle: run('<p><x/> a </p>'): kept, n.text 'a', n.tail ''
+    let (kept, _, text, tail) = textnode_case("x", &[], None, Some(" a "), true, false);
+    assert!(kept);
+    assert_eq!(text.as_deref(), Some("a"));
+    assert_eq!(tail.as_deref(), Some(""));
+}
+
+#[test]
+fn textnode_graphic_with_src_is_kept() {
+    // oracle: run('<p><graphic src="a.jpg"/></p>'): kept, n.text None, n.tail None
+    let (kept, _, text, tail) =
+        textnode_case("graphic", &[("src", "a.jpg")], None, None, true, false);
+    assert!(kept);
+    assert_eq!((text, tail), (None, None));
+    // oracle: run('<p><graphic/>t</p>'): kept, n.text 't', n.tail ''
+    let (kept, _, text, tail) = textnode_case("graphic", &[], None, Some("t"), true, false);
+    assert!(kept);
+    assert_eq!(text.as_deref(), Some("t"));
+    assert_eq!(tail.as_deref(), Some(""));
+}
+
+#[test]
+fn textnode_done_is_dropped() {
+    // oracle: run('<p><done>x</done></p>'): None, n.text 'x', n.tail None, untouched
+    let (kept, _, text, tail) = textnode_case("done", &[], Some("x"), None, true, false);
+    assert!(!kept);
+    assert_eq!(text.as_deref(), Some("x"));
+    assert_eq!(tail, None);
+}
+
+#[test]
+fn textnode_lb_bypass() {
+    // oracle: run('<p><lb/> a   b </p>', comments_fix=False): kept, n.text None, n.tail 'a b'
+    let (kept, tag, text, tail) = textnode_case("lb", &[], None, Some(" a   b "), false, false);
+    assert!(kept);
+    assert_eq!(tag, "lb");
+    assert_eq!(text, None);
+    assert_eq!(tail.as_deref(), Some("a b"));
+    // oracle: run('<p><lb/> a   b </p>', comments_fix=False, preserve_spaces=True): n.tail ' a   b '
+    let (kept, _, text, tail) = textnode_case("lb", &[], None, Some(" a   b "), false, true);
+    assert!(kept);
+    assert_eq!(text, None);
+    assert_eq!(tail.as_deref(), Some(" a   b "));
+    // oracle: run('<p><lb/>   </p>', comments_fix=False): kept, n.tail None
+    let (kept, _, _, tail) = textnode_case("lb", &[], None, Some("   "), false, false);
+    assert!(kept);
+    assert_eq!(tail, None);
+}
+
+#[test]
+fn textnode_lb_becomes_p_with_comments_fix() {
+    // oracle: run('<p><lb/>tail</p>', comments_fix=True): kept, n.tag 'p', n.text 'tail', n.tail ''
+    let (kept, tag, text, tail) = textnode_case("lb", &[], None, Some("tail"), true, false);
+    assert!(kept);
+    assert_eq!(tag, "p");
+    assert_eq!(text.as_deref(), Some("tail"));
+    assert_eq!(tail.as_deref(), Some(""));
+    // oracle: run('<p><lb/>tail</p>', comments_fix=True, preserve_spaces=True): same
+    let (kept, tag, text, tail) = textnode_case("lb", &[], None, Some("tail"), true, true);
+    assert!(kept);
+    assert_eq!(tag, "p");
+    assert_eq!(text.as_deref(), Some("tail"));
+    assert_eq!(tail.as_deref(), Some(""));
+}

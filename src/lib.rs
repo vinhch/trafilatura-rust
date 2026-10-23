@@ -45,9 +45,9 @@ pub mod __internals {
         parse_fragment,
     };
     pub use crate::html_processing::{
-        collect_link_info, delete_by_link_density, is_paragraph_listing, link_density_test,
-        link_density_test_tables, prune_html, prune_unwanted_nodes, recover_math, tree_cleaning,
-        tree_cleaning_with,
+        collect_link_info, delete_by_link_density, handle_textnode, is_paragraph_listing,
+        link_density_test, link_density_test_tables, process_node, prune_html,
+        prune_unwanted_nodes, recover_math, tree_cleaning, tree_cleaning_with,
     };
     pub use crate::settings::{
         Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED, MANUALLY_STRIPPED,
