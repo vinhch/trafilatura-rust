@@ -978,4 +978,6 @@ pub fn convert_tags(
 }
 
 #[cfg(test)]
+mod cases;
+#[cfg(test)]
 mod tests;

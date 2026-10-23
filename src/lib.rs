@@ -41,8 +41,8 @@ pub use error::{ExtractError, Rejection};
 pub mod __internals {
     pub use crate::context::Ctx;
     pub use crate::dom::{
-        DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, parse_document,
-        parse_fragment,
+        DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from,
+        parse_document, parse_fragment,
     };
     pub use crate::html_processing::{
         CODE_INDICATORS, REND_TAG_MAPPING, collect_link_info, convert_deletions, convert_details,

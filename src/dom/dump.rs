@@ -66,10 +66,10 @@ fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, Arc<str>)> {
 
 /// Copies `source` as the parity harness copies html5lib trees into lxml: attributes with invalid
 /// names are dropped, an element with an invalid name is replaced by its content, invalid
-/// characters are stripped. Returns the copy and whether anything changed.
-fn normalize(source: &Tree) -> (Tree, bool) {
+/// characters are stripped. Returns the copy of the subtree at `start` and whether anything changed.
+fn normalize(source: &Tree, start: NodeId) -> (Tree, bool) {
     let mut changed = false;
-    let src_root = source.root();
+    let src_root = start;
     let root = source.node(src_root);
     let mut out = Tree::new(root.name.clone(), root.ns, copy_attrs(root, &mut changed));
     let out_root = out.root();
@@ -169,20 +169,30 @@ fn push_element_line(out: &mut String, depth: usize, node: &Node) {
 /// (tail); whitespace-only text is kept, empty text is omitted. The flag is true when the copy rule
 /// of `DumpMode::Normalized` changed the tree; it is always false for `Exact`.
 pub fn dump(tree: &Tree, mode: DumpMode) -> (String, bool) {
+    dump_from(tree, tree.root(), mode)
+}
+
+/// `dump` of the subtree at `id`, which may be detached from the root (a copy that `copy` returned).
+/// The element at `id` is the root of the dump, so its tail is left out.
+pub fn dump_from(tree: &Tree, id: NodeId, mode: DumpMode) -> (String, bool) {
     let (copy, changed) = match mode {
         DumpMode::Exact => (None, false),
         DumpMode::Normalized => {
-            let (copy, changed) = normalize(tree);
+            let (copy, changed) = normalize(tree, id);
             (Some(copy), changed)
         }
     };
-    let tree = copy.as_ref().unwrap_or(tree);
-    let root = tree.node(tree.root());
+    // a normalized copy is its own tree with the subtree as root
+    let (tree, start) = match &copy {
+        Some(copy) => (copy, copy.root()),
+        None => (tree, id),
+    };
+    let root = tree.node(start);
     let mut out = String::new();
     push_element_line(&mut out, 0, root);
     push_text_line(&mut out, 1, root.text.as_deref());
     // (element, depth, next child)
-    let mut stack: Vec<(NodeId, usize, Option<NodeId>)> = vec![(tree.root(), 0, root.first_child)];
+    let mut stack: Vec<(NodeId, usize, Option<NodeId>)> = vec![(start, 0, root.first_child)];
     while let Some(frame) = stack.last_mut() {
         let (id, depth, next) = *frame;
         let Some(child_id) = next else {

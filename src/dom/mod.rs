@@ -17,7 +17,7 @@ pub use walk::LiveIter;
 
 // Only the `__internals` module and the tests use these until the pipeline lands.
 #[cfg(any(feature = "__internals", test))]
-pub use dump::{DumpMode, dump};
+pub use dump::{DumpMode, dump, dump_from};
 #[cfg(any(feature = "__internals", test))]
 pub use parse::parse_fragment;
 

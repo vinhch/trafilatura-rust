@@ -186,6 +186,61 @@ fn dump_normalized_unchanged_tree_is_not_flagged() {
 }
 
 #[test]
+fn dump_from_detached_copy() {
+    let mut tree = parse("<div id=\"x\">t<p class=\"a\">a<b>b</b>c</p>tail<i>i</i></div>tail2");
+    let div = find(&tree, "div");
+    let copy = tree.copy(div);
+    assert_eq!(tree.node(copy).parent(), None);
+    // the copy is the root of its dump and its tail is left out
+    let expected = concat!(
+        "div id=\"x\"
+",
+        "  #text \"t\"
+",
+        "  p class=\"a\"
+",
+        "    #text \"a\"
+",
+        "    b
+",
+        "      #text \"b\"
+",
+        "    #text \"c\"
+",
+        "  #text \"tail\"
+",
+        "  i
+",
+        "    #text \"i\"
+",
+    );
+    for mode in [DumpMode::Exact, DumpMode::Normalized] {
+        assert_eq!(dump_from(&tree, copy, mode), (expected.to_string(), false));
+        assert_eq!(dump_from(&tree, div, mode), (expected.to_string(), false));
+    }
+    // the root as `id` is `dump`
+    assert_eq!(
+        dump_from(&tree, tree.root(), DumpMode::Exact),
+        dump(&tree, DumpMode::Exact)
+    );
+    // the copy rule runs on the subtree only: the invalid name outside it is not counted
+    let mut tree = parse("<p @a=\"1\">x</p><div id=\"y\">z</div>");
+    let div = find(&tree, "div");
+    let copy = tree.copy(div);
+    assert!(dump(&tree, DumpMode::Normalized).1);
+    assert_eq!(
+        dump_from(&tree, copy, DumpMode::Normalized),
+        (
+            "div id=\"y\"
+  #text \"z\"
+"
+            .to_string(),
+            false
+        )
+    );
+}
+
+#[test]
 fn tree_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Tree>();
