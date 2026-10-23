@@ -292,3 +292,75 @@ fn textnode_lb_becomes_p_with_comments_fix() {
     assert_eq!(text.as_deref(), Some("tail"));
     assert_eq!(tail.as_deref(), Some(""));
 }
+
+/// Runs `handle_textnode` (`light` false) or `process_node` (`light` true) on a child named `tag`
+/// in namespace `ns`; returns whether it is kept, then its text and tail afterwards.
+fn foreign_case(
+    ns: Ns,
+    tag: &str,
+    text: Option<&str>,
+    tail: Option<&str>,
+    light: bool,
+) -> (bool, Option<String>, Option<String>) {
+    let mut tree = Tree::new(LocalName::from("p"), Ns::Html, vec![]);
+    let child = tree.add_child(tree.root(), LocalName::from(tag), ns, vec![]);
+    tree.node_mut(child).text = text.map(str::to_string);
+    tree.node_mut(child).tail = tail.map(str::to_string);
+    let options = options();
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    let kept = if light {
+        process_node(&mut tree, child, &ctx)
+    } else {
+        handle_textnode(&mut tree, child, &ctx, true, false)
+    }
+    .is_some();
+    let node = tree.node(child);
+    (kept, node.text.clone(), node.tail.clone())
+}
+
+#[test]
+fn foreign_namespace_elements_are_kept_as_text() {
+    let s = |value: &str| Some(value.to_string());
+    // oracle: p = etree.Element('p'); c = etree.SubElement(p, '{http://www.w3.org/1998/Math/MathML}math')
+    // with c.text, c.tail = 'x', None / None, ' t ' / 'x', ' t ': handle_textnode(c, Extractor()) is kept,
+    // leaving (text, tail) = ('x', None) / ('t', '') / ('x', 't')
+    assert_eq!(
+        foreign_case(Ns::MathMl, "math", Some("x"), None, false),
+        (true, s("x"), None)
+    );
+    assert_eq!(
+        foreign_case(Ns::MathMl, "math", None, Some(" t "), false),
+        (true, s("t"), s(""))
+    );
+    assert_eq!(
+        foreign_case(Ns::MathMl, "math", Some("x"), Some(" t "), false),
+        (true, s("x"), s("t"))
+    );
+    // oracle: same elements through process_node(c, Extractor()): kept, ('x', None) / ('t', None) / ('x', 't')
+    assert_eq!(
+        foreign_case(Ns::MathMl, "math", Some("x"), None, true),
+        (true, s("x"), None)
+    );
+    assert_eq!(
+        foreign_case(Ns::MathMl, "math", None, Some(" t "), true),
+        (true, s("t"), None)
+    );
+    assert_eq!(
+        foreign_case(Ns::MathMl, "math", Some("x"), Some(" t "), true),
+        (true, s("x"), s("t"))
+    );
+    // oracle: an element tagged '{http://www.w3.org/2000/svg}done' with text 'x' is kept by
+    // handle_textnode, because its tag is not 'done'
+    assert_eq!(
+        foreign_case(Ns::Svg, "done", Some("x"), None, false),
+        (true, s("x"), None)
+    );
+    assert_eq!(
+        foreign_case(Ns::Svg, "done", Some("x"), None, true),
+        (true, s("x"), None)
+    );
+}

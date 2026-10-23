@@ -571,13 +571,13 @@ pub fn handle_textnode(
     comments_fix: bool,
     preserve_spaces: bool,
 ) -> Option<NodeId> {
-    let tag = tree.tag(elem)?;
-    if tag == "graphic" && image_src(tree, elem).is_some() {
+    let tag = tree.tag(elem);
+    if tag == Some("graphic") && image_src(tree, elem).is_some() {
         return Some(elem);
     }
-    let is_lb = tag == "lb";
+    let is_lb = tag == Some("lb");
     let node = tree.node(elem);
-    if tag == "done"
+    if tag == Some("done")
         || (tree.child_count(elem) == 0
             && !has_content(node.text.as_deref())
             && !has_content(node.tail.as_deref())
@@ -634,7 +634,7 @@ pub fn handle_textnode(
 // upstream: htmlprocessing.py::process_node
 pub fn process_node(tree: &mut Tree, elem: NodeId, ctx: &Ctx<'_>) -> Option<NodeId> {
     let node = tree.node(elem);
-    if tree.tag(elem)? == "done"
+    if tree.tag(elem) == Some("done")
         || (tree.child_count(elem) == 0
             && !has_content(node.text.as_deref())
             && !has_content(node.tail.as_deref()))
