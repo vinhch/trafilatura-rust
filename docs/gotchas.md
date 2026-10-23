@@ -20,6 +20,38 @@ function.
   that may lie inside the removed subtree, and the walk ends at that subtree's root: later matches
   are never visited. `Tree::iter` is the collected form (`list(tree.iter())`, an XPath result);
   `LiveIter` is the live one. Each call site ports the form upstream wrote.
+- A live `iter` ends when its precomputed successor is stripped. lxml fixes the next match before the
+  loop body runs; when the body then strips that node (`strip_tags` unlinks it and moves its children
+  out), the walk continues from a childless, parentless node and stops. `handle_paragraphs` hits it
+  (`<p>A <hi>b<lb/>c</hi> e <hi>f</hi> g</p>` gives `<p>A <hi>b c</hi> e </p>`), and so does
+  `handle_lists` through `process_nested_elements`. Both are upstream bugs, ported as they are:
+  `LiveIter` fixes its next match the same way, and `Tree::strip_tags` leaves the stripped node
+  detached with no children, text or tail.
+- `element.find("x")` is a child search, `element.find(".//x")` a descendant search. `Tree::find`
+  is the descendant form; `is_code_block_element` (`find("code")`) and `test_htmlprocessing`
+  (`find("hi")`) need `tree.children(x).find(..)`.
+- `//` reads the whole document. `subtree.xpath("//p//text()")` is absolute: from a subtree it reads
+  every `p` of the document the subtree was found in, and a subtree that pruning detached still
+  reads the original document (libxml2 evaluates `/` against it). `extract_body` takes the root of
+  the tree it received for this, never `root_of(subtree)`; the text nodes under nested `p` count
+  once.
+- A namespaced tag is a plain string in the places upstream treats tags as strings: `.//*` includes
+  SVG and MathML elements (`{ns}svg` in the `tags` set of `_extract`, so its `tags == {"lb"}` tests
+  fail), `strip_tags(element, *{str(c.tag) ...})` in `handle_paragraphs` strips them, and
+  `SubElement(orig, processed.tag)` in `define_newelem` keeps the namespace. The port strips every
+  descendant whose tag is outside `potential_tags` and `done`, foreign ones included, and builds
+  copies with `new_element_like`.
+- `str.isdecimal` is Unicode `Nd`, and `int` reads any `Nd` digit (`"٣"` is 3, `"１２"` is 12;
+  `"²"` is not `Nd`), then raises `ValueError` past 4300 digits (`"0" * 4301`, `"٣" * 4301`). `_span`
+  parses with both, so `rowspan="٣"` spans three rows and a 4301-digit span rejects the page
+  (`Rejection::InvalidValue`). `pystr::is_decimal`, `decimal_value` and `MAX_STR_DIGITS` hold
+  them. `colspan="0"` gives 0, so `range(colspan - 1)` is empty.
+- `itertext` yields `''` for an empty text node (`e[0].tail = ""` gives `['', '', '']`), and
+  `" ".join` counts it: the comments text of `<div id='comments'><p>One comment here</p><br>Second
+  line<p>third</p></div>` has two spaces before `third`, because `handle_textnode` leaves the former
+  `lb` with tail `""`. `Tree::itertext` drops empty pieces; every `" ".join(... .itertext())` uses
+  `Tree::itertext_lxml`. The joined strings feed the length gates of `extract_content` and
+  `core.py`, so a dropped space can flip a branch.
 - The parser is not html5. Upstream parses with `lxml.html.HTMLParser` (libxml2), configured in
   `utils.py` (`HTML_PARSER`: comments and processing instructions removed). libxml2 2.14+ tokenizes
   as HTML5 but builds the tree with its own rules: no implied `tbody`, no adoption agency, different

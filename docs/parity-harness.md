@@ -117,15 +117,27 @@ writes it byte for byte.
 | Generator | Writes | Holds |
 | --- | --- | --- |
 | `gen_printable.py` | `src/pystr/printable.rs` | the `str.isprintable` ranges of the image's Python |
+| `gen_decimal.py` | `src/pystr/decimal.rs` | the run starts of the `Nd` decimal digits of the image's Python |
 | `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
 | `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the HTML5 entity table and the NFKC netloc breakers of the image's Python |
 | `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin` and the two `courlan` helpers on URL strings |
 | `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
+| `gen_main_extractor_cases.py` | `tests/main_extractor_cases/cases.rs` | the seven element handlers on `etree.fromstring` snippets, and `extract_content` or `extract_comments` then `extract_content` on HTML snippets, each with the options it sets and built with `fast=True` (D-1); results are tree dumps and texts |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_url` takes `tables` or `cases` in place of `main`. The two snippet-based files carry the
+`gen_url` takes `tables` or `cases` in place of `main`. The files that hold HTML snippets carry the
 `treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
 parse dumps the same: a snippet that parses differently is changed, never the expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized
 mode) of the result with the dump upstream wrote. A case there may state that its operation must change
 the tree, and the generator fails when it does not.
+
+The cases of `main_extractor` run as an integration test, `tests/main_extractor_cases.rs`, not beside
+the module: half of them start from `etree.fromstring` snippets of converted tags, and the builder
+(`xml_tree`) lives in `tests/trees`. `xml_cases_match_upstream` runs a handler on such a snippet and
+compares the dumps of its result and of the whole snippet afterwards; `html_cases_match_upstream` runs
+`tree_cleaning`, `convert_tags` and the extractor on an HTML snippet and compares the dumps and texts of
+the bodies. Every `Extractor` the generator builds uses `fast=True`, because the crate takes upstream's
+fast path (D-1). `scripts/oracle.sh 'from parity.gen_main_extractor_cases import report; report()'`
+lists the lines of upstream's `main_extractor.py` that no case reaches; a sync that adds a branch
+shows up there.

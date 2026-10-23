@@ -38,8 +38,8 @@ before its code.
 | 3a Foundations | `dom/` mutation, walks and copy in lxml semantics; `pystr`; `settings.rs`; the text helpers of `utils.rs`; the `xml.py` tree helpers | done |
 | 3b Selectors | `xpaths.rs` (content, comment and discard selectors), `BASIC_CLEAN_XPATH` | done |
 | 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | done |
-| 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | next |
-| 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | not started |
+| 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | done |
+| 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | next |
 | 3f `baseline.rs`, `extraction.rs`, public API | `baseline`, `html2txt`, the cascade, `bare_extraction`, `extract`, `Options`, `Extractor`, `Input`, `Document`; corpus parity on `txt`, `markdown`, `html`; memory measurement of the arena copies | not started |
 
 ### Shipped phases
@@ -76,7 +76,7 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-10 | Minimal-versions check: a CI job runs `cargo +nightly update -Z direct-minimal-versions` and the tests, so each declared minimum really builds; add the rule to the Policy in `docs/dependencies.md`. Matters once the crate is published and resolved by ranges instead of this repo's `Cargo.lock`. | Phase 2, before Phase 7 |
 | F-12 | Tighten parity classification: a page in class `encoding`, `normalized` or `python-parser` is excluded whole today; classify each differing line and fail on any line no class explains. | Phase 3 |
 | F-13 | Harness hardening: restore logging and warnings state after the generator tests; write fixture pages and index atomically (temp directory, then rename); parametrize the identity test over pin, upstream version, `max_date` and lock hash. | Phase 3 |
-| F-14 | `dom/`: replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `context`, `courlan`, `deduplication`, `dom`, `html_processing`, `pystr`, `pyurl`, `settings`, `utils`, `xml` and `xpaths` as callers land. | Phase 3 |
+| F-14 | `dom/`: replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `context`, `courlan`, `deduplication`, `dom`, `html_processing`, `main_extractor`, `pystr`, `pyurl`, `settings`, `utils`, `xml` and `xpaths` as callers land. | Phase 3 |
 | F-15 | XML output backend for Phase 6: upstream `xml.py` serializes with `lxml.etree` (`control_xml_output` round-trips through `XMLParser(remove_blank_text=True)` and `tostring(pretty_print=True)`; `validate_tei` checks a DTD). Choose between a hand-written serializer over the arena tree, `quick-xml`'s writer, and `xmloxide` (serializer and DTD validation, already a candidate for F-7). Not checked yet: whether `quick-xml` or `xmloxide` indents exactly as lxml's `pretty_print` (whitespace around text and tails). Judge on byte-exact match with the parity fixtures and on the dependency policy. | Phase 6 |
 | F-16 | `prune_xpath` (D-7): an XPath engine, or a caller-supplied predicate in place of the XPath strings. | Phase 3f |
 | F-17 | Cancellation granularity of the tree walks: `dom/` walks and `LiveIter::new` take no `Call`, and `convert_tags` runs several walks in a row that check it only on a matched element, so a tree without matches runs them unchecked. The bound today is `max_nodes` (D-5). Decide, from a measured cancel latency, whether the walks take a `Call` or `convert_tags` checks it between walks. | Phase 3f |
