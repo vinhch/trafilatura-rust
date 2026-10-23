@@ -9,7 +9,8 @@
 use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
-    Config, Extractor, Focus, Format, ParseLimits, Tree, parse_fragment, sanitize, textfilter, trim,
+    BODY_XPATH, Config, Extractor, Focus, Format, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH,
+    ParseLimits, Selector, Tree, alt, parse_document, parse_fragment, sanitize, textfilter, trim,
 };
 use trafilatura_rust::Call;
 
@@ -19,6 +20,19 @@ fn element_with_text(text: &str) -> (Tree, trafilatura_rust::__internals::NodeId
     let p = tree.children(tree.root()).next().unwrap();
     tree.node_mut(p).text = Some(text.to_string());
     (tree, p)
+}
+
+/// Whether any of the selectors selects a `<tag attrs>` wrapping a paragraph.
+// upstream: tests/unit_tests.py::_xpath_hits
+// Upstream parses the snippet with `etree.fromstring`; the html5 parse selects the same element for
+// these snippets.
+fn xpath_hits(xpaths: &[Selector], attrs: &str, tag: &str) -> bool {
+    let html = format!("<html><body><{tag} {attrs}><p>content</p></{tag}></body></html>");
+    let call = Call::default();
+    let tree = parse_document(&html, &ParseLimits::default(), &call).unwrap();
+    xpaths
+        .iter()
+        .any(|select| !select(&tree, tree.root(), &call).unwrap().is_empty())
 }
 
 fn extractor(
@@ -166,4 +180,85 @@ fn extractor_resolves_like_upstream() {
         (20_000_000, 10)
     );
     assert!(defaults.date_params.original_date && defaults.date_params.extensive_search);
+}
+
+#[test]
+fn test_overall_discard_legacy_tokens() {
+    for cls in ["yin", "zlylin", "mol-factbox"] {
+        assert!(
+            xpath_hits(OVERALL_DISCARD_XPATH, &format!(r#"class="{cls}""#), "div"),
+            "{cls}"
+        );
+    }
+    // removed upstream on 2026-07-10
+    assert!(!xpath_hits(OVERALL_DISCARD_XPATH, r#"class="xg1""#, "div"));
+}
+
+#[test]
+fn test_overall_discard_matches_both_attributes() {
+    let discarded = |attrs: &str| xpath_hits(OVERALL_DISCARD_XPATH, attrs, "div");
+    // token in @id, class written first
+    assert!(discarded(r#"class="x" id="author-box""#));
+    // token in @class, id written first
+    assert!(discarded(r#"id="x" class="sidebar""#));
+    // cookie exception: class-first protects
+    assert!(!discarded(r#"class="hidden-x" id="cookieBanner""#));
+}
+
+#[test]
+fn test_xpath_alt_rejects_empty_group() {
+    assert_eq!(alt(&["a", "b"]).as_deref(), Some("a|b"));
+    // upstream raises ValueError
+    assert_eq!(alt(&[]), None);
+}
+
+#[test]
+fn test_precision_discard_link_token_only() {
+    let discarded = |attrs: &str, tag: &str| xpath_hits(PRECISION_DISCARD_XPATH, attrs, tag);
+    // standalone token still dropped (intended)
+    assert!(discarded(r#"class="link""#, "div"));
+    // token among others
+    assert!(discarded(r#"class="nav link""#, "div"));
+    // compound: no longer dropped
+    assert!(!discarded(r#"class="article-permalink""#, "div"));
+    assert!(!discarded(r#"class="headline-link""#, "div"));
+    assert!(!discarded(r#"class="featured-link--wrap""#, "div"));
+    // 'bottom' still matched at a token boundary
+    assert!(discarded(r#"class="article-bottom""#, "div"));
+    // .//header still discarded
+    assert!(discarded(r#"class="site-header""#, "header"));
+}
+
+#[test]
+fn test_precision_discard_bottom_token_boundary() {
+    let discarded = |attrs: &str| xpath_hits(PRECISION_DISCARD_XPATH, attrs, "div");
+    // page-bottom chrome: still discarded, whichever end of the token 'bottom' sits at
+    assert!(discarded(r#"class="bottom""#));
+    assert!(discarded(r#"class="article-bottom""#));
+    assert!(discarded(r#"class="bottom-bar""#));
+    assert!(discarded(r#"id="bottom""#));
+    assert!(discarded(r#"class="wrapper bottom""#));
+    // spacing/border utilities on real content: 'bottom' mid-token, must NOT be discarded
+    assert!(!discarded(r#"class="Padding-bottom-lg-30""#));
+    assert!(!discarded(r#"class="col-8 Padding-bottom-lg-30 floatL""#));
+    assert!(!discarded(r#"class="border-bottom-0""#));
+    assert!(!discarded(r#"class="mb-bottom-3""#));
+}
+
+#[test]
+fn test_body_xpath_fulltext_class() {
+    for cls in [
+        "fulltext",
+        "FullText",
+        "fullText",
+        "FULLTEXT",
+        "article-fulltext",
+    ] {
+        assert!(
+            xpath_hits(BODY_XPATH, &format!(r#"class="{cls}""#), "div"),
+            "{cls}"
+        );
+    }
+    // GH#780's reported false positive: still matches upstream (documented, not fixed there)
+    assert!(xpath_hits(BODY_XPATH, r#"class="FulltextWrapper""#, "div"));
 }

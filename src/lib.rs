@@ -41,4 +41,7 @@ pub mod __internals {
     pub use crate::utils::{
         HtmlInput, decode_file, detect_encoding, load_html, sanitize, textfilter, trim,
     };
+    pub use crate::xpaths::{
+        BODY_XPATH, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, Selector, alt,
+    };
 }
