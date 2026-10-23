@@ -36,8 +36,8 @@ before its code.
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | 3a Foundations | `dom/` mutation, walks and copy in lxml semantics; `pystr`; `settings.rs`; the text helpers of `utils.rs`; the `xml.py` tree helpers | done |
-| 3b Selectors | `xpaths.rs` (content and comment selectors), `BASIC_CLEAN_XPATH` | next |
-| 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | not started |
+| 3b Selectors | `xpaths.rs` (content and comment selectors), `BASIC_CLEAN_XPATH` | done |
+| 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | next |
 | 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | not started |
 | 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | not started |
 | 3f `baseline.rs`, `extraction.rs`, public API | `baseline`, `html2txt`, the cascade, `bare_extraction`, `extract`, `Options`, `Extractor`, `Input`, `Document`; corpus parity on `txt`, `markdown`, `html`; memory measurement of the arena copies | not started |
@@ -78,3 +78,4 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-13 | Harness hardening: restore logging and warnings state after the generator tests; write fixture pages and index atomically (temp directory, then rename); parametrize the identity test over pin, upstream version, `max_date` and lock hash. | Phase 3 |
 | F-14 | `dom/`: replace the walk to the root per placement and the subtree walk on reparent with stored depth if measurement shows parse time above twice upstream; narrow the `allow(dead_code)` on `context`, `dom`, `pystr`, `settings`, `utils` and `xml` as callers land. | Phase 3 |
 | F-15 | XML output backend for Phase 6: upstream `xml.py` serializes with `lxml.etree` (`control_xml_output` round-trips through `XMLParser(remove_blank_text=True)` and `tostring(pretty_print=True)`; `validate_tei` checks a DTD). Choose between a hand-written serializer over the arena tree, `quick-xml`'s writer, and `xmloxide` (serializer and DTD validation, already a candidate for F-7). Not checked yet: whether `quick-xml` or `xmloxide` indents exactly as lxml's `pretty_print` (whitespace around text and tails). Judge on byte-exact match with the parity fixtures and on the dependency policy. | Phase 6 |
+| F-16 | `prune_xpath` (D-7): an XPath engine, or a caller-supplied predicate in place of the XPath strings. | Phase 3f |

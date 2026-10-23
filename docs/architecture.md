@@ -14,10 +14,10 @@ exists today; phases are in `phase-plan.md`.
 | Upstream | Rust | Status | Scope |
 | --- | --- | --- | --- |
 | `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | planned | `extract`, `bare_extraction`, the extraction cascade in fast mode |
-| `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), the element lists and `DEFAULT_MAX_NODES` exist; `BASIC_CLEAN_XPATH` is planned | `Extractor` options, the `settings.cfg` defaults and the shared tag lists |
+| `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, the `settings.cfg` defaults and the shared tag lists |
 | `main_extractor.py` | `main_extractor.rs` | planned | content and comment extraction, the element handlers |
 | `htmlprocessing.py` | `html_processing.rs` | planned | tree cleaning, pruning, link density, `convert_tags` |
-| `xpaths.py` | `xpaths.rs` | planned | the content, comment, discard and metadata selectors |
+| `xpaths.py` | `xpaths.rs` | partial: the content, comment and discard selectors exist; the metadata selectors are Phase 4 | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | planned | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported | the readability and jusText fallbacks run only when `fast=False` (D-1) |
 | `metadata.py`, `json_metadata.py` | `metadata.rs`, `json_metadata.rs` | planned | metadata from meta tags, JSON-LD, the tree |

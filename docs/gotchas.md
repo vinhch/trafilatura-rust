@@ -41,11 +41,19 @@ function.
   `translate(s, from, to)` maps only the listed characters, so it is not a lowercase:
   `contains(translate(@id,'CM','cm'), 'main-content')` matches `Main-Content` but not `MAIN-CONTENT`.
   Port each call as its own character map.
+- Names and namespaces. In the html5 tree SVG and MathML elements carry a namespace; libxml2 has
+  none. A plain tag name in XPath matches the HTML namespace only, and renaming an element
+  drops its namespace (D-2).
+- XPath position and union. `.//x[1]` selects every `x` that is the first `x` child of its parent;
+  `(.//x)[1]` selects the first `x` in the document. A union in string context (`re:test(@id|@class,
+  ...)`) reads only the first node in document order, which for two attributes is the one written
+  first in the source.
 - Python `re` is not Rust `regex`. Rust `regex` has no lookaround and no backreferences, which
   upstream uses (`xml.py` Markdown escaping uses `(?<!...)`, `(?!...)` and `\2`). Rewrite those as
   explicit code, and test them against upstream's regex on the same inputs. The selectors use regex
   too: EXSLT `re:test(...)` in `xpaths.py` and `settings.py` runs Python `re`, including the
   lookahead in `[Cc]omment(?!ary)` that keeps "commentary" sections out of the comment selector.
+  `re:test(s, p)` is `re.search`, not a full match, and its `'i'` flag is `re.IGNORECASE`.
 - Python `re` anchors differ from Rust `regex`. `$` also matches before a final `\n`; Rust needs
   `\n?\z` for that. `re.match` anchors at the start only, so a pattern used with it starts with
   `\A`; `re.search` does not. `{,n}` is written `{0,n}`.
