@@ -36,7 +36,7 @@ before its code.
 | Sub-phase | Scope | Status |
 | --- | --- | --- |
 | 3a Foundations | `dom/` mutation, walks and copy in lxml semantics; `pystr`; `settings.rs`; the text helpers of `utils.rs`; the `xml.py` tree helpers | done |
-| 3b Selectors | `xpaths.rs` (content and comment selectors), `BASIC_CLEAN_XPATH` | done |
+| 3b Selectors | `xpaths.rs` (content, comment and discard selectors), `BASIC_CLEAN_XPATH` | done |
 | 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | next |
 | 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | not started |
 | 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | not started |
