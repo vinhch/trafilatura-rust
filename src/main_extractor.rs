@@ -17,8 +17,8 @@ use crate::html_processing::{
 use crate::pystr;
 use crate::pyurl::urljoin;
 use crate::settings::{
-    DEDUPE_SCAN_CAP, Extractor, Focus, INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE,
-    MIN_DUPLICATE_LENGTH, TAG_CATALOG,
+    DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Extractor, Focus, INLINE_CARRIED, INLINE_CONSUMING,
+    INLINE_FORMATTABLE, MIN_DUPLICATE_LENGTH, TAG_CATALOG,
 };
 use crate::utils::{FORMATTING_PROTECTED, SPACING_PROTECTED, image_src, text_chars_test, trim};
 use crate::xml::{delete_element, separates_inline};
@@ -58,6 +58,12 @@ pub const QUOTE_TAGS: &[&str] = &[
 /// Largest `colspan` or `rowspan` a cell may carry.
 // upstream: main_extractor.py::_MAX_SPAN
 pub const MAX_SPAN: usize = 100;
+
+/// Arena size, in nodes, above which table construction fails with `Rejection::TreeTooLarge`: a
+/// parse of at most `DEFAULT_MAX_NODES` elements, `extract_content`'s backup copy and the nodes
+/// table construction creates all fit.
+// deviation: D-9
+pub const MAX_OUTPUT_NODES: usize = 4 * DEFAULT_MAX_NODES;
 
 /// Text rendering for the recovery and adjacent dedup checks: plain concatenation, so inline tag
 /// boundaries stay joined (`Hyper<b>link</b>ed` is `Hyperlinked`). Both sides of those checks use
@@ -546,14 +552,23 @@ pub fn handle_paragraphs(
     Ok(text_chars_test(tree.node(processed_element).text.as_deref()).then_some(processed_element))
 }
 
-/// Determines the cell element type and mints a new element.
+/// Determines the cell element type and mints a new element; fails with `Rejection::TreeTooLarge`
+/// once the arena holds more than `max_len` nodes.
 // upstream: main_extractor.py::define_cell_type
-fn define_cell_type(tree: &mut Tree, is_header: bool) -> NodeId {
+fn define_cell_type(
+    tree: &mut Tree,
+    is_header: bool,
+    max_len: usize,
+) -> Result<NodeId, ExtractError> {
+    // deviation: D-9
+    if tree.len() > max_len {
+        return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+    }
     let cell = tree.new_element("cell");
     if is_header {
         tree.set(cell, "role", "head");
     }
-    cell
+    Ok(cell)
 }
 
 /// A `row` under construction with its cell count; `Tree::child_count` walks the children, which
@@ -607,16 +622,18 @@ fn flush_rowspan_phantoms(
     tree: &mut Tree,
     rowspan_map: &mut HashMap<usize, usize>,
     newrow: &mut Row,
-) {
+    max_len: usize,
+) -> Result<(), ExtractError> {
     while let Some(remaining) = rowspan_map.get_mut(&newrow.len) {
         let col = newrow.len;
         *remaining = remaining.saturating_sub(1);
         if *remaining == 0 {
             rowspan_map.remove(&col);
         }
-        let phantom = define_cell_type(tree, false);
+        let phantom = define_cell_type(tree, false, max_len)?;
         newrow.push(tree, phantom);
     }
+    Ok(())
 }
 
 /// Closes a row: trailing rowspan placeholders, padding to `max_cols`, and the row is kept only
@@ -628,20 +645,22 @@ fn finalize_row(
     newrow: &mut Row,
     rowspan_map: &mut HashMap<usize, usize>,
     max_cols: usize,
-) {
-    flush_rowspan_phantoms(tree, rowspan_map, newrow);
+    max_len: usize,
+) -> Result<(), ExtractError> {
+    flush_rowspan_phantoms(tree, rowspan_map, newrow, max_len)?;
     let filled = tree.children(newrow.id).any(|cell| {
         has_content(tree.node(cell).text.as_deref()) || tree.first_child(cell).is_some()
     });
     // padding cells are empty, so they never change `filled`; a row that is dropped is not padded
     if !filled {
-        return;
+        return Ok(());
     }
     while newrow.len < max_cols {
-        let padding = define_cell_type(tree, false);
+        let padding = define_cell_type(tree, false, max_len)?;
         newrow.push(tree, padding);
     }
     tree.append(newtable, newrow.id);
+    Ok(())
 }
 
 /// Extracts the content of a source `td` or `th` into the new `cell`, rewiring inline and block
@@ -736,6 +755,17 @@ pub fn handle_table(
     potential_tags: &[&str],
     ctx: &Ctx<'_>,
 ) -> Result<Option<NodeId>, ExtractError> {
+    handle_table_limited(tree, table_elem, potential_tags, ctx, MAX_OUTPUT_NODES)
+}
+
+/// `handle_table` with the arena size limit as a parameter, so tests can use a small one.
+fn handle_table_limited(
+    tree: &mut Tree,
+    table_elem: NodeId,
+    potential_tags: &[&str],
+    ctx: &Ctx<'_>,
+    max_len: usize,
+) -> Result<Option<NodeId>, ExtractError> {
     let newtable = tree.new_element("table");
     let ptags_with_div: Vec<&str> = potential_tags.iter().copied().chain(["div"]).collect();
 
@@ -803,7 +833,7 @@ pub fn handle_table(
     let max_cols = max_cols.min(MAX_SPAN);
 
     for caption_text in captions.into_iter().filter(|caption| !caption.is_empty()) {
-        let caption_cell = define_cell_type(tree, true);
+        let caption_cell = define_cell_type(tree, true, max_len)?;
         tree.node_mut(caption_cell).text = Some(caption_text);
         let mut caption_row = Row::new(tree);
         caption_row.push(tree, caption_cell);
@@ -813,7 +843,8 @@ pub fn handle_table(
             &mut caption_row,
             &mut HashMap::new(),
             max_cols,
-        );
+            max_len,
+        )?;
     }
 
     let mut header_row_emitted = false;
@@ -827,8 +858,8 @@ pub fn handle_table(
             tick(&mut visited, ctx.call)?;
             let is_header = tree.tag(cell) == Some("th") && !header_row_emitted;
             row_has_th = row_has_th || is_header;
-            flush_rowspan_phantoms(tree, &mut rowspan_map, &mut newrow);
-            let new_child_elem = define_cell_type(tree, is_header);
+            flush_rowspan_phantoms(tree, &mut rowspan_map, &mut newrow, max_len)?;
+            let new_child_elem = define_cell_type(tree, is_header, max_len)?;
             let colspan = span(tree, cell, "colspan")?;
             // mark all spanned columns as occupied for the following rows
             let rowspan = span(tree, cell, "rowspan")?;
@@ -849,12 +880,19 @@ pub fn handle_table(
             newrow.push(tree, new_child_elem);
             // inline colspan: pad with empty cells so the following rows align
             for _ in 1..colspan {
-                let padding = define_cell_type(tree, is_header);
+                let padding = define_cell_type(tree, is_header, max_len)?;
                 newrow.push(tree, padding);
             }
             tree.set_name(cell, "done");
         }
-        finalize_row(tree, newtable, &mut newrow, &mut rowspan_map, max_cols);
+        finalize_row(
+            tree,
+            newtable,
+            &mut newrow,
+            &mut rowspan_map,
+            max_cols,
+            max_len,
+        )?;
         header_row_emitted = header_row_emitted || row_has_th;
     }
     Ok(tree.first_child(newtable).is_some().then_some(newtable))

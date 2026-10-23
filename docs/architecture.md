@@ -81,9 +81,10 @@ upstream has no equivalent.
   adds are options: `max_input_bytes` (planned) is off by default, and a caller that turns it on
   accepts rejections upstream would not make; `max_nodes` (`ParseLimits::max_nodes`: elements created
   while parsing, html5ever's clones included) is on by default at `DEFAULT_MAX_NODES` (D-5), and a
-  caller may lift it with `None`. Recursion only where `MAX_DEPTH` bounds its depth, with a test that
-  proves it fits a 512 KiB stack in a debug build, so a default thread stack is enough (a musl host
-  that spawns its own threads sets 512 KiB).
+  caller may lift it with `None`. Table construction is bounded by the arena size: it fails with
+  `Rejection::TreeTooLarge` above `MAX_OUTPUT_NODES` (D-9). Recursion only where `MAX_DEPTH` bounds
+  its depth, with a test that proves it fits a 512 KiB stack in a debug build, so a default thread
+  stack is enough (a musl host that spawns its own threads sets 512 KiB).
 - No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`); here it is an
   option (`Call`, planned) whose default is computed on each `extract` call, never when the extractor
   is built, and parity fixtures pin it.

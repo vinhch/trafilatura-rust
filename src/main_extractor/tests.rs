@@ -5,7 +5,7 @@ use super::*;
 use crate::cancel::CancelToken;
 use crate::dom::{DumpMode, ParseLimits, dump, dump_from, parse_document};
 use crate::html_processing::{convert_tags, tree_cleaning};
-use crate::settings::{Config, DEDUPE_SCAN_CAP, Format, TAG_CATALOG};
+use crate::settings::{Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Format, TAG_CATALOG};
 
 fn options_with_recall(recall: bool) -> Extractor {
     Extractor::new(
@@ -1108,6 +1108,51 @@ fn deep_nesting_fits_512k_stack() {
         })
         .unwrap();
     worker.join().unwrap();
+}
+
+/// `handle_table_limited` on `source` with room for `room` more nodes than the tree holds.
+fn table_with_room(source: &str, room: usize) -> Result<Option<String>, ExtractError> {
+    let mut tree = xml(source);
+    let root = tree.root();
+    let options = options();
+    let call = Call::default();
+    let max_len = tree.len() + room;
+    let processed = handle_table_limited(
+        &mut tree,
+        root,
+        TAG_CATALOG,
+        &ctx_for(&options, &call),
+        max_len,
+    )?;
+    Ok(processed.map(|id| show(&tree, id)))
+}
+
+#[test]
+fn max_output_nodes_is_four_parses() {
+    assert_eq!(MAX_OUTPUT_NODES, 4 * DEFAULT_MAX_NODES);
+}
+
+#[test]
+fn table_span_amplification_is_bounded() {
+    // each case creates over a million cells on an unbounded run
+    let spanning = "<td rowspan=\"100\" colspan=\"100\">x</td>".repeat(100);
+    let empty_rows = "<tr></tr>".repeat(99);
+    let phantoms = format!("<table><tr>{spanning}</tr>{empty_rows}</table>");
+    let narrow_rows = "<tr><td>b</td></tr>".repeat(20_000);
+    let padding = format!("<table><tr><td colspan=\"100\">a</td></tr>{narrow_rows}</table>");
+    let rejected = Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+    // 5_000: the first row alone overruns it; 15_000: it is the phantoms of the later rows
+    assert_eq!(table_with_room(&phantoms, 5_000), rejected);
+    assert_eq!(table_with_room(&phantoms, 15_000), rejected);
+    assert_eq!(table_with_room(&padding, 100_000), rejected);
+}
+
+#[test]
+fn table_under_the_node_budget_matches_handle_table() {
+    let source = "<table><tr><td colspan=\"3\">a</td></tr><tr><td>b</td></tr></table>";
+    let expected = table(source);
+    assert!(expected.is_some());
+    assert_eq!(table_with_room(source, 100), Ok(expected));
 }
 
 #[test]
