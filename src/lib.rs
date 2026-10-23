@@ -54,8 +54,8 @@ pub mod __internals {
         prune_unwanted_nodes, recover_math, tree_cleaning, tree_cleaning_with,
     };
     pub use crate::main_extractor::{
-        handle_code_blocks, handle_formatting, handle_image, handle_other_elements,
-        handle_paragraphs, handle_titles,
+        handle_code_blocks, handle_formatting, handle_image, handle_lists, handle_other_elements,
+        handle_paragraphs, handle_quotes, handle_titles, process_nested_elements,
     };
     pub use crate::settings::{
         Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED, MANUALLY_STRIPPED,

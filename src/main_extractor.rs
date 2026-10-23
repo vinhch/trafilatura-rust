@@ -195,6 +195,147 @@ fn define_newelem(
     Ok(())
 }
 
+/// Iterates through an element's descendants and rewires them under `new_child_elem`.
+// upstream: main_extractor.py::process_nested_elements
+pub fn process_nested_elements(
+    tree: &mut Tree,
+    child: NodeId,
+    new_child_elem: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<(), ExtractError> {
+    tree.node_mut(new_child_elem).text = tree.node(child).text.clone();
+    let mut walk = LiveIter::descendants(tree, child, &[]);
+    let mut visited = 0usize;
+    while let Some(subelem) = walk.next(tree) {
+        tick(&mut visited, ctx.call)?;
+        let tag = tree.tag(subelem);
+        if tag == Some("list") {
+            let processed = handle_lists(tree, subelem, ctx)?;
+            append_block(tree, new_child_elem, processed, subelem);
+        } else if tag == Some("p") && tree.child_count(subelem) > 0 {
+            let processed = handle_paragraphs(tree, subelem, QUOTE_TAGS, ctx)?;
+            append_block(tree, new_child_elem, processed, subelem);
+        } else if tag == Some("graphic") {
+            let processed = handle_image(tree, subelem, Some(&ctx.options))?;
+            append_block(tree, new_child_elem, processed, subelem);
+        } else if in_tags(tree, subelem, INLINE_CARRIED) {
+            define_newelem(tree, Some(subelem), new_child_elem, true, ctx.call)?;
+        } else {
+            if let Some(last) = tree.last_child(subelem)
+                && text_chars_test(tree.node(subelem).tail.as_deref())
+            {
+                // the tail follows the children, which are appended after this element
+                let tail = tree.node_mut(subelem).tail.take().unwrap_or_default();
+                let last_tail = tree.node(last).tail.as_deref().unwrap_or("");
+                let merged = format!("{last_tail}{tail}");
+                tree.node_mut(last).tail = Some(merged);
+            }
+            let processed = handle_textnode(tree, subelem, ctx, false, false);
+            define_newelem(tree, processed, new_child_elem, false, ctx.call)?;
+        }
+        tree.set_name(subelem, "done");
+    }
+    Ok(())
+}
+
+/// Appends a processed block with the source tail, or keeps that tail as text after the parent's
+/// content.
+// upstream: main_extractor.py::_append_block
+fn append_block(tree: &mut Tree, parent: NodeId, processed: Option<NodeId>, source: NodeId) {
+    let tail = tree.node(source).tail.clone();
+    if let Some(processed) = processed {
+        tree.node_mut(processed).tail = tail;
+        tree.append(parent, processed);
+        return;
+    }
+    let Some(tail) = tail.filter(|tail| text_chars_test(Some(tail))) else {
+        return;
+    };
+    let last = tree.last_child(parent);
+    let before = match last {
+        None => tree.node(parent).text.clone(),
+        Some(last) => tree.node(last).tail.clone(),
+    }
+    .unwrap_or_default();
+    // a dropped block still separates the text around it, a dropped image does not
+    let separate = tree.tag(source) != Some("graphic")
+        && (!before.is_empty() || last.is_some())
+        && !before.chars().next_back().is_some_and(pystr::is_space)
+        && !tail.chars().next().is_some_and(pystr::is_space);
+    let joined = if separate {
+        format!("{before} {tail}")
+    } else {
+        format!("{before}{tail}")
+    };
+    match last {
+        None => tree.node_mut(parent).text = Some(joined),
+        Some(last) => tree.node_mut(last).tail = Some(joined),
+    }
+}
+
+/// Processes list elements including their descendants.
+// upstream: main_extractor.py::handle_lists
+pub fn handle_lists(
+    tree: &mut Tree,
+    element: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<Option<NodeId>, ExtractError> {
+    let processed_element = tree.new_element_like(element);
+
+    if text_chars_test(tree.node(element).text.as_deref()) {
+        let new_child_elem = tree.new_element("item");
+        tree.append(processed_element, new_child_elem);
+        tree.node_mut(new_child_elem).text = tree.node(element).text.clone();
+    }
+
+    let mut walk = LiveIter::descendants(tree, element, &["item"]);
+    let mut visited = 0usize;
+    while let Some(child) = walk.next(tree) {
+        tick(&mut visited, ctx.call)?;
+        // items of a nested list are processed by the recursive call and renamed "done",
+        // but the walk fetches the first of them before that happens: skip it here
+        if tree.tag(child) == Some("done") {
+            continue;
+        }
+        let new_child_elem = tree.new_element("item");
+        if tree.child_count(child) == 0 {
+            if let Some(processed_child) = process_node(tree, child, ctx) {
+                let node = tree.node(processed_child);
+                let text = join_nonempty(node.text.as_deref(), node.tail.as_deref());
+                tree.node_mut(new_child_elem).text = Some(text);
+            }
+        } else {
+            process_nested_elements(tree, child, new_child_elem, ctx)?;
+            let child_tail = tree.node(child).tail.clone();
+            if let Some(last) = tree.last_child(new_child_elem)
+                && text_chars_test(child_tail.as_deref())
+            {
+                let child_tail = child_tail.unwrap_or_default();
+                let merged = match tree.node(last).tail.as_deref() {
+                    Some(last_tail) if text_chars_test(Some(last_tail)) => {
+                        format!("{last_tail} {child_tail}")
+                    }
+                    _ => child_tail,
+                };
+                tree.node_mut(last).tail = Some(merged);
+            }
+        }
+        if is_text_element(tree, Some(new_child_elem))
+            || tree.iter(new_child_elem, &["graphic"]).next().is_some()
+        {
+            update_elem_rendition(tree, child, new_child_elem);
+            tree.append(processed_element, new_child_elem);
+        }
+        tree.set_name(child, "done");
+    }
+    tree.set_name(element, "done");
+    if is_text_element(tree, Some(processed_element)) {
+        update_elem_rendition(tree, element, processed_element);
+        return Ok(Some(processed_element));
+    }
+    Ok(None)
+}
+
 /// Whether the element is a code element by common structural markers.
 // upstream: main_extractor.py::is_code_block_element
 fn is_code_block_element(tree: &Tree, element: NodeId) -> bool {
@@ -234,6 +375,27 @@ pub fn handle_code_blocks(
     rename_done(tree, LiveIter::new(tree, element, &[]), call)?;
     tree.set_name(processed, "code");
     Ok(processed)
+}
+
+/// Processes quote elements.
+// upstream: main_extractor.py::handle_quotes
+pub fn handle_quotes(
+    tree: &mut Tree,
+    element: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<Option<NodeId>, ExtractError> {
+    if is_code_block_element(tree, element) {
+        return handle_code_blocks(tree, element, ctx.call).map(Some);
+    }
+
+    let processed_element = tree.new_element_like(element);
+    process_nested_elements(tree, element, processed_element, ctx)?;
+    if is_text_element(tree, Some(processed_element)) {
+        // avoid double/nested tags
+        tree.strip_tags(processed_element, &["quote"]);
+        return Ok(Some(processed_element));
+    }
+    Ok(None)
 }
 
 /// Handles diverse or unknown elements in the scope of relevant tags.

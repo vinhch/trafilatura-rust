@@ -12,9 +12,10 @@ use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
     MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
     Selector, TAG_CATALOG, Tree, alt, convert_tags, delete_by_link_density, delete_element, dump,
-    handle_formatting, handle_image, handle_paragraphs, handle_textnode, link_density_test,
-    link_density_test_tables, load_html, parse_document, parse_fragment, process_node, prune_html,
-    prune_unwanted_nodes, sanitize, textfilter, tree_cleaning, tree_cleaning_with, trim,
+    handle_formatting, handle_image, handle_lists, handle_paragraphs, handle_quotes,
+    handle_textnode, handle_titles, link_density_test, link_density_test_tables, load_html,
+    parse_document, parse_fragment, process_node, prune_html, prune_unwanted_nodes, sanitize,
+    textfilter, tree_cleaning, tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -990,4 +991,108 @@ fn test_images() {
     .unwrap();
     assert!(tree.get(myimage, "alt").is_some());
     assert!(tree.get(myimage, "src").unwrap().starts_with("http"));
+}
+
+#[test]
+fn test_subelement_tails_unit() {
+    // Whitespace-only tails are not moved, consumed children are not merged back.
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let mut tree = xml_tree("<list><item><div>A <hi>B</hi></div>\n\t </item></list>");
+    let root = tree.root();
+    let item = handle_lists(&mut tree, root, &ctx).unwrap().unwrap();
+    let hi = tree.find(item, "hi").unwrap();
+    assert_eq!(tree.node(hi).tail, None);
+    let mut tree = xml_tree("<p>a <done>old</done> b</p>");
+    let root = tree.root();
+    let paragraph = handle_paragraphs(&mut tree, root, TAG_CATALOG, &ctx)
+        .unwrap()
+        .unwrap();
+    assert!(!tree.itertext(paragraph).collect::<String>().contains("old"));
+    // a teaser heading whose lead was consumed earlier is not emitted again (lanacion)
+    let mut tree = xml_tree("<head><done>Lead. </done>Teaser</head>");
+    let root = tree.root();
+    assert_eq!(handle_titles(&mut tree, root, &ctx), Ok(None));
+}
+
+#[test]
+fn test_srcless_graphic_dropped_text_kept() {
+    // A src-less image is dropped from a quote, the text around it in a paragraph is kept.
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let mut tree = xml_tree("<quote>a<graphic/></quote>");
+    let root = tree.root();
+    let quote = handle_quotes(&mut tree, root, &ctx).unwrap().unwrap();
+    assert_eq!(tostring(&tree, quote, true), "<quote>a</quote>");
+    let mut tree = xml_tree("<p>a<graphic/>b</p>");
+    let root = tree.root();
+    let tags: Vec<&str> = TAG_CATALOG.iter().copied().chain(["graphic"]).collect();
+    let para = handle_paragraphs(&mut tree, root, &tags, &ctx)
+        .unwrap()
+        .unwrap();
+    assert_eq!(tree.itertext(para).collect::<String>(), "ab");
+}
+
+#[test]
+fn test_handle_lists() {
+    // handle_lists output structure on small and malformed lists.
+    let options = default_options();
+    let call = Call::default();
+    let ctx = ctx_for(&options, &call);
+    let cases = [
+        // malformed list (common error): loose text becomes an item
+        (
+            "Description:<item>a</item><item>b</item>",
+            "<item>Description:</item><item>a</item><item>b</item>",
+        ),
+        (
+            "header<item>text</item>",
+            "<item>header</item><item>text</item>",
+        ),
+        ("   <item>text</item>", "<item>text</item>"),
+        ("<item><p>text</p></item>", "<item><p>text</p></item>"),
+        (
+            "<item>text1<p>text2</p></item>",
+            "<item>text1<p>text2</p></item>",
+        ),
+        (
+            "<item>text<lb/>more text</item>",
+            "<item>text<lb/>more text</item>",
+        ),
+        // item tails join the item, after its last child
+        ("<item>text</item>tail", "<item>text tail</item>"),
+        (
+            "<item><p>text</p></item>tail",
+            "<item><p>text</p>tail</item>",
+        ),
+        (
+            "<item><p>text</p>tail1</item>tail",
+            "<item><p>text</p>tail1 tail</item>",
+        ),
+        (
+            "<item><p>text</p>\n</item>tail",
+            "<item><p>text</p>tail</item>",
+        ),
+        (
+            "<item><list><item>text</item></list></item>tail",
+            "<item><list><item>text</item></list>tail</item>",
+        ),
+        // the first item of a nested list does not come back as an item of the parent
+        (
+            "<item>a<list><item>b<list><item>c</item></list></item></list></item>",
+            "<item>a<list><item>b<list><item>c</item></list></item></list></item>",
+        ),
+    ];
+    for (items, expected) in cases {
+        let mut tree = xml_tree(&format!("<list>{items}</list>"));
+        let root = tree.root();
+        let list = handle_lists(&mut tree, root, &ctx).unwrap().unwrap();
+        assert_eq!(
+            tostring(&tree, list, true),
+            format!("<list>{expected}</list>"),
+            "{items}"
+        );
+    }
 }
