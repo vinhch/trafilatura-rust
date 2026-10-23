@@ -33,14 +33,15 @@ fn extractor(options: &CaseOptions) -> Extractor {
         "recall" => Focus::Recall,
         other => panic!("bad focus {other}"),
     };
+    let (with_metadata, only_with_metadata) = (false, false);
     let mut extractor = Extractor::new(
         Config::default(),
         Format::Python,
         focus == Focus::Precision,
         focus == Focus::Recall,
         Some(options.formatting),
-        false,
-        false,
+        with_metadata,
+        only_with_metadata,
         HashSet::new(),
         HashSet::new(),
     );

@@ -1353,7 +1353,10 @@ pub fn extract_content(
         // copies of what the main pass consumed are not recovered again. Both walks cover the same
         // tree, taken before anything moved, so the pairs line up.
         let mut consumed = HashSet::new();
-        for (&elem, twin) in order.iter().zip(tree.iter(backup, &[])) {
+        let twins: Vec<NodeId> = tree.iter(backup, &[]).collect();
+        // upstream zips with strict=True; Tree::copy is contiguous in document order
+        debug_assert_eq!(order.len(), twins.len());
+        for (&elem, &twin) in order.iter().zip(&twins) {
             tick(&mut visited, call)?;
             if tree.tag(elem) == Some("done") {
                 consumed.insert(twin);

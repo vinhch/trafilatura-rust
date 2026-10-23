@@ -889,6 +889,7 @@ fn tostring_matches_lxml() {
 
     // oracle: e = etree.Element("x"); e.set("b", "1"); e.set("a", "2")
     let mut tree = xml_tree("<x/>");
+    let root = tree.root();
     tree.set(root, "b", "1");
     tree.set(root, "a", "2");
     assert_eq!(tostring(&tree, root, true), r#"<x b="1" a="2"/>"#);

@@ -1125,6 +1125,7 @@ def make_options(options: Options):
         comments=options.comments, url=options.url,
     )
     assert extractor.focus == options.focus
+    assert extractor.fast
     return extractor
 
 

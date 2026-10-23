@@ -1043,6 +1043,8 @@ fn strip_tags_where_strips_foreign() {
     let mut tree = fragment("<p>a<svg><title>t</title></svg>b</p>");
     let p = tree.first_child(tree.root()).unwrap();
     assert_eq!(tree.iter(p, &[]).count(), 3);
+    assert_eq!(tree.node(find(&tree, "svg")).ns, Ns::Svg);
+    assert_eq!(tree.node(find(&tree, "title")).ns, Ns::Svg);
     tree.strip_tags_where(p, |tree, node| tree.tag(node) != Some("p"));
     assert_eq!(xml(&tree, p), "<p>atb</p>");
 }
