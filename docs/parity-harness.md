@@ -53,10 +53,13 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
   `uv` on Linux and in Docker elsewhere, both from `tools/parity/uv.lock`.
 - After a change to the generator, delete the archive and `.temp/fixtures/<version>`, run
   `scripts/fixtures.sh --generate --pack`, and commit the new archive. A `uv.lock` change needs the
-  same only when it can alter upstream's output (`lxml`, `htmldate`, `courlan`, `justext`,
-  `charset_normalizer`, `html5lib`); a security bump of any other package does not. The archive's
-  `lock_sha256` is the lock it was generated with, so it may differ from the current lock; nothing
-  compares the two. A new release gets a new archive name (`upstream-sync.md`).
+  same only when it can alter upstream's output: a bump of `lxml`, `htmldate`, `courlan`, `justext`,
+  `charset_normalizer`, `html5lib`, or of a package they depend on (`dateparser`, `babel`, `tld`). A
+  security bump of anything else does not. The archive's `lock_sha256` is the lock it was generated
+  with, so it may differ from the current lock. The one place the two are compared is a filtered run
+  (`scripts/fixtures.sh --only`): on a mismatch it starts a new index from that run's pages and deletes
+  `f1.json`, so run it only after a full `--generate`. A new release gets a new archive name
+  (`upstream-sync.md`).
 
 ## Classes
 
