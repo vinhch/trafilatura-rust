@@ -28,7 +28,7 @@ pub fn alt(tokens: &[&str]) -> Option<String> {
     (!tokens.is_empty()).then(|| tokens.join("|"))
 }
 
-// A pattern is a literal that compiles (`patterns_compile` forces each one); `None` would make
+// A pattern is a literal that compiles (`every_pattern_compiles` forces each one); `None` would make
 // `re_test` false instead of panicking.
 fn compile(pattern: &str) -> Option<Regex> {
     Regex::new(pattern).ok()

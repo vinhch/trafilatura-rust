@@ -5,8 +5,8 @@
 //! `[package.metadata.upstream]`.
 
 mod cancel;
-// No caller outside the tests until the extraction modules land (`context`, `settings`, `utils` and
-// `pystr` items are `pub` in a private module and re-exported only as far as the tests need).
+// No caller outside the tests until the extraction modules land (`context`, `settings`, `utils`,
+// `pystr` and `xpaths` items are `pub` in a private module and re-exported only as far as the tests need).
 #[allow(dead_code)]
 mod context;
 // The tree has no caller outside the `__internals` feature until the pipeline lands.

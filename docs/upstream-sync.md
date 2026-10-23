@@ -11,17 +11,21 @@ map is in `architecture.md`.
    function that carries its `upstream:` trace comment.
 3. Port the changed upstream tests to their Rust tests by name. A test upstream deleted is deleted
    here.
-4. Read upstream's `settings.cfg` diff as well as `settings.py`: defaults such as `MAX_FILE_SIZE`
+4. After porting token or selector changes, regenerate the selector test cases so `src/xpaths/cases.rs`
+   encodes the new upstream: `scripts/oracle.sh 'from parity.gen_xpath_cases import main; main()' >
+   src/xpaths/cases.rs`. The generator fails with "token table out of date" until each new token has
+   a value in its table.
+5. Read upstream's `settings.cfg` diff as well as `settings.py`: defaults such as `MAX_FILE_SIZE`
    live there. Check OI-5 in `phase-plan.md`: a merged upstream parser switch changes D-2 and the
    fixtures. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,
    `charset_normalizer`, `lxml`): a dependency release can change extraction output with no change in
    trafilatura itself. Diff the ported parts of that package too.
-5. Regenerate the parity fixtures from upstream Python at the new tag: run
+6. Regenerate the parity fixtures from upstream Python at the new tag: run
    `scripts/fixtures.sh --generate --pack` (details in `parity-harness.md`). The new `version` names
    the new archive and directory (`fixtures-<version>.tar.zst`, `.temp/fixtures/<version>`); `git rm`
    the old version's archive in the same change, add the new one, and run `scripts/test.sh`. A
    fixture that changed without a matching upstream change is a parser or port difference: fix it,
    or record it in `deviations.md`.
-6. Re-check every `deviations.md` row against the new release: upstream may have fixed what a row
+7. Re-check every `deviations.md` row against the new release: upstream may have fixed what a row
    works around, and the row then goes.
-7. Update `version` and `commit` in `[package.metadata.upstream]` in the same change as the port.
+8. Update `version` and `commit` in `[package.metadata.upstream]` in the same change as the port.

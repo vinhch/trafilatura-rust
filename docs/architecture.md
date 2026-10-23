@@ -33,8 +33,9 @@ exists today; phases are in `phase-plan.md`.
 | none | `async_api.rs` | planned | `extract_async` (feature `tokio`) |
 
 The hidden feature `__internals` exposes the tree types (`LiveIter` included), `parse_document`,
-`parse_fragment`, `dump`, `ParseLimits`, and the `settings` types and `utils` functions the integration
-tests call, as `__internals`: unstable, for the crate's own integration tests only.
+`parse_fragment`, `dump`, `ParseLimits`, the `settings` types, the `utils` functions and the `xpaths`
+items (`Selector`, `alt`, `BODY_XPATH`, `OVERALL_DISCARD_XPATH`, `PRECISION_DISCARD_XPATH`) the
+integration tests call, as `__internals`: unstable, for the crate's own integration tests only.
 
 Upstream's own dependencies carry extraction logic, so the parts trafilatura calls are ported with it:
 
