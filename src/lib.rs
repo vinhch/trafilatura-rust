@@ -44,7 +44,11 @@ pub mod __internals {
         DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, parse_document,
         parse_fragment,
     };
-    pub use crate::html_processing::{prune_html, recover_math, tree_cleaning, tree_cleaning_with};
+    pub use crate::html_processing::{
+        collect_link_info, delete_by_link_density, is_paragraph_listing, link_density_test,
+        link_density_test_tables, prune_html, prune_unwanted_nodes, recover_math, tree_cleaning,
+        tree_cleaning_with,
+    };
     pub use crate::settings::{
         Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED, MANUALLY_STRIPPED,
         MAX_FILE_SIZE, MIN_FILE_SIZE,

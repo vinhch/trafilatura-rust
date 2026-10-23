@@ -10,17 +10,18 @@ use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
-    MANUALLY_STRIPPED, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits, Selector, Tree,
-    alt, delete_element, dump, load_html, parse_document, parse_fragment, prune_html, sanitize,
-    textfilter, tree_cleaning, tree_cleaning_with, trim,
+    MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
+    Selector, Tree, alt, delete_by_link_density, delete_element, dump, link_density_test,
+    link_density_test_tables, load_html, parse_document, parse_fragment, prune_html,
+    prune_unwanted_nodes, sanitize, textfilter, tree_cleaning, tree_cleaning_with, trim,
 };
-use trafilatura_rust::Call;
+use trafilatura_rust::{Call, ExtractError};
 
 mod trees;
 use trees::{ctx_for, lxml_fromstring, xml_tree};
 
 /// A `<p>` element in a tree of its own, with the given text.
-fn element_with_text(text: &str) -> (Tree, trafilatura_rust::__internals::NodeId) {
+fn element_with_text(text: &str) -> (Tree, NodeId) {
     let mut tree = parse_fragment("<p></p>", &ParseLimits::default(), &Call::default()).unwrap();
     let p = tree.children(tree.root()).next().unwrap();
     tree.node_mut(p).text = Some(text.to_string());
@@ -300,6 +301,26 @@ fn test_htmlprocessing() {
     delete_element(&mut tree, root, true);
     assert_eq!(dump(&tree, DumpMode::Exact), before);
     // phase 3e: merge_with_parent
+
+    // fix for bug 807
+    let (mut tree, node) = lxml_fromstring("<div><p><span>span</span> span tail</p> p tail </div>");
+    assert_eq!(tree.text_content(node), "span span tail p tail ");
+    prune_unwanted_nodes(&mut tree, node, &[spans], false, &call).unwrap();
+    assert_eq!(tree.text_content(node), " span tail p tail ");
+
+    // link_density_test_tables: a text-rich table whose only <ref> links carry no text
+    // (e.g. icon/flag links wrapping images) has zero link text -> not boilerplate, kept
+    let linkless_table = xml_tree(&format!(
+        r#"<table><cell>{}<ref target="/x"></ref></cell></table>"#,
+        "word ".repeat(50)
+    ));
+    assert!(!link_density_test_tables(&linkless_table, linkless_table.root(), &call).unwrap());
+    // short table (elemlen < 200) is never removed regardless of link ratio
+    let short_table = xml_tree(&format!(
+        r#"<table><cell>short {}</cell></table>"#,
+        r#"<ref target="/x">link</ref> "#.repeat(5)
+    ));
+    assert!(!link_density_test_tables(&short_table, short_table.root(), &call).unwrap());
 }
 
 #[test]
@@ -513,4 +534,193 @@ fn test_math_recovery() {
             r#"              #text "v""#,
         ])
     );
+}
+
+/// `.//div[@class='widget']`
+fn widget_divs(
+    tree: &Tree,
+    context: NodeId,
+    _call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    Ok(tree
+        .iterdescendants(context, &["div"])
+        .filter(|&div| tree.get(div, "class") == Some("widget"))
+        .collect())
+}
+
+/// `.//span`
+fn spans(tree: &Tree, context: NodeId, _call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    Ok(tree.iterdescendants(context, &["span"]).collect())
+}
+
+#[test]
+fn test_prune_unwanted_nodes_guard() {
+    // An over-pruning trip leaves the same subtree in place; upstream's `result is node` is that
+    // the div is still a child of body.
+    let call = Call::default();
+    for (widget_words, pruned) in [(300, false), (3, true)] {
+        let (mut tree, doc) = lxml_fromstring(&format!(
+            "<html><body><div><p>real text</p><div class='widget'>{}</div></div></body></html>",
+            "x ".repeat(widget_words)
+        ));
+        let node = tree.find(doc, "div").unwrap();
+        let before = tree.text_content(doc);
+        prune_unwanted_nodes(&mut tree, node, &[widget_divs], true, &call).unwrap();
+        assert_eq!(
+            tree.node(node).parent(),
+            Some(tree.find(doc, "body").unwrap())
+        );
+        assert_eq!(tree.text_content(doc) != before, pruned);
+    }
+}
+
+#[test]
+fn test_link_density_tables_threshold() {
+    let call = Call::default();
+    let med_ref = format!(r#"<ref target="/x">{}</ref>"#, "x".repeat(250));
+    let big_ref = format!(r#"<ref target="/x">{}</ref>"#, "x".repeat(600));
+    // 60% link density at ~600 chars: kept by the 0.8 (medium) threshold, removed by the 0.5 (large)
+    let straddle_ref = format!(r#"<ref target="/x">{}</ref>"#, "x".repeat(360));
+    let rows = [
+        // medium table (<1000 chars): 80% link threshold
+        (
+            format!("<table><cell>{}{med_ref}</cell></table>", "y".repeat(50)),
+            true,
+        ), // 83% links
+        (
+            format!("<table><cell>{}{med_ref}</cell></table>", "y".repeat(200)),
+            false,
+        ), // 56% links
+        // straddle table (500-999 chars): kept by the 0.8 threshold, would go at 0.5 (guards the
+        // 1000-char boundary)
+        (
+            format!(
+                "<table><cell>{}{straddle_ref}</cell></table>",
+                "y".repeat(240)
+            ),
+            false,
+        ),
+        // large table (>=1000 chars): 50% link threshold
+        (
+            format!("<table><cell>{}{big_ref}</cell></table>", "y".repeat(400)),
+            true,
+        ), // 60% links
+        (
+            format!("<table><cell>{}{big_ref}</cell></table>", "y".repeat(600)),
+            false,
+        ), // 40% links
+    ];
+    for (html, expected) in rows {
+        let tree = xml_tree(&html);
+        assert_eq!(
+            link_density_test_tables(&tree, tree.root(), &call).unwrap(),
+            expected,
+            "{html}"
+        );
+    }
+}
+
+#[test]
+fn test_link_density_tables_textless_links_kept() {
+    // 250 chars of real text and one image-wrapping link with no text: linklen 0, must be kept
+    let call = Call::default();
+    let tree = xml_tree(&format!(
+        r#"<table><cell>{}<ref target="/x"><graphic src="/i.png"/></ref></cell></table>"#,
+        "data ".repeat(50)
+    ));
+    assert!(!link_density_test_tables(&tree, tree.root(), &call).unwrap());
+}
+
+#[test]
+fn test_link_density_test() {
+    // Link-density verdict on a div followed by a content sibling (#584, #900).
+    let call = Call::default();
+    let headlines: String = (0..20)
+        .map(|i| {
+            format!(
+                r#"<ref target="/n{i}">Latest news headline number {i} about some topic today</ref> "#
+            )
+        })
+        .collect();
+    let listing: String = (0..14)
+        .map(|i| format!(r#"<p><ref target="/d{i}.pdf">Instruktionsbok MC 258 part {i}</ref></p>"#))
+        .collect();
+    let card = "Align: a widget that aligns its child within itself and optionally sizes itself based on the child's given size";
+    let rows = [
+        // 100 to 150 chars of recommendation links (mixed.de): the length limit stays at 100
+        (
+            (0..3)
+                .map(|i| {
+                    format!(
+                        r#"<ref target="/p{i}">Recommended product number {i}: a nice gadget</ref> "#
+                    )
+                })
+                .collect::<String>(),
+            true,
+            false,
+            "short-link-list-kept",
+        ),
+        // a big "latest news" sidebar, above limitlen
+        (headlines.clone(), false, true, "584-large-link-farm-pruned"),
+        // one long link per catalog card (avg link text >= 100 chars) is content
+        (
+            (0..8)
+                .map(|i| format!(r#"<ref target="/w{i}">{card}</ref> "#))
+                .collect(),
+            false,
+            false,
+            "584-whole-card-links-kept",
+        ),
+        // a document listing, one short link per paragraph
+        (listing.clone(), false, false, "900-paragraph-listing-kept"),
+        // a farm wrapped in a single paragraph buys no exemption
+        (
+            format!("<p>{headlines}</p>"),
+            false,
+            true,
+            "900-links-sharing-a-paragraph-pruned",
+        ),
+        // the exemption is all-or-nothing: one paragraph with two links makes it a farm again
+        (
+            format!(
+                r#"{listing}<p><ref target="/a">Also see this page</ref> <ref target="/b">and this other one</ref></p>"#
+            ),
+            false,
+            true,
+            "900-listing-with-one-shared-paragraph-pruned",
+        ),
+    ];
+    for (items, short, expected, id) in rows {
+        let (tree, doc) = lxml_fromstring(&format!(
+            "<body><div>{items}</div><p>real article sibling here</p></body>"
+        ));
+        let element = tree.first_child(doc).unwrap();
+        let length = trim(&tree.text_content(element)).chars().count();
+        if short {
+            assert!(100 < length && length < 150, "{id}: {length}");
+        } else {
+            assert!(length > 300, "{id}: {length}");
+        }
+        assert_eq!(
+            link_density_test(&tree, element, false, &call).unwrap().0,
+            expected,
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn test_delete_by_link_density_backtracking() {
+    // a short div with 3+ children and some link text is not dense, but backtracking still drops it
+    let call = Call::default();
+    let html = "<html><body><div><p>Some intro text</p><p>More words</p><ref>A link text</ref></div></body></html>";
+    for (backtracking, kept) in [(false, true), (true, false)] {
+        let (mut tree, root) = lxml_fromstring(html);
+        delete_by_link_density(&mut tree, root, "div", backtracking, false, &call).unwrap();
+        assert_eq!(
+            tree.find(root, "div").is_some(),
+            kept,
+            "backtracking {backtracking}"
+        );
+    }
 }

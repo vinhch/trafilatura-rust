@@ -3,12 +3,14 @@
 //! Every function takes the tree and the element it works on, and the `Call` (directly or through
 //! the `Ctx`) where it loops over nodes.
 
+use std::collections::HashSet;
+
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::context::Ctx;
 use crate::dom::{LiveIter, NodeId, Tree};
 use crate::error::ExtractError;
 use crate::settings::{CUT_EMPTY_ELEMS, Focus, MANUALLY_CLEANED, MANUALLY_STRIPPED};
-use crate::utils::trim;
+use crate::utils::{LINK_FARM_RATIO, trim};
 use crate::xml::delete_element;
 use crate::xpaths::Selector;
 use crate::xpaths::select::descendants;
@@ -277,6 +279,271 @@ pub fn prune_html(
         .collect::<Vec<_>>();
     for element in empty {
         delete_element(tree, element, tails);
+    }
+    Ok(())
+}
+
+/// Checks `call` when `visited` is a multiple of `CHECK_INTERVAL`, then counts the node.
+fn tick(visited: &mut usize, call: &Call<'_>) -> Result<(), ExtractError> {
+    if visited.is_multiple_of(CHECK_INTERVAL) {
+        call.check()?;
+    }
+    *visited = visited.saturating_add(1);
+    Ok(())
+}
+
+/// Prunes the tree below `root` by deleting what each selector of `nodelist` matches; the text
+/// after a deleted element stays. With `with_backup`, nothing is deleted when the outer matches
+/// would take all but a seventh of the text (the guard against over-pruning). Checks `call` about
+/// every `CHECK_INTERVAL` nodes.
+// upstream: htmlprocessing.py::prune_unwanted_nodes
+pub fn prune_unwanted_nodes(
+    tree: &mut Tree,
+    root: NodeId,
+    nodelist: &[Selector],
+    with_backup: bool,
+    call: &Call<'_>,
+) -> Result<(), ExtractError> {
+    if !with_backup {
+        for select in nodelist {
+            // each result is complete before the first deletion, as an XPath result is
+            for subtree in select(tree, root, call)? {
+                delete_element(tree, subtree, true);
+            }
+        }
+        return Ok(());
+    }
+    // `dict.fromkeys`: matches in first-seen order, each once
+    let mut matches = Vec::new();
+    let mut matched = HashSet::new();
+    for select in nodelist {
+        for element in select(tree, root, call)? {
+            if matched.insert(element) {
+                matches.push(element);
+            }
+        }
+    }
+    let mut visited = 0usize;
+    let mut outer = Vec::new();
+    for &element in &matches {
+        tick(&mut visited, call)?;
+        if !tree
+            .iterancestors(element, &[])
+            .any(|ancestor| matched.contains(&ancestor))
+        {
+            outer.push(element);
+        }
+    }
+    let old_len = tree.text_content(root).chars().count();
+    let removed = outer.iter().fold(0usize, |sum, &element| {
+        sum.saturating_add(tree.text_content(element).chars().count())
+    });
+    // todo: adjust for recall and precision settings
+    if old_len as f64 - removed as f64 > old_len as f64 / 7.0 {
+        for element in outer {
+            delete_element(tree, element, true);
+        }
+    }
+    Ok(())
+}
+
+/// Heuristics on the text of `links`, the empty ones dropped: the summed length of their trimmed
+/// text, their count, how many are shorter than 10 characters, and the texts. Lengths are code
+/// points. Checks `call` about every `CHECK_INTERVAL` links.
+// upstream: htmlprocessing.py::collect_link_info
+pub fn collect_link_info(
+    tree: &Tree,
+    links: &[NodeId],
+    call: &Call<'_>,
+) -> Result<(usize, usize, usize, Vec<String>), ExtractError> {
+    let mut visited = 0usize;
+    let mut texts = Vec::new();
+    for &link in links {
+        tick(&mut visited, call)?;
+        let text = trim(&tree.text_content(link));
+        if !text.is_empty() {
+            texts.push(text);
+        }
+    }
+    let lengths: Vec<usize> = texts.iter().map(|text| text.chars().count()).collect();
+    // longer strings impact recall in favor of precision
+    let short = lengths.iter().filter(|&&length| length < 10).count();
+    let total = lengths
+        .iter()
+        .fold(0usize, |sum, &length| sum.saturating_add(length));
+    Ok((total, texts.len(), short, texts))
+}
+
+/// Whether every link of `links` stands alone in its own paragraph: a document listing, as against
+/// a farm of links running together. Checks `call` about every `CHECK_INTERVAL` nodes.
+// upstream: htmlprocessing.py::is_paragraph_listing
+pub fn is_paragraph_listing(
+    tree: &Tree,
+    links: &[NodeId],
+    call: &Call<'_>,
+) -> Result<bool, ExtractError> {
+    let mut visited = 0usize;
+    for &link in links {
+        tick(&mut visited, call)?;
+        let Some(parent) = tree.node(link).parent() else {
+            return Ok(false);
+        };
+        if tree.tag(parent) != Some("p") {
+            return Ok(false);
+        }
+        // `len(parent.findall(".//ref")) > 1`: stops at the second one
+        let mut refs = 0usize;
+        for node in tree.iterdescendants(parent, &[]) {
+            tick(&mut visited, call)?;
+            if tree.tag(node) == Some("ref") {
+                refs = refs.saturating_add(1);
+                if refs > 1 {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
+/// The `ref` descendants of `element`, in document order.
+fn find_refs(tree: &Tree, element: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    collect_tagged(tree, call, tree.iterdescendants(element, &[]), &["ref"])
+}
+
+/// Whether `element` is rich in links (probably boilerplate), and whether it is a short one with
+/// links. Checks `call` about every `CHECK_INTERVAL` nodes.
+// upstream: htmlprocessing.py::link_density_test
+pub fn link_density_test(
+    tree: &Tree,
+    element: NodeId,
+    favor_precision: bool,
+    call: &Call<'_>,
+) -> Result<(bool, bool), ExtractError> {
+    let links = find_refs(tree, element, call)?;
+    if links.is_empty() {
+        return Ok((false, false));
+    }
+    // preserve image containers
+    let graphics = collect_tagged(tree, call, tree.iterdescendants(element, &[]), &["graphic"])?;
+    if !graphics.is_empty() {
+        return Ok((false, false));
+    }
+    let text_len = trim(&tree.text_content(element)).chars().count();
+    // shortcut
+    if let [only] = links[..] {
+        let len_threshold = if favor_precision { 10 } else { 100 };
+        let link_len = trim(&tree.text_content(only)).chars().count();
+        if link_len > len_threshold && link_len as f64 > text_len as f64 * 0.9 {
+            return Ok((true, false));
+        }
+    }
+    let has_next = tree.node(element).next_sibling().is_some();
+    let limit_len = match (tree.tag(element) == Some("p"), has_next) {
+        (true, false) => 60,
+        (true, true) => 30,
+        (false, false) => 300,
+        (false, true) => 100,
+    };
+    if text_len < limit_len {
+        let (link_len, elem_num, short_elems, _) = collect_link_info(tree, &links, call)?;
+        if elem_num == 0 {
+            return Ok((true, false));
+        }
+        let dense = link_len as f64 > text_len as f64 * 0.8
+            || (elem_num > 1 && short_elems as f64 / elem_num as f64 > 0.8);
+        return Ok((dense, true));
+    }
+    // large near-total-link farms ("latest news" sidebars) at or above limit_len, which the size
+    // gate above never tests; more than 4 links: a handful of long sentence-links is editorial
+    if links.len() > 4 {
+        let (link_len, elem_num, _, _) = collect_link_info(tree, &links, call)?;
+        // an average link length of 100 or more is a catalog or listing (one link per card), kept;
+        // a product too large for usize is larger than any link_len
+        let below_catalog_average = 100usize
+            .checked_mul(elem_num)
+            .is_none_or(|limit| link_len < limit);
+        if link_len as f64 > text_len as f64 * LINK_FARM_RATIO
+            && below_catalog_average
+            && !is_paragraph_listing(tree, &links, call)?
+        {
+            return Ok((true, false));
+        }
+    }
+    Ok((false, false))
+}
+
+/// Whether the table `element` is rich in links (probably boilerplate); a table of fewer than 200
+/// characters, or whose links carry no text, never is. Checks `call` about every `CHECK_INTERVAL`
+/// nodes.
+// upstream: htmlprocessing.py::link_density_test_tables
+pub fn link_density_test_tables(
+    tree: &Tree,
+    element: NodeId,
+    call: &Call<'_>,
+) -> Result<bool, ExtractError> {
+    let links = find_refs(tree, element, call)?;
+    if links.is_empty() {
+        return Ok(false);
+    }
+    let text_len = trim(&tree.text_content(element)).chars().count();
+    if text_len < 200 {
+        return Ok(false);
+    }
+    let (link_len, _, _, _) = collect_link_info(tree, &links, call)?;
+    Ok(if text_len < 1000 {
+        link_len as f64 > 0.8 * text_len as f64
+    } else {
+        link_len as f64 > 0.5 * text_len as f64
+    })
+}
+
+/// Deletes the `tagname` elements of `subtree` (the root included) that are rich in links, with
+/// their text but not their tail; with `backtracking`, also the short ones with links that have
+/// enough children. Checks `call` about every `CHECK_INTERVAL` nodes.
+// upstream: htmlprocessing.py::delete_by_link_density
+pub fn delete_by_link_density(
+    tree: &mut Tree,
+    subtree: NodeId,
+    tagname: &str,
+    backtracking: bool,
+    favor_precision: bool,
+    call: &Call<'_>,
+) -> Result<(), ExtractError> {
+    let len_threshold = if favor_precision { 200 } else { 100 };
+    let depth_threshold = if favor_precision { 1 } else { 3 };
+    // the walk edits nothing: upstream collects the deletions and applies them afterwards
+    let candidates = collect_tagged(tree, call, tree.iter(subtree, &[]), &[tagname])?;
+    let mut deletions = Vec::new();
+    for element in candidates {
+        let (dense, short_with_links) = link_density_test(tree, element, favor_precision, call)?;
+        if dense
+            || (backtracking
+                && short_with_links
+                && tree.child_count(element) >= depth_threshold
+                && trim(&tree.text_content(element)).chars().count() < len_threshold)
+        {
+            // a paragraph that holds the content of a list item is kept: the link density of the
+            // whole list is checked separately, and removing it here would leave the item empty
+            let parent = tree.node(element).parent();
+            if tagname == "p"
+                && parent
+                    .and_then(|parent| tree.tag(parent))
+                    .is_some_and(|name| matches!(name, "item" | "td" | "th"))
+            {
+                continue;
+            }
+            deletions.push(element);
+        }
+    }
+    // `dict.fromkeys`: each element once
+    let mut deleted = HashSet::new();
+    let mut visited = 0usize;
+    for element in deletions {
+        tick(&mut visited, call)?;
+        if deleted.insert(element) {
+            delete_element(tree, element, true);
+        }
     }
     Ok(())
 }

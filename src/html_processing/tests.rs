@@ -112,3 +112,80 @@ fn cleaning_loop_skips_like_lxml() {
     let expected = "html\n  body\n    aside\n      #text \"after\"\n    p\n      #text \"x\"\n";
     assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
 }
+
+/// `.//div[@class='widget']`
+fn widget_divs(tree: &Tree, context: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    descendants(tree, context, call, |tree, id| {
+        tree.tag(id) == Some("div") && tree.get(id, "class") == Some("widget")
+    })
+}
+
+/// Whether `prune_unwanted_nodes(body, [widget_divs], with_backup=True)` removes the widgets of
+/// `<body><p>{kept}</p>{widgets}</body>`.
+fn backup_prunes(kept: usize, widgets: &str) -> bool {
+    let html = format!(
+        "<html><body><p>{}</p>{widgets}</body></html>",
+        "k".repeat(kept)
+    );
+    let call = Call::default();
+    let mut tree = parse_document(&html, &ParseLimits::default(), &call).unwrap();
+    let root = tree.root();
+    let body = tree.find(root, "body").unwrap();
+    let before = tree.text_content(body);
+    prune_unwanted_nodes(&mut tree, body, &[widget_divs], true, &call).unwrap();
+    tree.text_content(body) != before
+}
+
+#[test]
+fn backup_guard_boundary() {
+    // pruned only when `old_len - removed > old_len / 7`, a float division: old_len 70 gives 10.0
+    // (kept == 10 is not enough), old_len 71 gives 10.14 (kept == 10 is not enough either)
+    // oracle: prune_unwanted_nodes(body, [XPath(".//div[@class='widget']")], with_backup=True) over
+    // parse_document("<html><body><p>" + "k" * kept + "</p><div class='widget'>" + "w" * widget
+    // + "</div></body></html>"), true when body.text_content() changed
+    for (kept, widget, pruned) in [
+        (10, 60, false), // old_len 70: exactly old_len - old_len / 7 removed
+        (11, 59, true),  // one character less removed
+        (9, 61, false),  // one character more removed
+        (10, 61, false), // old_len 71
+        (11, 60, true),
+        (12, 59, true),
+    ] {
+        let widgets = format!("<div class='widget'>{}</div>", "w".repeat(widget));
+        assert_eq!(
+            backup_prunes(kept, &widgets),
+            pruned,
+            "kept {kept}, widget {widget}"
+        );
+    }
+}
+
+#[test]
+fn backup_counts_nested_match_once() {
+    // A widget inside a widget is deleted with its outer match, so its text counts once: 59 removed
+    // of 70 leaves 11 > 10.0 and prunes; counting the inner text twice would remove 89 and keep.
+    // oracle: same expression as backup_guard_boundary with the widget
+    // "<div class='widget'>" + "o" * outer + "<div class='widget'>" + "n" * inner + "</div></div>"
+    for (kept, outer, inner, pruned) in [(11, 30, 29, true), (11, 0, 59, true), (10, 30, 30, false)]
+    {
+        let widgets = format!(
+            "<div class='widget'>{}<div class='widget'>{}</div></div>",
+            "o".repeat(outer),
+            "n".repeat(inner)
+        );
+        assert_eq!(
+            backup_prunes(kept, &widgets),
+            pruned,
+            "kept {kept}, outer {outer}, inner {inner}"
+        );
+    }
+    // the outer match is the only deletion: nothing of the nested one is left to find
+    let call = Call::default();
+    let html = "<html><body><p>keep keep</p><div class='widget'>a<div class='widget'>b</div></div></body></html>";
+    let mut tree = parse_document(html, &ParseLimits::default(), &call).unwrap();
+    let root = tree.root();
+    let body = tree.find(root, "body").unwrap();
+    prune_unwanted_nodes(&mut tree, body, &[widget_divs], true, &call).unwrap();
+    assert_eq!(tree.text_content(body), "keep keep");
+    assert!(tree.find(body, "div").is_none());
+}
