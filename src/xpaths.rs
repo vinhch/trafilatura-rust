@@ -20,4 +20,6 @@ pub fn alt(tokens: &[&str]) -> Option<String> {
 }
 
 #[cfg(test)]
+mod cases;
+#[cfg(test)]
 mod tests;

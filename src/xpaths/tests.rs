@@ -3,9 +3,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::cases::CASES;
 use super::select::*;
 use super::*;
-use crate::dom::{ParseLimits, parse_document};
+use crate::dom::{DumpMode, ParseLimits, dump, parse_document};
 use crate::{Call, CancelToken, ExtractError};
 
 fn parse(html: &str) -> Tree {
@@ -143,4 +144,47 @@ fn union_follows_tree_order_after_move() {
     let call = Call::default();
     assert_eq!(union(&tree, d, &call, &[a, b]).unwrap(), [b, a]);
     assert_eq!(union(&tree, d, &call, &[a, a]).unwrap(), [a]);
+}
+
+fn snippet(html: &str) -> String {
+    html.chars().take(120).collect()
+}
+
+#[test]
+fn case_trees_match_html5lib() {
+    for case in CASES {
+        let tree = parse(case.html);
+        let (dumped, changed) = dump(&tree, DumpMode::Normalized);
+        assert!(
+            !changed,
+            "the copy rule changed the tree of {}",
+            snippet(case.html)
+        );
+        assert_eq!(
+            dumped,
+            case.dump,
+            "tree differs from html5lib for {}",
+            snippet(case.html)
+        );
+    }
+}
+
+#[test]
+fn case_contexts_exist() {
+    for case in CASES {
+        let tree = parse(case.html);
+        let count = tree.iter(tree.root(), &[]).count();
+        assert!(
+            case.context < count,
+            "context out of range for {}",
+            snippet(case.html)
+        );
+        for (name, positions) in case.hits {
+            assert!(
+                positions.iter().all(|&position| position < count),
+                "{name} position out of range for {}",
+                snippet(case.html)
+            );
+        }
+    }
 }
