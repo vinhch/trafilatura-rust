@@ -30,14 +30,12 @@ makes each Python release cheaper to follow.
 
 ## Documents
 
-- `AGENTS.md`: the brief for agents and contributors: porting rules and the index of the pages below.
 - `docs/architecture.md`: module map, runtime contract, planned public API, performance rules.
 - `docs/gotchas.md`: traps found reading upstream.
 - `docs/upstream-sync.md`: how to move to a new upstream release.
 - `docs/parity-harness.md`: fixtures, mismatch classes, measurement.
 - `docs/dependencies.md`: the dependency policy and why each dependency is there.
 - `docs/deviations.md`: every departure from upstream behavior.
-- `docs/phase-plan.md`: phases, open items, followups.
 
 ## Development
 
