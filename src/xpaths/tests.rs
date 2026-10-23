@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::cases::CASES;
+use super::cases::{CASES, SELECTOR_NAMES};
 use super::select::*;
 use super::*;
 use crate::dom::{DumpMode, ParseLimits, dump, parse_document};
@@ -186,5 +186,115 @@ fn case_contexts_exist() {
                 snippet(case.html)
             );
         }
+    }
+}
+
+#[test]
+fn comments_lookahead_matches_python() {
+    // oracle: re.search at the pin, `(?!ary)` form
+    let id = Regex::new(&format!("^(?:{COMMENTS_ID})")).unwrap();
+    let class = Regex::new(COMMENTS_CLASS).unwrap();
+    let table = [
+        ("comment", true, true),
+        ("commentary", false, false),
+        ("commentar", true, true),
+        ("commenta", true, true),
+        ("comment\n", true, true),
+        ("commenta\n", true, true),
+        ("commentar\n", true, true),
+        ("commentary\n", false, false),
+        ("Comments", true, true),
+        ("comol", true, false),
+        ("xcomment", false, false),
+    ];
+    for (input, id_hit, class_hit) in table {
+        assert_eq!(id.is_match(input), id_hit, "id pattern on {input:?}");
+        assert_eq!(
+            class.is_match(input),
+            class_hit,
+            "class pattern on {input:?}"
+        );
+    }
+}
+
+/// Every selector ported so far, named as in `SELECTOR_NAMES`.
+fn ported() -> Vec<(String, Selector)> {
+    let lists: [(&str, &[Selector]); 5] = [
+        ("BODY_XPATH", BODY_XPATH),
+        ("COMMENTS_XPATH", COMMENTS_XPATH),
+        ("REMOVE_COMMENTS_XPATH", REMOVE_COMMENTS_XPATH),
+        (
+            "REMOVE_COMMENTS_AND_LISTS_XPATH",
+            REMOVE_COMMENTS_AND_LISTS_XPATH,
+        ),
+        ("RAW_TREE_PRUNE_XPATH", RAW_TREE_PRUNE_XPATH),
+    ];
+    lists
+        .iter()
+        .flat_map(|(name, list)| {
+            list.iter()
+                .enumerate()
+                .map(move |(i, &selector)| (format!("{name}[{i}]"), selector))
+        })
+        .collect()
+}
+
+#[test]
+fn ported_selectors_are_named_in_the_oracle() {
+    for (name, _) in ported() {
+        assert!(SELECTOR_NAMES.contains(&name.as_str()), "unknown {name}");
+    }
+}
+
+#[test]
+fn cases_match_upstream() {
+    let selectors = ported();
+    for case in CASES {
+        let tree = parse(case.html);
+        let order: Vec<NodeId> = tree.iter(tree.root(), &[]).collect();
+        let context = order[case.context];
+        for (name, selector) in &selectors {
+            let expected: &[usize] = case
+                .hits
+                .iter()
+                .find(|(hit, _)| hit == name)
+                .map_or(&[], |(_, positions)| positions);
+            let found = selector(&tree, context, &Call::default()).unwrap();
+            let actual: Vec<usize> = found
+                .iter()
+                .map(|id| order.iter().position(|node| node == id).unwrap())
+                .collect();
+            assert_eq!(
+                actual,
+                expected,
+                "{name} on {}: expected {expected:?}, got {actual:?}",
+                snippet(case.html)
+            );
+        }
+    }
+}
+
+#[test]
+fn patterns_compile() {
+    for pattern in [
+        &ARTICLE_CONTENT_ID,
+        &ARTICLE_CONTENT_CLASS,
+        &STORY_ID,
+        &STORY_CLASS,
+        &MAIN_CONTENT_ID,
+        &MAIN_CONTENT_CLASS,
+        &FULLTEXT,
+        &COMMENT_LIST,
+        &COMMENT_PAGE,
+        &COMMENT_PREFIX,
+        &COMMENTS_PREFIX,
+        &COMMENT_SERVICE_ID,
+        &REMOVE_COMMENTS_ID,
+        &REMOVE_COMMENTS_LIST_ID,
+        &REMOVE_COMMENTS_CLASS,
+        &MVP_POST_ADD_OR_SCROLL,
+        &MVP_POST_ADD,
+    ] {
+        assert!(pattern.is_some());
     }
 }
