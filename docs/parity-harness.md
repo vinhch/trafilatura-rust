@@ -51,9 +51,12 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
   when that directory exists; delete the directory to unpack again. Unpacking needs only a tar that
   reads zstd (`zstd` on `PATH`, or bsdtar), no Python or Docker. `--generate` runs `tools/parity` with
   `uv` on Linux and in Docker elsewhere, both from `tools/parity/uv.lock`.
-- After a change to the generator or `uv.lock` within one release, delete the archive and
-  `.temp/fixtures/<version>`, run `scripts/fixtures.sh --generate --pack`, and commit the new archive.
-  A new release gets a new archive name (`upstream-sync.md`).
+- After a change to the generator, delete the archive and `.temp/fixtures/<version>`, run
+  `scripts/fixtures.sh --generate --pack`, and commit the new archive. A `uv.lock` change needs the
+  same only when it can alter upstream's output (`lxml`, `htmldate`, `courlan`, `justext`,
+  `charset_normalizer`, `html5lib`); a security bump of any other package does not. The archive's
+  `lock_sha256` is the lock it was generated with, so it may differ from the current lock; nothing
+  compares the two. A new release gets a new archive name (`upstream-sync.md`).
 
 ## Classes
 

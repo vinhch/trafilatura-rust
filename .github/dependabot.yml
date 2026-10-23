@@ -1,6 +1,9 @@
 # Version updates for the two ecosystems this repository depends on. Actions are pinned to a commit
 # SHA in .github/workflows, which is why this file exists: Dependabot is what moves them.
 # Repository settings, not expressible here, hold Dependabot alerts and security updates.
+# tools/parity has no entry on purpose: its uv.lock is the parity oracle and moves with an upstream
+# sync (docs/upstream-sync.md), not with version bumps. Security updates still reach it from the
+# repository setting; docs/parity-harness.md says when a lock change means regenerating the fixtures.
 version: 2
 updates:
   - package-ecosystem: cargo
