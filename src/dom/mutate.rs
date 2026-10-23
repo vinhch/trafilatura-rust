@@ -109,9 +109,12 @@ impl Tree {
         self.detach(child);
     }
 
-    /// Renames the element, keeping its namespace.
+    /// Renames the element into the HTML namespace: lxml's `el.tag = name` drops the namespace of
+    /// an SVG or MathML element.
     pub fn set_name(&mut self, id: NodeId, name: &str) {
-        self.node_mut(id).name = LocalName::from(name);
+        let node = self.node_mut(id);
+        node.name = LocalName::from(name);
+        node.ns = Ns::Html;
     }
 
     /// The value of attribute `attr`.
@@ -166,7 +169,7 @@ impl Tree {
             // Fixed before the splice: the first child of a stripped element takes its place in
             // the walk, so nested matches are stripped too.
             current = self.step(node, id);
-            if tags.contains(&&*self.node(node).name) {
+            if self.matches(node, tags) {
                 self.splice(node);
             }
         }
@@ -182,7 +185,7 @@ impl Tree {
         }
         let mut current = self.step(id, id);
         while let Some(node) = current {
-            if !tags.contains(&&*self.node(node).name) {
+            if !self.matches(node, tags) {
                 current = self.step(node, id);
                 continue;
             }

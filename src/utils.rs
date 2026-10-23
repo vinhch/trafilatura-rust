@@ -347,7 +347,7 @@ fn lxml_len(tree: &Tree, is_full_html: bool) -> usize {
     let root = tree.root();
     let child_named = |parent, name: &str| {
         tree.children(parent)
-            .find(|&child| &*tree.node(child).name == name)
+            .find(|&child| tree.tag(child) == Some(name))
     };
     let has_head =
         child_named(root, "head").is_some_and(|head| tree.children(head).next().is_some());
@@ -368,7 +368,7 @@ fn lxml_len(tree: &Tree, is_full_html: bool) -> usize {
             tree.children(only).count()
         }
         (Some(first), _)
-            if !blank(&tree.node(body).text) && is_block_tag(&tree.node(first).name) =>
+            if !blank(&tree.node(body).text) && tree.tag(first).is_some_and(is_block_tag) =>
         {
             tree.children(body).count().saturating_add(1)
         }
@@ -594,8 +594,11 @@ pub fn sanitize_tree(tree: &mut Tree, root: NodeId, call: &Call<'_>) -> Result<(
             call.check()?;
         }
         let node = tree.node(elem);
-        let parent_tag = node.parent().map_or("", |parent| &*tree.node(parent).name);
-        let tag = &*node.name;
+        let parent_tag = node
+            .parent()
+            .and_then(|parent| tree.tag(parent))
+            .unwrap_or("");
+        let tag = tree.tag(elem).unwrap_or("");
         // preserve space if the element or its parent is a specific tag
         let preserve_space =
             SPACING_PROTECTED.contains(&tag) || SPACING_PROTECTED.contains(&parent_tag);

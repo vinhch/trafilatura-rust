@@ -33,11 +33,11 @@ pub(crate) fn delete_element(tree: &mut Tree, element: NodeId, keep_tail: bool) 
 /// Whether the element is a line break before inline content.
 // upstream: xml.py::separates_inline
 pub(crate) fn separates_inline(tree: &Tree, element: NodeId) -> bool {
-    &*tree.node(element).name == "lb"
-        && tree
-            .node(element)
-            .next_sibling()
-            .is_some_and(|next| INLINE_CARRIED.contains(&&*tree.node(next).name))
+    tree.tag(element) == Some("lb")
+        && tree.node(element).next_sibling().is_some_and(|next| {
+            tree.tag(next)
+                .is_some_and(|name| INLINE_CARRIED.contains(&name))
+        })
 }
 
 /// Removes, bottom-up, the elements without children, text and tail that `keeps_empty` does not
@@ -74,8 +74,8 @@ pub(crate) fn keeps_empty(tree: &Tree, element: NodeId) -> bool {
     let Some(parent) = tree.node(element).parent() else {
         return true;
     };
-    &*tree.node(element).name == "graphic"
-        || &*tree.node(parent).name == "code"
+    tree.tag(element) == Some("graphic")
+        || tree.tag(parent) == Some("code")
         || separates_inline(tree, element)
         || is_padding_cell(tree, element)
 }
@@ -84,7 +84,7 @@ pub(crate) fn keeps_empty(tree: &Tree, element: NodeId) -> bool {
 /// (upstream issue #633).
 // upstream: xml.py::is_padding_cell
 pub(crate) fn is_padding_cell(tree: &Tree, element: NodeId) -> bool {
-    &*tree.node(element).name == "cell"
+    tree.tag(element) == Some("cell")
         && tree
             .node(element)
             .parent()

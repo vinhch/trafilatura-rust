@@ -1,7 +1,7 @@
 //! Tree walks in lxml's order and `copy`. Every walk follows the parent and sibling links with
 //! explicit state, so the stack never grows with the depth of the tree.
 
-use super::{Node, NodeId, Tree};
+use super::{Node, NodeId, Ns, Tree};
 
 /// A live `tree.iter(tags)`: it reads the tree on each step, so the caller may edit the tree
 /// between steps. As in lxml, the successor of a node is computed before the node is returned, so
@@ -37,10 +37,17 @@ impl<'t> LiveIter<'t> {
 }
 
 impl Tree {
-    /// Whether the name of `id` is one of `tags`; an empty list matches every element.
+    /// The local name of an HTML element, `None` for SVG and MathML: their lxml tag is
+    /// `{ns}name`, which never equals a plain name.
+    pub fn tag(&self, id: NodeId) -> Option<&str> {
+        let node = self.node(id);
+        (node.ns == Ns::Html).then(|| &*node.name)
+    }
+
+    /// Whether `id` is one of `tags` by `tag`; an empty list matches every element, in any
+    /// namespace.
     pub(super) fn matches(&self, id: NodeId, tags: &[&str]) -> bool {
-        let name = &*self.node(id).name;
-        tags.is_empty() || tags.contains(&name)
+        tags.is_empty() || self.tag(id).is_some_and(|name| tags.contains(&name))
     }
 
     /// The node after `current` in document order inside the subtree of `start`: its first child,

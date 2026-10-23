@@ -880,3 +880,42 @@ fn deep_chain_walks_iteratively() {
         .join()
         .unwrap();
 }
+
+const SVG_PAGE: &str = "<html><body><svg><title>t</title><a>x</a></svg><a>y</a></body></html>";
+
+#[test]
+fn svg_elements_skip_name_tests() {
+    let mut tree = parse(SVG_PAGE);
+    let root = tree.root();
+    let all = tree.iter(root, &[]).count();
+    // oracle: [e.tag for e in r.iter('a')] == ['a']
+    let anchors: Vec<NodeId> = tree.iter(root, &["a"]).collect();
+    assert_eq!(anchors.len(), 1);
+    assert_eq!(tree.text_content(anchors[0]), "y");
+    assert_eq!(tree.find(root, "title"), None);
+    // oracle: svg title still present after etree.strip_elements(r, 'title')
+    tree.strip_elements(root, &["title"], true);
+    assert_eq!(tree.iter(root, &[]).count(), all);
+    // lxml's strip_tags compares the same `{ns}a` tag, so the SVG `a` stays
+    tree.strip_tags(root, &["a"]);
+    assert_eq!(tree.iter(root, &[]).count(), all - 1);
+    assert!(
+        tree.iter(root, &[])
+            .any(|id| tree.node(id).ns == Ns::Svg && &*tree.node(id).name == "a")
+    );
+    assert!(tree.iter(root, &[]).any(|id| tree.node(id).ns == Ns::Svg));
+}
+
+#[test]
+fn set_name_drops_namespace() {
+    let mut tree = parse(SVG_PAGE);
+    let root = tree.root();
+    let a = tree
+        .iter(root, &[])
+        .find(|&id| tree.node(id).ns == Ns::Svg && &*tree.node(id).name == "a")
+        .unwrap();
+    tree.set_name(a, "ref");
+    // oracle: x.tag = 'ref'; r.xpath('.//ref') finds it
+    assert_eq!(tree.node(a).ns, Ns::Html);
+    assert_eq!(tree.iter(root, &["ref"]).collect::<Vec<_>>(), vec![a]);
+}
