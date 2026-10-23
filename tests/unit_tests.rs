@@ -11,10 +11,10 @@ use std::collections::HashSet;
 use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DumpMode, Extractor, Focus, Format, HtmlInput, MANUALLY_CLEANED,
     MANUALLY_STRIPPED, NodeId, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits,
-    Selector, Tree, alt, delete_by_link_density, delete_element, dump, handle_textnode,
-    link_density_test, link_density_test_tables, load_html, parse_document, parse_fragment,
-    process_node, prune_html, prune_unwanted_nodes, sanitize, textfilter, tree_cleaning,
-    tree_cleaning_with, trim,
+    Selector, Tree, alt, convert_tags, delete_by_link_density, delete_element, dump,
+    handle_textnode, link_density_test, link_density_test_tables, load_html, parse_document,
+    parse_fragment, process_node, prune_html, prune_unwanted_nodes, sanitize, textfilter,
+    tree_cleaning, tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -300,7 +300,55 @@ fn test_htmlprocessing() {
     let mut tree = xml_tree("<unwanted/>");
     let root = tree.root();
     prune_html(&mut tree, root, Focus::Balanced, &call).unwrap();
-    // phase 3d, 3e and 3f: the rest of the test (`convert_tags`, `xmltotxt`, `extract`)
+    let mut convert_options = default_options();
+    convert_options.tables = true;
+    convert_options.formatting = true;
+    convert_options.images = true;
+    convert_options.links = true;
+    // html5 foster-parents the `a` out of the table (D-2); the assertions hold on either tree
+    let (mut mydoc, mydoc_root) = lxml_fromstring(
+        r#"<html><body><table><a href="">Link</a></table><img src="test.jpg"/><u>Underlined</u><tt>True Type</tt><sub>Text</sub><sup>Text</sup></body></html>"#,
+    );
+    convert_tags(
+        &mut mydoc,
+        mydoc_root,
+        &ctx_for(&convert_options, &call),
+        None,
+    )
+    .unwrap();
+    assert!(mydoc.find(mydoc_root, "ref").is_some());
+    assert!(mydoc.find(mydoc_root, "graphic").is_some());
+    assert!(
+        mydoc
+            .iter(mydoc_root, &["hi"])
+            .any(|hi| mydoc.get(hi, "rend") == Some("#t"))
+    );
+    assert!(mydoc.find(mydoc_root, "table").is_some());
+
+    // multiple images inside a link must keep their original order after being
+    // lifted out of the <ref> (addnext reverses order if iterated forward)
+    let (mut multi_img, multi_root) = lxml_fromstring(
+        r#"<html><body><a href="/x"><img src="a.jpg"/><img src="b.jpg"/><img src="c.jpg"/></a></body></html>"#,
+    );
+    convert_tags(
+        &mut multi_img,
+        multi_root,
+        &ctx_for(&convert_options, &call),
+        None,
+    )
+    .unwrap();
+    let srcs: Vec<_> = multi_img
+        .iter(multi_root, &["graphic"])
+        .map(|graphic| multi_img.get(graphic, "src").unwrap().to_string())
+        .collect();
+    assert_eq!(srcs, ["a.jpg", "b.jpg", "c.jpg"]);
+
+    // the tree_cleaning of upstream's next lines runs on the converted `mydoc`
+    convert_options.tables = false;
+    let cleaned = tree_cleaning(&mut mydoc, mydoc_root, &ctx_for(&convert_options, &call)).unwrap();
+    assert!(mydoc.find(cleaned, "graphic").is_some());
+    assert!(mydoc.find(cleaned, "table").is_none());
+    // phase 3d, 3e and 3f: the rest of the test (`xmltotxt`, `extract`)
 
     // delete_element on an element without a parent leaves it unchanged
     let mut tree = xml_tree("<test/>");
@@ -766,4 +814,25 @@ fn test_delete_by_link_density_backtracking() {
             "backtracking {backtracking}"
         );
     }
+}
+
+#[test]
+fn test_convert_tags_links_off_keeps_contained_links() {
+    // Without links, only links inside div, li, p (or tables) stay as ref, the tree root does not count.
+    let doc = "<div><a>root</a><span><a>loose</a></span><p><a>para</a></p><table><tr><td><a>cell</a></td></tr></table></div>";
+    let call = Call::default();
+    let mut options = default_options();
+    options.links = false;
+    options.tables = true;
+    let ref_texts = |options: &Extractor| {
+        let (mut tree, root) = lxml_fromstring(doc);
+        convert_tags(&mut tree, root, &ctx_for(options, &call), None).unwrap();
+        tree.iter(root, &["ref"])
+            .map(|link| tree.node(link).text.clone().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ref_texts(&options), ["para", "cell"]);
+    options.tables = false;
+    assert_eq!(ref_texts(&options), ["para"]);
+    // phase 3f: the `extract` assertion of the upstream test
 }

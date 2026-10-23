@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use super::*;
-use crate::dom::{DumpMode, LocalName, Ns, ParseLimits, dump, parse_document};
+use crate::dom::{DumpMode, LocalName, Ns, ParseLimits, dump, parse_document, parse_fragment};
 use crate::settings::Extractor;
 use crate::settings::{Config, Format};
 
@@ -362,5 +362,213 @@ fn foreign_namespace_elements_are_kept_as_text() {
     assert_eq!(
         foreign_case(Ns::Svg, "done", Some("x"), None, true),
         (true, s("x"), None)
+    );
+}
+
+/// `html` parsed as a fragment; the tree and its first element.
+fn fragment(html: &str) -> (Tree, NodeId) {
+    let tree = parse_fragment(html, &ParseLimits::default(), &Call::default()).unwrap();
+    let first = tree.children(tree.root()).next().unwrap();
+    (tree, first)
+}
+
+/// `etree.tostring(element, with_tail=False)`: attributes in order, `<x/>` for an empty element.
+fn xml(tree: &Tree, element: NodeId) -> String {
+    let node = tree.node(element);
+    let mut out = format!("<{}", node.name);
+    for (key, value) in &node.attrs {
+        out.push_str(&format!(" {key}=\"{value}\""));
+    }
+    if node.text.is_none() && tree.first_child(element).is_none() {
+        out.push_str("/>");
+        return out;
+    }
+    out.push('>');
+    out.push_str(node.text.as_deref().unwrap_or(""));
+    for child in tree.children(element) {
+        out.push_str(&xml(tree, child));
+        out.push_str(tree.node(child).tail.as_deref().unwrap_or(""));
+    }
+    out.push_str(&format!("</{}>", node.name));
+    out
+}
+
+/// `html` parsed as a fragment, `convert_tags` run on its first element with the options set by
+/// `set`; the serialization of that element.
+fn converted(html: &str, set: impl FnOnce(&mut Extractor)) -> String {
+    let (mut tree, root) = fragment(html);
+    let mut options = options();
+    set(&mut options);
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    convert_tags(&mut tree, root, &ctx, None).unwrap();
+    xml(&tree, root)
+}
+
+#[test]
+fn convert_lists_numbers_dd_dt() {
+    let call = Call::default();
+    // oracle: convert_lists(etree.fromstring("<dl><dt>a</dt><dd>b</dd><dt>c</dt></dl>"))
+    let (mut tree, dl) = fragment("<dl><dt>a</dt><dd>b</dd><dt>c</dt></dl>");
+    convert_lists(&mut tree, dl, &call).unwrap();
+    assert_eq!(
+        xml(&tree, dl),
+        r#"<list rend="dl"><item rend="dt-1">a</item><item rend="dd-1">b</item><item rend="dt-2">c</item></list>"#
+    );
+    // oracle: convert_lists(etree.fromstring("<ul><li>a</li><li>b<ol><li>c</li></ol></li></ul>"))
+    let (mut tree, ul) = fragment("<ul><li>a</li><li>b<ol><li>c</li></ol></li></ul>");
+    convert_lists(&mut tree, ul, &call).unwrap();
+    assert_eq!(
+        xml(&tree, ul),
+        r#"<list rend="ul"><item>a</item><item>b<ol><item>c</item></ol></item></list>"#
+    );
+}
+
+#[test]
+fn convert_quotes_detects_code() {
+    let call = Call::default();
+    // oracle: convert_quotes(etree.fromstring(source)) for each source
+    let cases = [
+        ("<pre><span>x</span></pre>", "<code><span>x</span></code>"),
+        (
+            r#"<pre><b></b><span class="hljs-k" data-x="1">x</span><i></i></pre>"#,
+            "<code><b/><span>x</span><i/></code>",
+        ),
+        ("<pre>if x {</pre>", "<code>if x {</code>"),
+        (r#"<pre>f("a")</pre>"#, r#"<code>f("a")</code>"#),
+        ("<pre>f('a')</pre>", "<code>f('a')</code>"),
+        ("<pre>a\n    b</pre>", "<code>a\n    b</code>"),
+        ("<pre>plain text</pre>", "<quote>plain text</quote>"),
+        (
+            "<pre><span>a</span><span>b</span></pre>",
+            "<quote><span>a</span><span>b</span></quote>",
+        ),
+        (
+            r#"<pre><b><span class="other" id="s">a</span></b></pre>"#,
+            r#"<quote><b><span class="other" id="s">a</span></b></quote>"#,
+        ),
+        // only a pre can be code
+        ("<blockquote>{x}</blockquote>", "<quote>{x}</quote>"),
+        ("<q>f('a')</q>", "<quote>f('a')</quote>"),
+    ];
+    for (source, expected) in cases {
+        let (mut tree, elem) = fragment(source);
+        convert_quotes(&mut tree, elem, &call).unwrap();
+        assert_eq!(xml(&tree, elem), expected, "{source}");
+    }
+    // each indicator on its own marks code
+    for indicator in CODE_INDICATORS {
+        let (mut tree, elem) = fragment("<pre></pre>");
+        tree.node_mut(elem).text = Some(format!("x{indicator}y"));
+        convert_quotes(&mut tree, elem, &call).unwrap();
+        assert_eq!(tree.tag(elem), Some("code"), "{indicator:?}");
+    }
+}
+
+#[test]
+fn convert_headings_keeps_only_rend() {
+    // oracle: convert_headings(etree.fromstring('<h2 id="a" class="b">T</h2>'))
+    let (mut tree, elem) = fragment(r#"<h2 id="a" class="b">T</h2>"#);
+    convert_headings(&mut tree, elem);
+    assert_eq!(xml(&tree, elem), r#"<head rend="h2">T</head>"#);
+}
+
+#[test]
+fn convert_link_resolves_against_base() {
+    // oracle: convert_link(etree.fromstring('<a href="{href}" class="c">t</a>'), base) for each pair
+    let cases = [
+        (
+            "https://ex.com/a/",
+            Some("../x"),
+            r#"<ref target="https://ex.com/x">t</ref>"#,
+        ),
+        // a base that cannot be parsed: safe_relative_url is empty, the raw target stays
+        ("http://[::1", Some("/a"), r#"<ref target="/a">t</ref>"#),
+        // no base
+        ("", Some("../x"), r#"<ref target="../x">t</ref>"#),
+        // an empty href is falsy: no target
+        ("https://ex.com/a/", Some(""), "<ref>t</ref>"),
+        // no href: no target
+        ("https://ex.com/a/", None, "<ref>t</ref>"),
+    ];
+    for (base, href, expected) in cases {
+        let source = match href {
+            Some(href) => format!(r#"<a href="{href}" class="c">t</a>"#),
+            None => r#"<a class="c">t</a>"#.to_string(),
+        };
+        let (mut tree, elem) = fragment(&source);
+        convert_link(&mut tree, elem, base);
+        assert_eq!(xml(&tree, elem), expected, "{base:?} {href:?}");
+    }
+}
+
+#[test]
+fn faq_question_becomes_h3_head() {
+    // oracle: convert_tags(html.fromstring(source), Extractor(formatting=True)); the class test is
+    // a substring test, so `xschema-faq-questiony` matches too
+    let source = r#"<div><p>q <strong class="a schema-faq-question b" id="x">Q?</strong> <strong class="plain">s</strong> <strong class="xschema-faq-questiony">t</strong></p></div>"#;
+    assert_eq!(
+        converted(source, |options| options.formatting = true),
+        r##"<div><p>q <head rend="h3">Q?</head> <hi rend="#b">s</hi> <head rend="h3">t</head></p></div>"##
+    );
+}
+
+#[test]
+fn empty_sub_sup_deleted_tail_kept() {
+    // oracle: convert_tags(html.fromstring(source), Extractor(formatting=True)); a sub with a
+    // blank text or a child is not empty
+    let source =
+        "<div><p>a<sup></sup>b<sub></sub>c<sup>d</sup><sub> </sub>e<sub><i>x</i></sub></p></div>";
+    assert_eq!(
+        converted(source, |options| options.formatting = true),
+        r##"<div><p>abc<hi rend="#sup">d</hi><hi rend="#sub"> </hi>e<hi rend="#sub"><hi rend="#i">x</hi></hi></p></div>"##
+    );
+}
+
+#[test]
+fn formatting_off_strips_rend_tags() {
+    // oracle: convert_tags(html.fromstring(source), Extractor(formatting=False))
+    let source = "<div><p>a <b>x</b><i>y</i><sub>s</sub> z<kbd>k</kbd></p></div>";
+    assert_eq!(converted(source, |_| {}), "<div><p>a xys zk</p></div>");
+}
+
+#[test]
+fn image_only_link_removed() {
+    // oracle: convert_tags(html.fromstring(source), Extractor(images=True, links=True)); the
+    // graphics follow the tail of the link, which joins the text before it
+    let set = |options: &mut Extractor| {
+        options.images = true;
+        options.links = true;
+    };
+    let source = r#"<div><p>t <a href="/x"><img src="a.jpg"/><img src="b.jpg"/></a> u</p></div>"#;
+    assert_eq!(
+        converted(source, set),
+        r#"<div><p>t  u<graphic src="a.jpg"/><graphic src="b.jpg"/></p></div>"#
+    );
+    // a link with text stays
+    let source = r#"<div><p>t <a href="/x">w<img src="a.jpg"/></a> u</p></div>"#;
+    assert_eq!(
+        converted(source, set),
+        r#"<div><p>t <ref target="/x">w</ref> u<graphic src="a.jpg"/></p></div>"#
+    );
+}
+
+#[test]
+fn convert_tags_stops_when_cancelled() {
+    let (mut tree, root) = fragment("<div><p><a>a</a></p></div>");
+    let token = crate::CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let options = options();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    assert_eq!(
+        convert_tags(&mut tree, root, &ctx, None),
+        Err(ExtractError::Cancelled)
     );
 }
