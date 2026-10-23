@@ -20,20 +20,27 @@ impl<'t> LiveIter<'t> {
     /// Walks `start` and its descendants in document order, yielding the elements named in `tags`
     /// (every element when `tags` is empty).
     pub fn new(tree: &Tree, start: NodeId, tags: &'t [&'t str]) -> Self {
-        let next = std::iter::successors(Some(start), |&id| tree.step(id, start))
-            .find(|&id| tree.matches(id, tags));
+        let next = first_match(tree, start, Some(start), tags);
+        Self { start, next, tags }
+    }
+
+    /// The live `start.iterdescendants(tags)`: as `new`, with `start` itself left out.
+    pub fn descendants(tree: &Tree, start: NodeId, tags: &'t [&'t str]) -> Self {
+        let next = first_match(tree, start, tree.step(start, start), tags);
         Self { start, next, tags }
     }
 
     /// The next element; its successor is fixed before it is returned, as in lxml.
     pub fn next(&mut self, tree: &Tree) -> Option<NodeId> {
         let current = self.next?;
-        self.next = std::iter::successors(tree.step(current, self.start), |&id| {
-            tree.step(id, self.start)
-        })
-        .find(|&id| tree.matches(id, self.tags));
+        self.next = first_match(tree, self.start, tree.step(current, self.start), self.tags);
         Some(current)
     }
+}
+
+/// The first element named in `tags` from `from` on, in document order inside the subtree of `start`.
+fn first_match(tree: &Tree, start: NodeId, from: Option<NodeId>, tags: &[&str]) -> Option<NodeId> {
+    std::iter::successors(from, |&id| tree.step(id, start)).find(|&id| tree.matches(id, tags))
 }
 
 impl Tree {
@@ -111,8 +118,14 @@ impl Tree {
     }
 
     /// The text of `id` and its descendants in document order: own text, then each descendant's
-    /// text and tail. The tail of `id` itself is not part of it.
+    /// text and tail. The tail of `id` itself is not part of it. Empty pieces are left out.
     pub fn itertext(&self, id: NodeId) -> impl Iterator<Item = &str> + '_ {
+        self.itertext_lxml(id).filter(|text| !text.is_empty())
+    }
+
+    /// `itertext` as lxml yields it: a text or tail that is `Some("")` is an empty text node and
+    /// comes out as an empty piece, which matters to `" ".join`.
+    pub fn itertext_lxml(&self, id: NodeId) -> impl Iterator<Item = &str> + '_ {
         // `(node, true)` is the end of `node`, where its tail comes.
         std::iter::successors(Some((id, false)), move |&(node, ended)| {
             let data = self.node(node);
@@ -131,7 +144,13 @@ impl Tree {
             (true, false) => self.node(node).tail.as_deref(),
             (true, true) => None,
         })
-        .filter(|text| !text.is_empty())
+    }
+
+    /// The topmost ancestor of `id`; `id` itself when it has no parent.
+    pub fn root_of(&self, id: NodeId) -> NodeId {
+        std::iter::successors(Some(id), |&up| self.node(up).parent)
+            .last()
+            .unwrap_or(id)
     }
 
     /// All text under `id`, as lxml's `text_content()`.

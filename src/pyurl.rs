@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 
+use crate::pystr::MAX_STR_DIGITS;
 use tables::{HTML5_ENTITIES, NFKC_NETLOC_BREAKERS};
 
 // The pattern is a literal that compiles (`charref_pattern_compiles` forces it); `None` would make
@@ -72,11 +73,6 @@ const INVALID_CODEPOINTS: &[u32] = &[
     0x10FFFE, 0x10FFFF,
 ];
 
-// Python's `int()` refuses a decimal string of more digits than this
-// (`sys.int_info.default_max_str_digits`); bases that are powers of two, such as hex, have no limit.
-// Leading zeros count.
-const MAX_DECIMAL_DIGITS: usize = 4300;
-
 /// The `ValueError` of the `urllib.parse` and `html` helpers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UrlError;
@@ -84,7 +80,7 @@ pub struct UrlError;
 // upstream: cpython Lib/html/__init__.py::_replace_charref
 fn numeric_charref(digits: &str, radix: u32) -> Result<String, UrlError> {
     // `int(digits)` raises above the limit, and the exception leaves `unescape`.
-    if radix == 10 && digits.len() > MAX_DECIMAL_DIGITS {
+    if radix == 10 && digits.len() > MAX_STR_DIGITS {
         return Err(UrlError);
     }
     // A value that does not fit `u32` is above U+10FFFF, as Python's unbounded `int` would be.

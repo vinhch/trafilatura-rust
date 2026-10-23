@@ -36,6 +36,9 @@ pub enum Rejection {
     WrongLanguage,
     /// The input exceeds the size limit.
     InputTooLarge,
+    /// A value upstream raises `ValueError` on inside extraction: a span of more than 4300 digits,
+    /// a URL `urljoin` rejects.
+    InvalidValue,
 }
 
 impl fmt::Display for Rejection {
@@ -50,6 +53,7 @@ impl fmt::Display for Rejection {
             Self::Duplicate => "duplicate text",
             Self::WrongLanguage => "detected language does not match the target language",
             Self::InputTooLarge => "input is too large",
+            Self::InvalidValue => "a value upstream cannot parse",
         })
     }
 }

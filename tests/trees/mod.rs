@@ -204,3 +204,60 @@ pub fn ctx_for<'a>(options: &'a Extractor, call: &'a Call<'a>) -> Ctx<'a> {
         call,
     }
 }
+
+/// `text` as libxml2 writes it: `&`, `<`, `>` and `\r` become references, and in an attribute value
+/// `"`, `\n` and `\t` too.
+fn escape(text: &str, attribute: bool) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '\r' => out.push_str("&#13;"),
+            '"' if attribute => out.push_str("&quot;"),
+            '\n' if attribute => out.push_str("&#10;"),
+            '\t' if attribute => out.push_str("&#9;"),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn write_element(tree: &Tree, node: NodeId, out: &mut String) {
+    let data = tree.node(node);
+    out.push('<');
+    out.push_str(&data.name);
+    for (name, value) in &data.attrs {
+        out.push_str(&format!(" {name}=\"{}\"", escape(value, true)));
+    }
+    // lxml writes `<x/>` only when there is no text node at all: `Some("")` gives `<x></x>`.
+    if data.text.is_none() && tree.first_child(node).is_none() {
+        out.push_str("/>");
+        return;
+    }
+    out.push('>');
+    out.push_str(&escape(data.text.as_deref().unwrap_or(""), false));
+    for child in tree.children(node) {
+        write_element(tree, child, out);
+        out.push_str(&escape(
+            tree.node(child).tail.as_deref().unwrap_or(""),
+            false,
+        ));
+    }
+    out.push_str(&format!("</{}>", data.name));
+}
+
+/// `etree.tostring(node, encoding="unicode", with_tail=with_tail)`. Elements are written under
+/// their local name, so a foreign element is not faithful: assert those through tree dumps.
+pub fn tostring(tree: &Tree, node: NodeId, with_tail: bool) -> String {
+    let mut out = String::new();
+    write_element(tree, node, &mut out);
+    if with_tail {
+        out.push_str(&escape(
+            tree.node(node).tail.as_deref().unwrap_or(""),
+            false,
+        ));
+    }
+    out
+}

@@ -12,6 +12,13 @@ impl Tree {
         self.push(Node::new(LocalName::from(name), Ns::Html, Vec::new()))
     }
 
+    /// A detached element with the name and namespace of `id` and no attributes, text or tail.
+    pub fn new_element_like(&mut self, id: NodeId) -> NodeId {
+        let source = self.node(id);
+        let node = Node::new(source.name.clone(), source.ns, Vec::new());
+        self.push(node)
+    }
+
     /// The first child element of `id`.
     pub fn first_child(&self, id: NodeId) -> Option<NodeId> {
         self.node(id).first_child
@@ -169,12 +176,17 @@ impl Tree {
         if tags.is_empty() {
             return;
         }
+        self.strip_tags_where(id, |tree, node| tree.matches(node, tags));
+    }
+
+    /// `strip_tags` for the descendants of `id` that `strip` accepts, whatever their namespace.
+    pub fn strip_tags_where(&mut self, id: NodeId, strip: impl Fn(&Tree, NodeId) -> bool) {
         let mut current = self.step(id, id);
         while let Some(node) = current {
             // Fixed before the splice: the first child of a stripped element takes its place in
             // the walk, so nested matches are stripped too.
             current = self.step(node, id);
-            if self.matches(node, tags) {
+            if strip(self, node) {
                 self.splice(node);
             }
         }

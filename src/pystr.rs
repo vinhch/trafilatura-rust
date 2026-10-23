@@ -1,14 +1,22 @@
-//! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable` and `\w`.
+//! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable`, `\w` and
+//! decimal digits.
 //!
-//! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py`); the
-//! functions only search them.
+//! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py` and
+//! `gen_decimal.py`); the functions only search them.
 
+mod decimal;
 mod printable;
 
 use std::cmp::Ordering;
 
+use decimal::ND_ZEROS;
 use printable::{PRINTABLE, SPACE, WORD};
 pub(crate) use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
+
+/// Python's `int()` refuses a decimal string of more digits than this
+/// (`sys.int_info.default_max_str_digits`); bases that are powers of two, such as hex, have no
+/// limit. Leading zeros count.
+pub const MAX_STR_DIGITS: usize = 4300;
 
 fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
     let c = u32::from(c);
@@ -103,6 +111,19 @@ pub(crate) fn is_all_printable(s: &str) -> bool {
 /// `regex` `\w` adds marks and connector punctuation instead.
 pub(crate) fn is_word(c: char) -> bool {
     in_ranges(WORD, c)
+}
+
+/// `unicodedata.decimal(c, None)`: the value of a decimal digit (category `Nd`) of any script.
+pub fn decimal_value(c: char) -> Option<u32> {
+    // Every digit sits in a run of ten consecutive code points that starts at its zero.
+    let after = ND_ZEROS.partition_point(|&zero| zero <= c);
+    let zero = ND_ZEROS.get(after.checked_sub(1)?)?;
+    Some(u32::from(c) - u32::from(*zero)).filter(|&value| value < 10)
+}
+
+/// Python `s.isdecimal()`: false for the empty string.
+pub fn is_decimal(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| decimal_value(c).is_some())
 }
 
 // Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
@@ -231,6 +252,45 @@ mod tests {
         ] {
             assert_eq!(is_word(c), expected, "U+{:04X}", u32::from(c));
         }
+    }
+
+    #[test]
+    fn decimal_matches_python() {
+        // oracle: unicodedata.decimal(c, None)
+        for (c, expected) in [
+            ('0', Some(0)),
+            ('9', Some(9)),
+            ('\u{663}', Some(3)),
+            ('\u{FF11}', Some(1)),
+            ('\u{B2}', None),
+            ('a', None),
+        ] {
+            assert_eq!(decimal_value(c), expected, "U+{:04X}", u32::from(c));
+        }
+        // oracle: [s.isdecimal() for s in ("007", chr(0x661) + chr(0x662), "", "-2", "2x", "\xb2", "1\xb2")]
+        for (s, expected) in [
+            ("007", true),
+            ("\u{661}\u{662}", true),
+            ("", false),
+            ("-2", false),
+            ("2x", false),
+            ("\u{B2}", false),
+            ("1\u{B2}", false),
+        ] {
+            assert_eq!(is_decimal(s), expected, "{s:?}");
+        }
+    }
+
+    #[test]
+    fn nd_zeros_sorted_ten_apart() {
+        assert!(ND_ZEROS.windows(2).all(|pair| {
+            match pair {
+                [a, b] => u32::from(*b)
+                    .checked_sub(u32::from(*a))
+                    .is_some_and(|gap| gap >= 10),
+                _ => false,
+            }
+        }));
     }
 
     fn class_regex(class: &str) -> Regex {

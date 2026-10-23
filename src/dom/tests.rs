@@ -977,3 +977,153 @@ fn clear_attrs_keeps_text_tail_children() {
     assert_eq!(tree.first_child(p), Some(b));
     assert_eq!(tree.node(b).tail.as_deref(), Some("tail"));
 }
+
+#[test]
+fn live_descendants_excludes_start() {
+    // oracle: i = etree.fromstring("<item><item/><item/></item>")
+    //   len(list(i.iterdescendants("item"))) == 2, len(list(i.iter("item"))) == 3
+    let tree = fragment("<item><item></item><item></item></item>");
+    let start = tree.first_child(tree.root()).unwrap();
+    let mut live = LiveIter::descendants(&tree, start, &["item"]);
+    let mut seen = Vec::new();
+    while let Some(id) = live.next(&tree) {
+        seen.push(id);
+    }
+    assert_eq!(seen, tree.children(start).collect::<Vec<_>>());
+}
+
+#[test]
+fn live_descendants_ends_at_stripped_successor() {
+    // oracle: p = etree.fromstring("<p><a/><foo>x</foo><b/></p>"); it = p.iterdescendants()
+    //   seen = [next(it).tag]; etree.strip_tags(p, "foo"); seen += [e.tag for e in it]
+    //   -> seen == ["a", "foo"]
+    let mut tree = fragment("<p><a></a><foo>x</foo><b></b></p>");
+    let p = tree.first_child(tree.root()).unwrap();
+    let (a, foo) = (tree.child_at(p, 0).unwrap(), tree.child_at(p, 1).unwrap());
+    let mut live = LiveIter::descendants(&tree, p, &[]);
+    assert_eq!(live.next(&tree), Some(a));
+    tree.strip_tags(p, &["foo"]);
+    assert_eq!(live.next(&tree), Some(foo));
+    assert_eq!(live.next(&tree), None);
+}
+
+#[test]
+fn root_of_detached_and_attached() {
+    let mut tree = fragment("<div><p></p></div>");
+    let root = tree.root();
+    let div = tree.first_child(root).unwrap();
+    let p = tree.first_child(div).unwrap();
+    assert_eq!(tree.root_of(p), root);
+    assert_eq!(tree.root_of(root), root);
+    tree.remove(div);
+    assert_eq!(tree.root_of(p), div);
+    assert_eq!(tree.root_of(div), div);
+    let lone = tree.new_element("x");
+    assert_eq!(tree.root_of(lone), lone);
+}
+
+#[test]
+fn new_element_like_keeps_namespace() {
+    let mut tree = parse("<html><body><svg><title>t</title></svg></body></html>");
+    let title = find(&tree, "title");
+    assert_eq!(tree.node(title).ns, Ns::Svg);
+    tree.set(title, "id", "x");
+    tree.node_mut(title).tail = Some("tail".to_string());
+    let copy = tree.new_element_like(title);
+    let node = tree.node(copy);
+    assert_eq!((&*node.name, node.ns), ("title", Ns::Svg));
+    assert!(node.attrs.is_empty() && node.text.is_none() && node.tail.is_none());
+    assert_eq!(node.parent(), None);
+}
+
+#[test]
+fn strip_tags_where_strips_foreign() {
+    // oracle: p = etree.fromstring("<p>a<svg><title>t</title></svg>b</p>")
+    //   etree.strip_tags(p, "svg", "title") -> p.text == "atb", len(p) == 0
+    let mut tree = fragment("<p>a<svg><title>t</title></svg>b</p>");
+    let p = tree.first_child(tree.root()).unwrap();
+    assert_eq!(tree.iter(p, &[]).count(), 3);
+    tree.strip_tags_where(p, |tree, node| tree.tag(node) != Some("p"));
+    assert_eq!(xml(&tree, p), "<p>atb</p>");
+}
+
+/// A detached `x` with a child per `(text, tail)` of `children`, named `c0`, `c1`, ...
+fn x_with(text: Option<&str>, children: &[(Option<&str>, Option<&str>)]) -> (Tree, Vec<NodeId>) {
+    let mut tree = Tree::new(LocalName::from("x"), Ns::Html, Vec::new());
+    let root = tree.root();
+    tree.node_mut(root).text = text.map(str::to_string);
+    let ids = children
+        .iter()
+        .enumerate()
+        .map(|(index, &(text, tail))| {
+            let id = tree.add_child(root, LocalName::from(format!("c{index}")), Ns::Html, vec![]);
+            tree.node_mut(id).text = text.map(str::to_string);
+            tree.node_mut(id).tail = tail.map(str::to_string);
+            id
+        })
+        .collect();
+    (tree, ids)
+}
+
+fn pieces(tree: &Tree) -> Vec<&str> {
+    tree.itertext_lxml(tree.root()).collect()
+}
+
+#[test]
+fn itertext_lxml_matches_lxml() {
+    // Each expected list is `list(x.itertext())` from the oracle on the same lxml tree
+    // (`e.text = ""` and `e.tail = ""` store an empty text node).
+    // oracle: x = etree.Element("x"); x.text = ""
+    let (tree, _) = x_with(Some(""), &[]);
+    assert_eq!(pieces(&tree), [""]);
+    assert_eq!(tree.itertext(tree.root()).count(), 0);
+
+    // oracle: x = etree.fromstring("<x><a/><b/></x>"); x[0].tail = ""
+    let (tree, _) = x_with(None, &[(None, Some("")), (None, None)]);
+    assert_eq!(pieces(&tree), [""]);
+
+    // oracle: x.text = ""; x[0].tail = ""  (on <x><a/></x>)
+    let (tree, _) = x_with(Some(""), &[(None, Some(""))]);
+    assert_eq!(pieces(&tree), ["", ""]);
+
+    // handle_textnode: a.text, a.tail = a.tail, ""
+    // oracle: x = etree.fromstring("<x><a/><b/></x>"); a = x[0]; a.tail = "t"
+    //   a.text, a.tail = a.tail, ""; list(x.itertext()) == ["t", ""]
+    let (mut tree, ids) = x_with(None, &[(None, Some("t")), (None, None)]);
+    let node = tree.node_mut(ids[0]);
+    node.text = node.tail.take();
+    node.tail = Some(String::new());
+    assert_eq!(pieces(&tree), ["t", ""]);
+
+    // strip_tags: `join` of None plus Some("") stays an empty piece, the empty text node lxml
+    // moves up when it has nothing to merge with.
+    // oracle: x = etree.fromstring("<x><s/></x>"); x[0].text = ""; etree.strip_tags(x, "s")
+    //   list(x.itertext()) == [""]
+    let (mut tree, _) = x_with(None, &[(Some(""), None)]);
+    tree.strip_tags(tree.root(), &["c0"]);
+    assert_eq!(pieces(&tree), [""]);
+
+    // oracle: x = etree.fromstring("<x><a/><s/></x>"); x[1].text = ""; etree.strip_tags(x, "s")
+    let (mut tree, _) = x_with(None, &[(None, None), (Some(""), None)]);
+    tree.strip_tags(tree.root(), &["c1"]);
+    assert_eq!(pieces(&tree), [""]);
+
+    // oracle: x = etree.fromstring("<x><s/></x>"); x[0].tail = ""; etree.strip_tags(x, "s")
+    let (mut tree, _) = x_with(None, &[(None, Some(""))]);
+    tree.strip_tags(tree.root(), &["c0"]);
+    assert_eq!(pieces(&tree), [""]);
+
+    // oracle: x = etree.fromstring("<x><s><c/></s></x>"); x[0].tail = ""; etree.strip_tags(x, "s")
+    let (mut tree, ids) = x_with(None, &[(None, Some(""))]);
+    let inner = tree.add_child(ids[0], LocalName::from("c"), Ns::Html, vec![]);
+    tree.strip_tags(tree.root(), &["c0"]);
+    assert_eq!(tree.node(inner).tail.as_deref(), Some(""));
+    assert_eq!(pieces(&tree), [""]);
+
+    // An empty text node merges into the text next to it.
+    // oracle: x = etree.fromstring("<x>t<s/></x>"); x[0].text = ""; etree.strip_tags(x, "s")
+    //   list(x.itertext()) == ["t"]
+    let (mut tree, _) = x_with(Some("t"), &[(Some(""), None)]);
+    tree.strip_tags(tree.root(), &["c0"]);
+    assert_eq!(pieces(&tree), ["t"]);
+}
