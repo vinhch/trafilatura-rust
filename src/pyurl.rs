@@ -72,21 +72,34 @@ const INVALID_CODEPOINTS: &[u32] = &[
     0x10FFFE, 0x10FFFF,
 ];
 
+// Python's `int()` refuses a decimal string of more digits than this
+// (`sys.int_info.default_max_str_digits`); bases that are powers of two, such as hex, have no limit.
+// Leading zeros count.
+const MAX_DECIMAL_DIGITS: usize = 4300;
+
+/// The `ValueError` of the `urllib.parse` and `html` helpers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UrlError;
+
 // upstream: cpython Lib/html/__init__.py::_replace_charref
-fn numeric_charref(digits: &str, radix: u32) -> String {
+fn numeric_charref(digits: &str, radix: u32) -> Result<String, UrlError> {
+    // `int(digits)` raises above the limit, and the exception leaves `unescape`.
+    if radix == 10 && digits.len() > MAX_DECIMAL_DIGITS {
+        return Err(UrlError);
+    }
     // A value that does not fit `u32` is above U+10FFFF, as Python's unbounded `int` would be.
     let num = u32::from_str_radix(digits, radix).unwrap_or(u32::MAX);
     if let Some(&(_, replacement)) = INVALID_CHARREFS.iter().find(|&&(key, _)| key == num) {
-        return replacement.to_string();
+        return Ok(replacement.to_string());
     }
     // Surrogates and values above U+10FFFF are not a `char`: U+FFFD, as upstream.
     let Some(c) = char::from_u32(num) else {
-        return '\u{FFFD}'.to_string();
+        return Ok('\u{FFFD}'.to_string());
     };
     if INVALID_CODEPOINTS.binary_search(&num).is_ok() {
-        return String::new();
+        return Ok(String::new());
     }
-    c.to_string()
+    Ok(c.to_string())
 }
 
 fn entity(name: &str) -> Option<&'static str> {
@@ -119,10 +132,10 @@ fn named_charref(name: &str) -> String {
 }
 
 // upstream: cpython Lib/html/__init__.py::_replace_charref
-fn replace_charref(caps: &Captures<'_>) -> String {
+fn replace_charref(caps: &Captures<'_>) -> Result<String, UrlError> {
     let reference = caps.get(1).map_or("", |m| m.as_str());
     let Some(body) = reference.strip_prefix('#') else {
-        return named_charref(reference);
+        return Ok(named_charref(reference));
     };
     let without_semicolon = |text: &str| text.strip_suffix(';').unwrap_or(text).to_owned();
     match body.strip_prefix(['x', 'X']) {
@@ -133,15 +146,24 @@ fn replace_charref(caps: &Captures<'_>) -> String {
 
 /// Python `html.unescape`: replaces named and numeric character references with the characters they
 /// stand for, by the HTML 5 rules (a name without `;` matches by its longest known prefix).
+///
+/// Errors exactly where CPython raises: a decimal reference of more than 4300 digits.
 // upstream: cpython Lib/html/__init__.py::unescape
-pub fn unescape(s: &str) -> Cow<'_, str> {
+pub fn unescape(s: &str) -> Result<Cow<'_, str>, UrlError> {
     if !s.contains('&') {
-        return Cow::Borrowed(s);
+        return Ok(Cow::Borrowed(s));
     }
-    match CHARREF.as_ref() {
-        Some(charref) => charref.replace_all(s, replace_charref),
-        None => Cow::Borrowed(s),
-    }
+    let Some(charref) = CHARREF.as_ref() else {
+        return Ok(Cow::Borrowed(s));
+    };
+    let mut failed = false;
+    let replaced = charref.replace_all(s, |caps: &Captures<'_>| {
+        replace_charref(caps).unwrap_or_else(|UrlError| {
+            failed = true;
+            String::new()
+        })
+    });
+    if failed { Err(UrlError) } else { Ok(replaced) }
 }
 
 #[cfg(test)]

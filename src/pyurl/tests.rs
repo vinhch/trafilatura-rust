@@ -7,14 +7,31 @@ use super::*;
 #[test]
 fn unescape_matches_python() {
     for &(input, expected) in UNESCAPE_CASES {
-        assert_eq!(unescape(input), expected, "unescape({input:?})");
+        let shown: String = input.chars().take(40).collect();
+        assert_eq!(
+            unescape(input).ok().as_deref(),
+            expected,
+            "unescape({shown:?}..)"
+        );
     }
 }
 
 #[test]
 fn unescape_borrows_without_ampersand() {
-    assert!(matches!(unescape("plain"), Cow::Borrowed("plain")));
-    assert!(matches!(unescape("&zzz;"), Cow::Owned(_)));
+    assert!(matches!(unescape("plain"), Ok(Cow::Borrowed("plain"))));
+    assert!(matches!(unescape("&zzz;"), Ok(Cow::Owned(_))));
+}
+
+#[test]
+fn unescape_raises_above_the_decimal_digit_limit() {
+    let decimal = |digits: usize| format!("&#{}", "9".repeat(digits));
+    assert!(unescape(&decimal(4300)).is_ok());
+    assert_eq!(unescape(&decimal(4301)), Err(UrlError));
+    assert_eq!(
+        unescape(&format!("&#{}1;", "0".repeat(4300))),
+        Err(UrlError)
+    );
+    assert!(unescape(&format!("&#x{}", "9".repeat(5000))).is_ok());
 }
 
 #[test]

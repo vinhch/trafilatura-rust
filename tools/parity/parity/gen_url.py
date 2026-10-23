@@ -139,22 +139,42 @@ UNESCAPE_INPUTS = [
     "&\fx",
     "x & y",
     "AT&T; R&D",
+    # int() refuses more than 4300 decimal digits (sys.int_info.default_max_str_digits), zeros included
+    "&#" + "9" * 4300 + ";",
+    "&#" + "9" * 4301 + ";",
+    "&#" + "9" * 4301,
+    "&#" + "0" * 4299 + "1;",
+    "&#" + "0" * 4300 + "1;",
+    "&#65;&#" + "1" * 4301 + ";",
+    "&#x" + "9" * 4301 + ";",
 ]
 
 
-def cases() -> None:
+def unescape_or_none(s: str) -> str | None:
+    "`html.unescape(s)`, or None where CPython raises ValueError."
     import html
 
+    try:
+        return html.unescape(s)
+    except ValueError:
+        return None
+
+
+def rust_option(text: str | None) -> str:
+    return "None" if text is None else f"Some({rust_str(text)})"
+
+
+def cases() -> None:
     out = header(
         "src/pyurl/cases.rs",
         "cases",
         "CPython's `html.unescape` and `urllib.parse` run on fixed inputs.",
     )
     out += [
-        "/// Input and `html.unescape` of it.",
+        "/// Input and `html.unescape` of it; `None` where CPython raises `ValueError`.",
         "#[rustfmt::skip]",
-        "pub(crate) const UNESCAPE_CASES: &[(&str, &str)] = &[",
-        *[f"    ({rust_str(s)}, {rust_str(html.unescape(s))})," for s in UNESCAPE_INPUTS],
+        "pub(crate) const UNESCAPE_CASES: &[(&str, Option<&str>)] = &[",
+        *[f"    ({rust_str(s)}, {rust_option(unescape_or_none(s))})," for s in UNESCAPE_INPUTS],
         "];",
         "",
         *composition_cases(),
