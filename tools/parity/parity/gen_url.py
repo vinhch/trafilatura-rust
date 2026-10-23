@@ -470,6 +470,75 @@ def url_cases() -> list[str]:
         "",
     ]
 
+FULLWIDTH_SOLIDUS_HOST = "http://ex" + FULLWIDTH_SOLIDUS + "com/"
+
+# (baseurl, url) handed to the upstream `safe_base_url(url)` and `safe_relative_url(baseurl, url)`.
+COURLAN_INPUTS = [
+    ("https://ex.com", "https://ex.com:8080/a/b?x=1&amp;y"),
+    ("https://ex.com", "../c/./d"),
+    ("https://ex.com", "http://[::1"),
+    ("https://ex.com", FULLWIDTH_SOLIDUS_HOST),
+    ("http://[::1", "/a"),
+    ("http://[::1", "http://[::1"),
+    (FULLWIDTH_SOLIDUS_HOST, "/a"),
+    (FULLWIDTH_SOLIDUS_HOST, "a"),
+    ("https://ex.com", "{template}"),
+    ("https://ex.com", "{template}/a"),
+    ("", "{template}"),
+    ("https://ex.com", "//cdn.x/a"),
+    ("https://ex.com", "https://cdn.x/a"),
+    ("https://ex.com", "ftp://cdn.x/a"),
+    ("https://ex.com", "//ex.com/a"),
+    ("https://ex.com", "https://ex.com/a"),
+    ("https://ex.com/p/q", "https://ex.com/a"),
+    ("https://ex.com", "//ex.com"),
+    ("https://ex.com", "../c"),
+    ("https://ex.com/a/b/", "../c"),
+    ("https://ex.com/a/b", "c?x=1#f"),
+    ("https://ex.com", "/a?x=1&amp;y=2"),
+    ("https://ex.com", "https://ex.com/a?x=1&amp;y=2"),
+    ("https://ex.com", "mailto:a@ex.com"),
+    ("https://ex.com", "javascript:void(0)"),
+    ("https://ex.com", "#top"),
+    ("https://ex.com", ""),
+    ("", "https://ex.com/a"),
+    ("", "/a"),
+    ("", "a"),
+    ("", "//cdn.x/a"),
+    ("", ""),
+    ("/rel/base", "x"),
+    ("/rel/base", "//cdn.x/a"),
+    ("//cdn.x/b", "/a"),
+    ("//cdn.x/b", "//cdn.x/a"),
+    ("//cdn.x/b", "//ex.com/a"),
+    ("https://ex.com", "&amp;"),
+    ("https://ex.com&amp;", "/a"),
+    ("https://ex.com", "&#104;ttps://ex.com/a"),
+    ("https://ex.com", "&#" + "9" * 4301 + ";"),
+    ("https://ex.com", "https://ex.com/a?x=&#" + "9" * 4301 + ";"),
+    ("https://ex.com", "&#" + "9" * 4300 + ";"),
+    ("HTTPS://EX.com", "HTTP://EX.com/A"),
+    ("https://user@ex.com:80/p", "x"),
+    ("https://ex.com", " https://cdn.x/a"),
+    ("https://ex.com", r"\\cdn.x\a"),
+]
+
+
+def courlan_cases() -> list[str]:
+    from trafilatura.utils import safe_base_url, safe_relative_url
+
+    return [
+        "/// Base URL, URL, upstream `safe_base_url(url)` and `safe_relative_url(base, url)`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const COURLAN_CASES: &[(&str, &str, &str, &str)] = &[",
+        *[
+            f"    ({rust_str(b)}, {rust_str(u)}, {rust_str(safe_base_url(u))}, {rust_str(safe_relative_url(b, u))}),"
+            for b, u in COURLAN_INPUTS
+        ],
+        "];",
+        "",
+    ]
+
 
 def unescape_or_none(s: str) -> str | None:
     "`html.unescape(s)`, or None where CPython raises ValueError."
@@ -500,6 +569,7 @@ def cases() -> None:
         "",
         *composition_cases(),
         *url_cases(),
+        *courlan_cases(),
     ]
     sys.stdout.write("\n".join(out))
 

@@ -9,6 +9,8 @@ mod cancel;
 // `pystr` and `xpaths` items are `pub` in a private module and re-exported only as far as the tests need).
 #[allow(dead_code)]
 mod context;
+#[allow(dead_code)]
+mod courlan;
 // The tree has no caller outside the `__internals` feature until the pipeline lands.
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 mod dom;
@@ -41,7 +43,8 @@ pub mod __internals {
         Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MAX_FILE_SIZE, MIN_FILE_SIZE,
     };
     pub use crate::utils::{
-        HtmlInput, decode_file, detect_encoding, load_html, sanitize, textfilter, trim,
+        HtmlInput, decode_file, detect_encoding, load_html, safe_base_url, safe_relative_url,
+        sanitize, textfilter, trim,
     };
     pub use crate::xpaths::{
         BODY_XPATH, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, Selector, alt,

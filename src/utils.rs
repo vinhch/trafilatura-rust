@@ -9,6 +9,7 @@ use regex::Regex;
 
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::context::Ctx;
+use crate::courlan::{fix_relative_urls, get_base_url};
 use crate::dom::{NodeId, ParseLimits, Tree, parse_document};
 use crate::error::{ExtractError, Rejection};
 use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS, ignore_case_i};
@@ -760,6 +761,18 @@ pub fn textfilter(tree: &Tree, element: NodeId) -> bool {
 // upstream: utils.py::text_chars_test
 pub fn text_chars_test(string: Option<&str>) -> bool {
     string.is_some_and(|string| !string.is_empty() && !pystr::is_all_space(string))
+}
+
+/// The scheme and host of `url`, an empty string where the URL is malformed.
+// upstream: utils.py::safe_base_url
+pub fn safe_base_url(url: &str) -> String {
+    get_base_url(url).unwrap_or_default()
+}
+
+/// `url` resolved against `baseurl`, an empty string where either is malformed.
+// upstream: utils.py::safe_relative_url
+pub fn safe_relative_url(baseurl: &str, url: &str) -> String {
+    fix_relative_urls(baseurl, url).unwrap_or_default()
 }
 
 #[cfg(test)]
