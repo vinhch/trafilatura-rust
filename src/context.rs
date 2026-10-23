@@ -9,7 +9,7 @@ use crate::settings::Extractor;
 /// its options (`r_options = copy(options)`), the port clones the `Extractor` into `Cow::Owned` and
 /// builds a new `Ctx` around the same `Call`.
 #[derive(Clone, Debug)]
-pub(crate) struct Ctx<'a> {
+pub struct Ctx<'a> {
     /// The options of this call.
     pub options: Cow<'a, Extractor>,
     /// Cancellation and deadline of this call.

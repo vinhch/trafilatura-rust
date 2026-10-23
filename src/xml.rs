@@ -10,7 +10,7 @@ use crate::utils::text_chars_test;
 /// Removes the element with its children and text; with `keep_tail`, its tail is joined to the
 /// previous sibling's tail or to the parent's text. Does nothing without a parent.
 // upstream: xml.py::delete_element
-pub(crate) fn delete_element(tree: &mut Tree, element: NodeId, keep_tail: bool) {
+pub fn delete_element(tree: &mut Tree, element: NodeId, keep_tail: bool) {
     let Some(parent) = tree.node(element).parent() else {
         return;
     };

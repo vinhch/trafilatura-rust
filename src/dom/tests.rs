@@ -919,3 +919,16 @@ fn set_name_drops_namespace() {
     assert_eq!(tree.node(a).ns, Ns::Html);
     assert_eq!(tree.iter(root, &["ref"]).collect::<Vec<_>>(), vec![a]);
 }
+
+#[test]
+fn clear_attrs_keeps_text_tail_children() {
+    let mut tree = parse("<div><p id=\"a\" class=\"b\">text<b>x</b>tail</p>after</div>");
+    let p = find(&tree, "p");
+    tree.clear_attrs(p);
+    assert!(tree.node(p).attrs.is_empty());
+    assert_eq!(tree.node(p).text.as_deref(), Some("text"));
+    assert_eq!(tree.node(p).tail.as_deref(), Some("after"));
+    let b = find(&tree, "b");
+    assert_eq!(tree.first_child(p), Some(b));
+    assert_eq!(tree.node(b).tail.as_deref(), Some("tail"));
+}

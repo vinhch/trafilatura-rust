@@ -11,10 +11,14 @@ mod cancel;
 mod context;
 #[allow(dead_code)]
 mod courlan;
+#[allow(dead_code)]
+mod deduplication;
 // The tree has no caller outside the `__internals` feature until the pipeline lands.
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 mod dom;
 mod error;
+#[allow(dead_code)]
+mod html_processing;
 #[allow(dead_code)]
 mod pystr;
 #[allow(dead_code)]
@@ -35,17 +39,21 @@ pub use error::{ExtractError, Rejection};
 #[cfg(feature = "__internals")]
 #[doc(hidden)]
 pub mod __internals {
+    pub use crate::context::Ctx;
     pub use crate::dom::{
-        DumpMode, LiveIter, Node, NodeId, Ns, ParseLimits, Tree, dump, parse_document,
+        DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, parse_document,
         parse_fragment,
     };
+    pub use crate::html_processing::{prune_html, recover_math, tree_cleaning, tree_cleaning_with};
     pub use crate::settings::{
-        Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MAX_FILE_SIZE, MIN_FILE_SIZE,
+        Config, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED, MANUALLY_STRIPPED,
+        MAX_FILE_SIZE, MIN_FILE_SIZE,
     };
     pub use crate::utils::{
         HtmlInput, decode_file, detect_encoding, load_html, safe_base_url, safe_relative_url,
         sanitize, textfilter, trim,
     };
+    pub use crate::xml::delete_element;
     pub use crate::xpaths::{
         BODY_XPATH, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, Selector, alt,
     };

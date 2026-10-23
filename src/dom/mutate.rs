@@ -143,6 +143,11 @@ impl Tree {
         Some(attrs.remove(at).1)
     }
 
+    /// Removes every attribute like lxml's `attrib.clear()`; text, tail and children stay.
+    pub fn clear_attrs(&mut self, id: NodeId) {
+        self.node_mut(id).attrs.clear();
+    }
+
     /// Empties the element like lxml's `clear()`: text, tail and attributes are dropped and the
     /// children are detached with their tails. The element keeps its place in its parent.
     pub fn clear(&mut self, id: NodeId) {
