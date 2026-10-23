@@ -144,7 +144,9 @@ fn handle_forms(tree: &mut Tree, root: NodeId, call: &Call<'_>) -> Result<(), Ex
 
 /// Prunes the tree below `root` by discarding the unwanted elements of `MANUALLY_CLEANED` and
 /// `MANUALLY_STRIPPED`; returns the root to continue with, which is `root` except when recall
-/// restores its copy. Checks `ctx.call` about every `CHECK_INTERVAL` nodes.
+/// restores its copy. Checks `ctx.call` about every `CHECK_INTERVAL` nodes of the walks it makes
+/// itself and of the elements a live walk matches, and once per cleaning expression; `strip_tags`,
+/// `copy` and the start of a live walk take no `Call`.
 // upstream: htmlprocessing.py::tree_cleaning
 pub fn tree_cleaning(tree: &mut Tree, root: NodeId, ctx: &Ctx<'_>) -> Result<NodeId, ExtractError> {
     tree_cleaning_with(tree, root, ctx, MANUALLY_CLEANED, MANUALLY_STRIPPED)
@@ -152,8 +154,7 @@ pub fn tree_cleaning(tree: &mut Tree, root: NodeId, ctx: &Ctx<'_>) -> Result<Nod
 
 /// `tree_cleaning` over the given lists in place of `MANUALLY_CLEANED` and `MANUALLY_STRIPPED`,
 /// which users mutate upstream. With `images` on, `stripped` is expected to hold `img`; without it
-/// nothing is removed from the list (upstream raises `ValueError`, and only an option of phase 3f
-/// can lead here).
+/// nothing is removed from the list, where upstream raises `ValueError` (deviation D-8).
 // upstream: htmlprocessing.py::tree_cleaning
 pub fn tree_cleaning_with(
     tree: &mut Tree,
@@ -196,6 +197,7 @@ pub fn tree_cleaning_with(
     if ctx.options.images {
         // many websites have <img> inside <figure> or <picture> or <source> tag
         cleaning_list.retain(|tag| !PRESERVE_IMG_CLEANING.contains(tag));
+        // deviation: D-8
         remove_first(&mut stripping_list, "img");
     }
 
@@ -695,7 +697,7 @@ const CONVERSION_TAGS: &[&str] = &[
 
 /// Converts `ul`, `ol` and `dl` to `list` and the `li`, `dd` and `dt` below to `item`; `dd` and
 /// `dt` keep their kind and the number of their `dt`/`dd` pair in `rend`. Checks `call` about every
-/// `CHECK_INTERVAL` nodes.
+/// `CHECK_INTERVAL` matched elements; the live walk itself takes no `Call`.
 // upstream: htmlprocessing.py::convert_lists
 pub fn convert_lists(tree: &mut Tree, elem: NodeId, call: &Call<'_>) -> Result<(), ExtractError> {
     let kind = tree.node(elem).name.to_string();
@@ -783,7 +785,7 @@ pub fn convert_deletions(tree: &mut Tree, elem: NodeId) {
 }
 
 /// Turns `details` into `div` and the `summary` elements below it into `head`. Checks `call` about
-/// every `CHECK_INTERVAL` nodes.
+/// every `CHECK_INTERVAL` matched elements; the live walk itself takes no `Call`.
 // upstream: htmlprocessing.py::convert_details
 pub fn convert_details(tree: &mut Tree, elem: NodeId, call: &Call<'_>) -> Result<(), ExtractError> {
     tree.set_name(elem, "div");
@@ -842,7 +844,7 @@ pub fn convert_link(tree: &mut Tree, elem: NodeId, base_url: &str) {
 
 /// Simplifies the markup below `root` and converts the relevant HTML tags to the XML standard of
 /// the pipeline; `url` resolves relative links. Checks `ctx.call` about every `CHECK_INTERVAL`
-/// nodes.
+/// matched elements of each walk; the live walks themselves take no `Call`.
 // upstream: htmlprocessing.py::convert_tags
 pub fn convert_tags(
     tree: &mut Tree,

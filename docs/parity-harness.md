@@ -55,7 +55,10 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
   `scripts/fixtures.sh --generate --pack`, and commit the new archive. A `uv.lock` change needs the
   same only when it can alter upstream's output: a bump of `lxml`, `htmldate`, `courlan`, `justext`,
   `charset_normalizer`, `html5lib`, or of a package they depend on (`dateparser`, `babel`, `tld`). A
-  security bump of anything else does not. The archive's `lock_sha256` is the lock it was generated
+  security bump of anything else does not. Such a bump, and a change of the oracle image's Python,
+  also means rerunning the generators of the generated test data below (`gen_url` for `courlan` and the
+  Python version, `gen_html_processing_cases` and `gen_xpath_cases` for the rest) and committing the
+  files they write. The archive's `lock_sha256` is the lock it was generated
   with, so it may differ from the current lock. The one place the two are compared is a filtered run
   (`scripts/fixtures.sh --only`): on a mismatch it starts a new index from that run's pages and deletes
   `f1.json`, so run it only after a full `--generate`. A new release gets a new archive name
@@ -102,3 +105,27 @@ line is followup F-12. The report is `.temp/parity/report.md`.
 | `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap` | `1` lets the targets run; they skip otherwise |
 | `TRAFILATURA_MEASURE_ONLY` | measure targets | limits a measurement to pages whose source path contains the text |
 | `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure` | labels the host of a Python measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |
+
+## Generated test data
+
+Rust test files that hold values from upstream Python are written by generators in
+`tools/parity/parity/`, run through `scripts/oracle.sh`: upstream at the pinned commit (the script
+refuses another one), the packages of `uv.lock` and the oracle image's Python. Each file carries an
+`@generated` header with its regenerate command and is never edited by hand; a rerun on the same pin
+writes it byte for byte.
+
+| Generator | Writes | Holds |
+| --- | --- | --- |
+| `gen_printable.py` | `src/pystr/printable.rs` | the `str.isprintable` ranges of the image's Python |
+| `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
+| `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the HTML5 entity table and the NFKC netloc breakers of the image's Python |
+| `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin` and the two `courlan` helpers on URL strings |
+| `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
+
+Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
+`gen_url` takes `tables` or `cases` in place of `main`. The two snippet-based files carry the
+`treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
+parse dumps the same: a snippet that parses differently is changed, never the expectation.
+`cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized
+mode) of the result with the dump upstream wrote. A case there may state that its operation must change
+the tree, and the generator fails when it does not.

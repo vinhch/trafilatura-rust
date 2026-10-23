@@ -11,15 +11,17 @@ map is in `architecture.md`.
    function that carries its `upstream:` trace comment.
 3. Port the changed upstream tests to their Rust tests by name. A test upstream deleted is deleted
    here.
-4. After porting token or selector changes, regenerate the selector test cases so `src/xpaths/cases.rs`
-   encodes the new upstream: `scripts/oracle.sh 'from parity.gen_xpath_cases import main; main()' >
-   src/xpaths/cases.rs`. The generator fails with "token table out of date" until each new token has
-   a value in its table.
+4. After porting token, selector or html-processing changes, regenerate the generated test data so it
+   encodes the new upstream (`parity-harness.md`, Generated test data): `gen_xpath_cases`,
+   `gen_html_processing_cases` and both outputs of `gen_url`. The selector generator fails with
+   "token table out of date" until each new token has a value in its table.
 5. Read upstream's `settings.cfg` diff as well as `settings.py`: defaults such as `MAX_FILE_SIZE`
    live there. Check OI-5 in `phase-plan.md`: a merged upstream parser switch changes D-2 and the
    fixtures. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,
    `charset_normalizer`, `lxml`): a dependency release can change extraction output with no change in
-   trafilatura itself. Diff the ported parts of that package too.
+   trafilatura itself. Diff the ported parts of that package too. `courlan.rs` ports the version in
+   `tools/parity/uv.lock`, so a new one means diffing `courlan/urlutils.py` between the two versions
+   and rerunning `gen_url`.
 6. Regenerate the parity fixtures from upstream Python at the new tag: run
    `scripts/fixtures.sh --generate --pack` (details in `parity-harness.md`). The new `version` names
    the new archive and directory (`fixtures-<version>.tar.zst`, `.temp/fixtures/<version>`); `git rm`

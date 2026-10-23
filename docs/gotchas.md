@@ -44,6 +44,13 @@ function.
 - Names and namespaces. In the html5 tree SVG and MathML elements carry a namespace; libxml2 has
   none. A plain tag name in XPath matches the HTML namespace only, and renaming an element
   drops its namespace (D-2).
+- MathML and SVG survive cleaning. In the html5 tree `math` and `svg` carry a namespace, so
+  `tree.iter("math")` in `recover_math` and the `MANUALLY_CLEANED` loop skip them: `tree_cleaning`
+  leaves both in place and recovers no LaTeX, where upstream's libxml2 tree drops them and keeps the
+  formula (D-2). The lxml tag of such an element is `{ns}name`, so a plain comparison upstream writes
+  (`elem.tag == "graphic"`, `elem.tag in (...)`) is false for it. Port the test as
+  `tree.tag(id) == Some(..)` and never return early on `None`: `handle_textnode` and `process_node`
+  keep such elements.
 - XPath position and union. `.//x[1]` selects every `x` that is the first `x` child of its parent;
   `(.//x)[1]` selects the first `x` in the document. A union in string context (`re:test(@id|@class,
   ...)`) reads only the first node in document order, which for two attributes is the one written
@@ -95,3 +102,15 @@ function.
 - Ordering. Python `dict` keeps insertion order and `set` does not. Where upstream output depends on
   iterating a dict, keep the order (an ordered map or a `Vec`); where it iterates a set, the order is
   undefined upstream too, so sort and record it in `deviations.md`.
+- `urllib.parse` is not WHATWG. `courlan` builds on Python's `urlsplit`, `urlunsplit`, `urljoin` and
+  `html.unescape`, which differ from the `url` crate on dot segments, schemes outside `uses_relative`,
+  backslashes and what they reject, so the crate never uses the `url` crate; `pyurl.rs` ports CPython.
+  Two behaviors a port misses: `html.unescape` raises `ValueError` on a decimal character reference of
+  more than 4300 digits, and `urlsplit` raises when the NFKC form of a netloc holds one of `/?#@:`
+  (`_checknetloc`), so `safe_base_url` and `safe_relative_url` return `""` for both. Python 3.13 patch
+  releases and 3.14 differ (`_check_bracketed_netloc`, `urljoin`): the oracle image's Python is the
+  reference, a local interpreter is not.
+- lxml keeps `""` apart from `None`. `elem.text, elem.tail = elem.tail, ""` leaves the tail an empty
+  string, and `handle_textnode` guards its trim with `if elem.tail:` so it stays one. The tree keeps
+  `Some("")` apart from `None` for that reason; a tree dump omits both, so only an assertion on the
+  field shows the difference (`test_htmlprocessing`).
