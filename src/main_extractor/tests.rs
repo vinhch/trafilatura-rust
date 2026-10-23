@@ -1109,3 +1109,30 @@ fn deep_nesting_fits_512k_stack() {
         .unwrap();
     worker.join().unwrap();
 }
+
+#[test]
+fn table_empty_rows_are_not_padded() {
+    // oracle: r = handle_table(etree.fromstring("<table><tr><td colspan=\"100\">x</td></tr>" +
+    // "<tr></tr>" * 3000 + "</table>"), TAG_CATALOG, Extractor()): (len(r), len(r[0])) is (1, 100)
+    let rows = "<tr></tr>".repeat(3000);
+    let source = format!("<table><tr><td colspan=\"100\">x</td></tr>{rows}</table>");
+    let mut tree = xml(&source);
+    let root = tree.root();
+    let options = options();
+    let call = Call::default();
+    let nodes_before = tree.len();
+    let processed = handle_table(&mut tree, root, TAG_CATALOG, &ctx_for(&options, &call))
+        .unwrap()
+        .unwrap();
+    assert_eq!(tree.child_count(processed), 1);
+    assert_eq!(
+        tree.children(tree.first_child(processed).unwrap()).count(),
+        100
+    );
+    // one `row` element per source row and the cells of the kept row, no padding for the others
+    assert!(
+        tree.len() - nodes_before < 4000 + 200,
+        "{} nodes created",
+        tree.len() - nodes_before
+    );
+}

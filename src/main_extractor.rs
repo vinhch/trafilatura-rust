@@ -619,16 +619,18 @@ fn finalize_row(
     max_cols: usize,
 ) {
     flush_rowspan_phantoms(tree, rowspan_map, newrow);
+    let filled = tree.children(newrow.id).any(|cell| {
+        has_content(tree.node(cell).text.as_deref()) || tree.first_child(cell).is_some()
+    });
+    // padding cells are empty, so they never change `filled`; a row that is dropped is not padded
+    if !filled {
+        return;
+    }
     while newrow.len < max_cols {
         let padding = define_cell_type(tree, false);
         newrow.push(tree, padding);
     }
-    let filled = tree.children(newrow.id).any(|cell| {
-        has_content(tree.node(cell).text.as_deref()) || tree.first_child(cell).is_some()
-    });
-    if filled {
-        tree.append(newtable, newrow.id);
-    }
+    tree.append(newtable, newrow.id);
 }
 
 /// Extracts the content of a source `td` or `th` into the new `cell`, rewiring inline and block
@@ -726,7 +728,6 @@ pub fn handle_table(
     let newtable = tree.new_element("table");
     let ptags_with_div: Vec<&str> = potential_tags.iter().copied().chain(["div"]).collect();
 
-    // strip these structural elements
     tree.strip_tags(table_elem, &["thead", "tbody", "tfoot"]);
 
     // Everything inside a nested table: skipped in the cell walk without a `done` mark, so the
@@ -735,6 +736,7 @@ pub fn handle_table(
     let mut nested_elems: HashSet<NodeId> = HashSet::new();
     let mut visited = 0usize;
     for nested_table in tree.iterdescendants(table_elem, &["table"]) {
+        tick(&mut visited, ctx.call)?;
         if nested_elems.contains(&nested_table) {
             continue;
         }
@@ -759,6 +761,7 @@ pub fn handle_table(
                 .collect();
             let mut width = 0usize;
             for &cell in &cells {
+                tick(&mut visited, ctx.call)?;
                 width = width.saturating_add(span(tree, cell, "colspan")?);
             }
             max_cols = max_cols.max(width);
@@ -806,6 +809,7 @@ pub fn handle_table(
     // column index to the rows still spanned from a rowspan cell
     let mut rowspan_map: HashMap<usize, usize> = HashMap::new();
     for cells in rows {
+        tick(&mut visited, ctx.call)?;
         let mut newrow = Row::new(tree);
         let mut row_has_th = false;
         for cell in cells {
@@ -891,7 +895,6 @@ pub fn handle_textelem(
     potential_tags: &[&str],
     ctx: &Ctx<'_>,
 ) -> Result<Option<NodeId>, ExtractError> {
-    // bypass: nested elements
     if tree.tag(element) == Some("list") {
         handle_lists(tree, element, ctx)
     } else if in_tags(tree, element, CODES_QUOTES) {
@@ -917,7 +920,6 @@ pub fn handle_textelem(
     } else if tree.tag(element) == Some("graphic") && potential_tags.contains(&"graphic") {
         handle_image(tree, element, Some(&ctx.options))
     } else {
-        // other elements (div, ??, ??)
         handle_other_elements(tree, element, potential_tags, ctx)
     }
 }

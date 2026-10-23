@@ -1261,6 +1261,8 @@ fn test_handle_table() {
 fn test_handle_table_malformed_html5() {
     // D-2: the html5 parser repairs these three tables, so the tree is not the one libxml2 builds.
     // Each has an `xml_tree` twin of the libxml2 shape asserting upstream's value.
+    // oracle: etree.tostring(handle_table(h5(s), TAG_CATALOG, Extractor())) with h5(s) the html5tree
+    // parse of s read the way lxml.html.fromstring reads a fragment; None where that is no table
     let cases = [
         // a td directly in the table after a tr gets a row of its own
         (
@@ -1318,6 +1320,7 @@ fn test_colspan_zero_trust() {
         assert_eq!(span(&tree, cell, "colspan"), Ok(expected), "{colspan:?}");
     }
     // D-2: the html5 parser drops a td outside a table, so the parsed node carries no attribute
+    // oracle: _span(h5(f'<td colspan="{colspan}">x</td>'), "colspan") is 1 for "3" and "12"
     for colspan in ["3", "12"] {
         let (tree, cell) = lxml_fromstring(&format!("<td colspan=\"{colspan}\">x</td>"));
         assert_eq!(span(&tree, cell, "colspan"), Ok(1), "{colspan:?}");
