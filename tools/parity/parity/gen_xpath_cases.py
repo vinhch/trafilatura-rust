@@ -34,12 +34,21 @@ def element(tag: str, attr: str, value: str, text: str = "x") -> str:
     return f'<{tag} {attr}="{html.escape(value, quote=True)}">{text}</{tag}>'
 
 
+# Tokens whose every sensible value also matches another token of the same attribute in upstream's own
+# lists, so no case can show the token alone.
+SHADOWED_BY_UPSTREAM = {"sidebar", "navbar", "embedded"}
+
+
 def tokens_snippets(selector: str, attr: str, tokens, values: dict, tag: str = "div") -> list[Snippet]:
     """One snippet per token: `values[token]` (a string or a tuple of them) in `attr`, every one matching its token."""
     assert set(values) == set(tokens), f"{selector} {attr}: token table out of date: {set(values) ^ set(tokens)}"
     out = []
     for token, found in values.items():
-        for value in (found,) if isinstance(found, str) else found:
+        found = (found,) if isinstance(found, str) else found
+        # a selector that drops the token must fail a case: some value matches this token only
+        alone = [v for v in found if not any(re.search(other, v) for other in tokens if other != token)]
+        assert alone or token in SHADOWED_BY_UPSTREAM, f"{selector} {attr}: no value matches only {token!r}"
+        for value in found:
             assert re.search(token, value), f"{selector} {attr}: {value!r} does not match {token!r}"
             out.append(Snippet(page(element(tag, attr, value)), hit=(selector,)))
     return out
@@ -289,7 +298,7 @@ def snippets() -> list[Snippet]:
     out += plain(d0, "role", ["navigation", "Navigation", "nav", "Nav", "x-Nav-y", "subnav"], hit=True)
     out += plain(d0, "role", ["NAV", "NAVIGATION", "na", "main"], hit=False)
     both = {
-        "^shar": ("shared", "share"),
+        "^shar": ("shared", "sharx"),
         "social": "social-links",
         "viral": "viral-box",
         "newsletter": "newsletter-box",
@@ -321,7 +330,7 @@ def snippets() -> list[Snippet]:
         "subnav": "subnav",
         "avigation": "Navigation",
         "navbar": "navbar",
-        "navbox": "navbox",
+        "navbox": "xnavbox",
         "menu": "menu-x",
         "bar": "top-bar",
         " ad ": "a ad b",
@@ -337,7 +346,7 @@ def snippets() -> list[Snippet]:
         "Footer": "Footer",
         "byline": "byline",
         "Byline": "Byline",
-        "share-": "share-this",
+        "share-": "x-share-y",
         "sociable": "sociable",
         "embedded": "embedded",
         "embed": "embed",
@@ -429,7 +438,7 @@ def snippets() -> list[Snippet]:
         "akismet": "akismet-box",
         "suggest-links": "suggest-links",
         "-hide-": "a-hide-b",
-        "hide-print": "hide-print",
+        "hide-print": "xhide-print",
         " hidden": "a hidden",
         " hide": ("a hide", "a hide-x"),
         "noprint": "noprint",
