@@ -1576,9 +1576,7 @@ fn test_prune_keep_teasers() {
 
 #[test]
 fn test_no_duplicate_content_list_item() {
-    // regression T6: a <p> already folded into a <list> item by the main pass must not be re-added
-    // by recover_wild_text; backup_tree is a snapshot taken before the main pass marks consumed
-    // tags 'done'.
+    // a list item's paragraph is counted once in the result
     let options = default_options();
     let call = Call::default();
     let ctx = ctx_for(&options, &call);

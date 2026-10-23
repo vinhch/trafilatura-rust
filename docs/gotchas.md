@@ -35,10 +35,11 @@ function.
   reads the original document (libxml2 evaluates `/` against it). `extract_body` takes the root of
   the tree it received for this, never `root_of(subtree)`; the text nodes under nested `p` count
   once.
-- A namespaced tag is a plain string in the places upstream treats tags as strings: `.//*` includes
-  SVG and MathML elements (`{ns}svg` in the `tags` set of `_extract`, so its `tags == {"lb"}` tests
-  fail), `strip_tags(element, *{str(c.tag) ...})` in `handle_paragraphs` strips them, and
-  `SubElement(orig, processed.tag)` in `define_newelem` keeps the namespace. The port strips every
+- On the html5 tree lxml names a foreign element `{namespace}name` (D-2), a plain string in the
+  places upstream treats tags as strings: `.//*` includes SVG and MathML elements (`{ns}svg` in the
+  `tags` set of `_extract`, so its `tags == {"lb"}` tests fail), `strip_tags(element, *{str(c.tag)
+  ...})` in `handle_paragraphs` strips them, and `SubElement(orig, processed.tag)` in
+  `define_newelem` keeps the namespace. The port compares by namespace and name: it strips every
   descendant whose tag is outside `potential_tags` and `done`, foreign ones included, and builds
   copies with `new_element_like`.
 - `str.isdecimal` is Unicode `Nd`, and `int` reads any `Nd` digit (`"٣"` is 3, `"１２"` is 12;

@@ -13,10 +13,12 @@ map is in `architecture.md`.
    here.
 4. After porting token, selector or html-processing changes, regenerate the generated test data so it
    encodes the new upstream (`parity-harness.md`, Generated test data): `gen_xpath_cases`,
-   `gen_html_processing_cases`, `gen_main_extractor_cases`, `gen_decimal` and both outputs of
-   `gen_url`. The selector generator fails with "token table out of date" until each new token has a
+   `gen_html_processing_cases`, `gen_main_extractor_cases` and both outputs of `gen_url`. The
+   selector generator fails with "token table out of date" until each new token has a
    value in its table. After a `main_extractor.py` change, run the `report()` of
-   `gen_main_extractor_cases` and add a case for each line it lists.
+   `gen_main_extractor_cases` and add a case for each line it lists. `gen_decimal` holds the
+   Unicode digit data of the oracle image's Python, not upstream's: rerun it when that image's Python
+   or its Unicode data changes.
 5. Read upstream's `settings.cfg` diff as well as `settings.py`: defaults such as `MAX_FILE_SIZE`
    live there. Check OI-5 in `phase-plan.md`: a merged upstream parser switch changes D-2 and the
    fixtures. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,

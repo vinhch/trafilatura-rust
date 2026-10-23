@@ -200,7 +200,9 @@ fn define_newelem(
     if keep_children {
         // upstream walks the children of `processed`, which this body never edits
         let subs: Vec<NodeId> = tree.children(processed).collect();
+        let mut visited = 0usize;
         for sub in subs {
+            tick(&mut visited, call)?;
             if in_tags(tree, sub, INLINE_CARRIED) || tree.tag(sub) == Some("lb") {
                 define_newelem(tree, Some(sub), child, true, call)?;
                 // mark only the carried subtree done; non-carried siblings (e.g. a nested `p`)
@@ -456,12 +458,10 @@ pub fn handle_paragraphs(
     potential_tags: &[&str],
     ctx: &Ctx<'_>,
 ) -> Result<Option<NodeId>, ExtractError> {
-    // no children
     if tree.child_count(element) == 0 {
         return Ok(process_node(tree, element, ctx));
     }
 
-    // children
     let processed_element = tree.new_element_like(element);
     // unexpected children, foreign ones included: keep their text in place
     tree.strip_tags_where(element, |tree, node| {
@@ -483,7 +483,6 @@ pub fn handle_paragraphs(
                 tree.set_name(child, "done");
                 continue;
             }
-            // handle formatting
             let mut newsub = tree.new_element_like(child);
             if in_tags(tree, processed_child, INLINE_CONSUMING) {
                 // carry inline children verbatim (ref/hi/del wrapping formatting)
@@ -498,9 +497,9 @@ pub fn handle_paragraphs(
                     tree.set_name(child, "done");
                     continue;
                 }
-                // check depth and clean
                 let items: Vec<NodeId> = tree.children(processed_child).collect();
                 for &item in &items {
+                    tick(&mut visited, ctx.call)?;
                     let node = tree.node(item);
                     if tree.tag(item) == Some("lb") && has_content(node.tail.as_deref()) {
                         let tail = node
@@ -539,9 +538,7 @@ pub fn handle_paragraphs(
         }
         tree.set_name(child, "done");
     }
-    // finish
     if let Some(last) = tree.last_child(processed_element) {
-        // clean trailing lb-elements
         if tree.tag(last) == Some("lb") && tree.node(last).tail.is_none() {
             delete_element(tree, last, true);
         }
@@ -1019,7 +1016,6 @@ pub fn prune_unwanted_sections(
         }
     }
     if favor_precision {
-        // trailing titles
         let mut visited = 0usize;
         while let Some(last) = tree.last_child(root)
             && tree.tag(last) == Some("head")
@@ -1094,10 +1090,12 @@ pub fn recover_wild_text(
     })?;
     // dedup against the snapshot taken before this pass: exact match, or a length-gated
     // substring (a paragraph folded into its list container)
-    let elem_texts: Vec<String> = tree
-        .children(result_body)
-        .map(|element| elem_text(tree, element))
-        .collect();
+    let mut visited = 0usize;
+    let mut elem_texts: Vec<String> = Vec::new();
+    for element in tree.children(result_body) {
+        tick(&mut visited, call)?;
+        elem_texts.push(elem_text(tree, element));
+    }
     // newline-joined (trimmed element text has no newline), so no substring match spans two
     // elements; `existing_len` counts code points
     let mut existing = String::new();
@@ -1113,7 +1111,6 @@ pub fn recover_wild_text(
     let mut existing_elems: HashSet<String> = elem_texts.into_iter().collect();
     // elements emitted or deduped whole: their descendants are covered
     let mut handled: HashSet<NodeId> = HashSet::new();
-    let mut visited = 0usize;
     for subelem in subelems {
         tick(&mut visited, call)?;
         if consumed.is_some_and(|consumed| consumed.contains(&subelem))
@@ -1238,11 +1235,9 @@ fn extract_body(
             continue;
         };
         prune_unwanted_sections(tree, subtree, &potential_tags, ctx, false)?;
-        // skip an empty tree
         if tree.child_count(subtree) == 0 {
             continue;
         }
-        // no paragraphs containing text, or not enough
         let (has_text, text_len) = paragraph_text(tree, document, call)?;
         if (!has_text || text_len < options.min_extracted_size.saturating_mul(factor))
             && !potential_tags.contains(&"div")
@@ -1252,7 +1247,8 @@ fn extract_body(
 
         let mut subelems = select::descendants(tree, subtree, call, |_, _| true)?;
         // a single text run (only lb or inline elements): process the frame itself. A foreign
-        // element (svg, math) is neither, as its tag is a namespaced string upstream.
+        // element (svg, math) is neither: on the html5 tree lxml names it `{namespace}name`
+        // (D-2), and the port compares by namespace and name.
         let (mut only_lb, mut only_inline) = (!subelems.is_empty(), true);
         let mut visited = 0usize;
         for &subelem in &subelems {
@@ -1306,7 +1302,6 @@ fn extract_body(
                 }
             }
         }
-        // remove trailing titles
         while let Some(last) = tree.last_child(result_body)
             && in_tags(tree, last, NOT_AT_THE_END)
         {
@@ -1352,7 +1347,6 @@ pub fn extract_content(
 
     let (result_body, mut temp_text, potential_tags) = extract_body(tree, cleaned_root, ctx)?;
 
-    // try parsing wild <p> elements if nothing found or text too short
     if tree.child_count(result_body) == 0
         || temp_text.chars().count() < ctx.options.min_extracted_size
     {
@@ -1391,7 +1385,6 @@ pub fn extract_content(
             previous = Some(current);
         }
     }
-    // filter output
     tree.strip_elements(result_body, &["done"], true);
     tree.strip_tags(result_body, &["div"]);
     // stripping the divs merges their indentation into the preceding lb's tail, so an lb that only
@@ -1403,6 +1396,7 @@ pub fn extract_content(
         linebreaks.push(linebreak);
     }
     for linebreak in linebreaks {
+        tick(&mut visited, call)?;
         let tail = tree.node(linebreak).tail.as_deref();
         if has_content(tail)
             && !text_chars_test(tail)
@@ -1433,7 +1427,6 @@ pub fn extract_comments(
             continue;
         };
         prune_unwanted_nodes(tree, subtree, COMMENTS_DISCARD_XPATH, false, call)?;
-        // todo: unified stripping function, taking include_links into account
         tree.strip_tags(subtree, &["ref", "span"]);
         // collected first: an element moved into the body leaves its place in the section
         let mut visited = 0usize;
