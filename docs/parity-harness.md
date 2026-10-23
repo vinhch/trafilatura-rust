@@ -55,10 +55,10 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
   `scripts/fixtures.sh --generate --pack`, and commit the new archive. A `uv.lock` change needs the
   same only when it can alter upstream's output: a bump of `lxml`, `htmldate`, `courlan`, `justext`,
   `charset_normalizer`, `html5lib`, or of a package they depend on (`dateparser`, `babel`, `tld`). A
-  security bump of anything else does not. Such a bump, and a change of the oracle image's Python,
-  also means rerunning the generators of the generated test data below (`gen_url` for `courlan` and the
-  Python version, `gen_html_processing_cases` and `gen_xpath_cases` for the rest) and committing the
-  files they write. The archive's `lock_sha256` is the lock it was generated
+  security bump of anything else does not. A bump that can alter upstream's output, and a change of
+  the oracle image's Python, also mean rerunning every generator of the generated test data below
+  (each one runs upstream, lxml, html5lib or the image's Python) and committing the files that
+  change. The archive's `lock_sha256` is the lock it was generated
   with, so it may differ from the current lock. The one place the two are compared is a filtered run
   (`scripts/fixtures.sh --only`): on a mismatch it starts a new index from that run's pages and deletes
   `f1.json`, so run it only after a full `--generate`. A new release gets a new archive name

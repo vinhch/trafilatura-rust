@@ -154,7 +154,8 @@ pub fn tree_cleaning(tree: &mut Tree, root: NodeId, ctx: &Ctx<'_>) -> Result<Nod
 
 /// `tree_cleaning` over the given lists in place of `MANUALLY_CLEANED` and `MANUALLY_STRIPPED`,
 /// which users mutate upstream. With `images` on, `stripped` is expected to hold `img`; without it
-/// nothing is removed from the list, where upstream raises `ValueError` (deviation D-8).
+/// nothing is removed from the list and nothing is raised, where upstream's `ValueError` discards the
+/// document (deviation D-8).
 // upstream: htmlprocessing.py::tree_cleaning
 pub fn tree_cleaning_with(
     tree: &mut Tree,
