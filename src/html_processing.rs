@@ -3,13 +3,14 @@
 //! Every function takes the tree and the element it works on, and the `Call` (directly or through
 //! the `Ctx`) where it loops over nodes.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::context::Ctx;
 use crate::deduplication::duplicate_test;
 use crate::dom::{LiveIter, NodeId, Tree};
-use crate::error::ExtractError;
+use crate::error::{ExtractError, Rejection};
 use crate::pystr;
 use crate::settings::{CUT_EMPTY_ELEMS, Focus, MANUALLY_CLEANED, MANUALLY_STRIPPED};
 use crate::utils::{
@@ -33,6 +34,18 @@ pub const REND_TAG_MAPPING: &[(&str, &str)] = &[
     ("var", "#t"),
     ("sub", "#sub"),
     ("sup", "#sup"),
+];
+
+/// The tag each `rend` value of a `hi` element becomes in HTML: `REND_TAG_MAPPING` inverted, where
+/// the last tag of a `rend` wins (`#i` gives `i`, `#t` gives `var`).
+// upstream: htmlprocessing.py::HTML_TAG_MAPPING
+pub const HTML_TAG_MAPPING: &[(&str, &str)] = &[
+    ("#i", "i"),
+    ("#b", "strong"),
+    ("#u", "u"),
+    ("#t", "var"),
+    ("#sub", "sub"),
+    ("#sup", "sup"),
 ];
 
 /// Containers of images that cleaning keeps when images are on.
@@ -978,6 +991,112 @@ pub fn convert_tags(
         }
     }
     Ok(())
+}
+
+/// The HTML tag `element` becomes, `None` for an element that stays as it is. Fails with
+/// `InvalidValue` where upstream raises: a `hi` whose `rend` is not in `HTML_TAG_MAPPING`
+/// (`KeyError`, an empty `rend` included: the `#i` default is for an absent attribute) and a `head`
+/// level that Python `int` rejects (`ValueError`).
+// upstream: htmlprocessing.py::HTML_CONVERSIONS
+fn html_conversion(
+    tree: &Tree,
+    element: NodeId,
+) -> Result<Option<Cow<'static, str>>, ExtractError> {
+    let invalid = || ExtractError::Rejected(Rejection::InvalidValue);
+    let Some(tag) = tree.tag(element) else {
+        return Ok(None);
+    };
+    Ok(Some(Cow::Borrowed(match tag {
+        "list" => "ul",
+        "item" => "li",
+        "code" => "pre",
+        "quote" => "blockquote",
+        "lb" => "br",
+        "graphic" => "img",
+        "ref" => "a",
+        "row" => "tr",
+        "cell" if tree.get(element, "role") == Some("head") => "th",
+        "cell" => "td",
+        "head" => {
+            // `rend[1:]`: whatever follows the first character, `h` in practice
+            let mut rend = tree.get(element, "rend").unwrap_or("h3").chars();
+            rend.next();
+            return Ok(Some(Cow::Owned(format!(
+                "h{}",
+                pystr::int_str(rend.as_str())?
+            ))));
+        }
+        "hi" => {
+            let rend = tree.get(element, "rend").unwrap_or("#i");
+            HTML_TAG_MAPPING
+                .iter()
+                .find(|(key, _)| *key == rend)
+                .map(|(_, html_tag)| *html_tag)
+                .ok_or_else(invalid)?
+        }
+        _ => return Ok(None),
+    })))
+}
+
+/// Converts the XML elements below `body` to HTML in place (`list` to `ul`, `hi` to its formatting
+/// tag, `ref` to `a` with its `target` as `href`...), renames `body` itself to `body` whatever its
+/// tag, and returns a new `html` element with it appended. A converted element loses its
+/// attributes, except `a` (which gets `href`) and `img` (which keeps all); an element that is not
+/// converted keeps its own. Checks `call` about every `CHECK_INTERVAL` elements.
+// upstream: htmlprocessing.py::convert_to_html
+pub fn convert_to_html(
+    tree: &mut Tree,
+    body: NodeId,
+    call: &Call<'_>,
+) -> Result<NodeId, ExtractError> {
+    let mut walk = LiveIter::new(tree, body, &[]);
+    let mut visited = 0usize;
+    while let Some(element) = walk.next(tree) {
+        tick(&mut visited, call)?;
+        let Some(name) = html_conversion(tree, element)? else {
+            continue;
+        };
+        tree.set_name(element, &name);
+        // handle attributes
+        match &*name {
+            "a" => {
+                let target = tree.remove_attr(element, "target");
+                tree.set(element, "href", target.as_deref().unwrap_or(""));
+            }
+            "img" => {}
+            _ => tree.clear_attrs(element),
+        }
+    }
+    tree.set_name(body, "body");
+    let html = tree.new_element("html");
+    tree.append(html, body);
+    Ok(html)
+}
+
+/// Converts the tree below `body` to HTML and returns it indented, without the line break after
+/// the root. With `meta`, a `head` first in `html` holds one `meta` element per `(name, content)`
+/// pair, and is empty for an empty slice. Fails with `InvalidValue` where [`convert_to_html`] does;
+/// checks `call` before it serializes.
+// upstream: htmlprocessing.py::build_html_output
+pub fn build_html_output(
+    tree: &mut Tree,
+    body: NodeId,
+    meta: Option<&[(&str, &str)]>,
+    call: &Call<'_>,
+) -> Result<String, ExtractError> {
+    let html = convert_to_html(tree, body, call)?;
+    if let Some(items) = meta {
+        let head = tree.new_element("head");
+        for (name, content) in items {
+            let item = tree.new_element("meta");
+            tree.set(item, "name", name);
+            tree.set(item, "content", content);
+            tree.append(head, item);
+        }
+        tree.insert(html, 0, head);
+    }
+    call.check()?;
+    Ok(pystr::strip(&tree.tostring(html, true, false)).to_owned())
 }
 
 #[cfg(test)]

@@ -12,13 +12,13 @@ use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput, LiveIter,
     MANUALLY_CLEANED, MANUALLY_STRIPPED, MIN_DUPLICATE_LENGTH, NodeId, OVERALL_DISCARD_XPATH,
     PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt, convert_tags,
-    delete_by_link_density, delete_element, dump, extract_content, handle_formatting, handle_image,
-    handle_lists, handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_textnode,
-    handle_titles, link_density_test, link_density_test_tables, load_html, md_link,
-    merge_with_parent, parse_document, parse_fragment, process_node, prune_html,
-    prune_unwanted_nodes, prune_unwanted_sections, recover_wild_text, remove_empty_elements,
-    replace_element_text, sanitize, span, strip_double_tags, textfilter, tree_cleaning,
-    tree_cleaning_with, trim, xml_to_text,
+    convert_to_html, delete_by_link_density, delete_element, dump, extract_content,
+    handle_formatting, handle_image, handle_lists, handle_paragraphs, handle_quotes, handle_table,
+    handle_textelem, handle_textnode, handle_titles, link_density_test, link_density_test_tables,
+    load_html, md_link, merge_with_parent, parse_document, parse_fragment, process_node,
+    prune_html, prune_unwanted_nodes, prune_unwanted_sections, recover_wild_text,
+    remove_empty_elements, replace_element_text, sanitize, span, strip_double_tags, textfilter,
+    tree_cleaning, tree_cleaning_with, trim, xml_to_text,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -293,6 +293,7 @@ fn first_child_of(source: &str) -> (Tree, NodeId) {
 
 #[test]
 fn test_htmlprocessing() {
+    // the dummy tree exists only because `xml_to_text` takes `&mut Tree` even for `None`
     let mut empty = xml_tree("<doc/>");
     assert_eq!(
         xml_to_text(&mut empty, None, false, &Call::default()).unwrap(),
@@ -2469,4 +2470,45 @@ fn test_heading_inline_formatting() {
         ),
         "| **H** |"
     );
+}
+
+// The `extract` lines of upstream's test wait for phase 3f. The first assert uses
+// `method="html"`, which writes the same as the XML method on this input.
+#[test]
+fn test_html_conversion() {
+    let source = r##"<xml>
+    <list>
+        <item>Item 1</item>
+        <item>Item 2</item>
+    </list>
+    <p>Text</p>
+    <head rend="h1">Heading 1</head>
+    <head rend="h2">Heading 2</head>
+    <head>No attribute</head>
+    <hi rend="#i">Italic</hi>
+    <hi rend="#b">Bold</hi>
+    <hi>No rend</hi>
+    <ref target="https://example.com">Link</ref>
+    <ref>No href</ref>
+</xml>"##;
+    let mut tree = xml_tree(source);
+    let root = tree.root();
+    let copied = tree.copy(root);
+    let html_tree = convert_to_html(&mut tree, copied, &Call::default()).unwrap();
+    let expected_html = r#"<html><body>
+    <ul>
+        <li>Item 1</li>
+        <li>Item 2</li>
+    </ul>
+    <p>Text</p>
+    <h1>Heading 1</h1>
+    <h2>Heading 2</h2>
+    <h3>No attribute</h3>
+    <i>Italic</i>
+    <strong>Bold</strong>
+    <i>No rend</i>
+    <a href="https://example.com">Link</a>
+    <a href="">No href</a>
+</body></html>"#;
+    assert_eq!(tree.tostring(html_tree, false, false), expected_html);
 }

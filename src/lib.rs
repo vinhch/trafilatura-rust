@@ -49,11 +49,12 @@ pub mod __internals {
         parse_document, parse_fragment,
     };
     pub use crate::html_processing::{
-        CODE_INDICATORS, REND_TAG_MAPPING, collect_link_info, convert_deletions, convert_details,
-        convert_headings, convert_line_breaks, convert_link, convert_lists, convert_quotes,
-        convert_tags, delete_by_link_density, handle_textnode, is_paragraph_listing,
-        link_density_test, link_density_test_tables, process_node, prune_html,
-        prune_unwanted_nodes, recover_math, tree_cleaning, tree_cleaning_with,
+        CODE_INDICATORS, HTML_TAG_MAPPING, REND_TAG_MAPPING, build_html_output, collect_link_info,
+        convert_deletions, convert_details, convert_headings, convert_line_breaks, convert_link,
+        convert_lists, convert_quotes, convert_tags, convert_to_html, delete_by_link_density,
+        handle_textnode, is_paragraph_listing, link_density_test, link_density_test_tables,
+        process_node, prune_html, prune_unwanted_nodes, recover_math, tree_cleaning,
+        tree_cleaning_with,
     };
     pub use crate::main_extractor::{
         extract_comments, extract_content, handle_code_blocks, handle_formatting, handle_image,

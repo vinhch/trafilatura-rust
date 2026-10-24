@@ -78,8 +78,9 @@ pub fn delete_element(tree: &mut Tree, element: NodeId, keep_tail: bool) {
 
 /// Merges `element` into its parent and converts its text to Markdown when `include_formatting`:
 /// the text goes to the previous sibling's tail or the parent's text, joined by a space. The
-/// element's text and tail are kept, with the inline text of its `hi`, `ref` and `del` children;
-/// its other children (`p`, `head`, `code`...) are dropped. Does nothing without a parent.
+/// element's text and tail are kept. When the element is itself a `hi`, `ref` or `del`, the inline
+/// text of its children is kept too; for any other element (`p`, `head`, `code`) all its children
+/// are lost, `hi` included. Does nothing without a parent.
 ///
 /// Checks `call` while it walks the inline children of the element.
 // upstream: xml.py::merge_with_parent
@@ -363,13 +364,11 @@ fn to_markdown(
         Some("del") => md_wrap(&text, "~~", None),
         Some("hi") => {
             let rend = tree.get(element, "rend").unwrap_or("");
-            let lookup = |pairs: &[(&'static str, &'static str)]| {
-                pairs
-                    .iter()
-                    .find(|(key, _)| *key == rend)
-                    .map(|(_, value)| *value)
-            };
-            match (lookup(&HI_FORMATTING), lookup(&HI_HTML_TAGS)) {
+            let html_tag = HI_HTML_TAGS
+                .iter()
+                .find(|(key, _)| *key == rend)
+                .map(|(_, name)| *name);
+            match (hi_marker(rend), html_tag) {
                 // inline code, the flanking whitespace stays outside
                 (Some("`"), _) => md_code(&text),
                 (Some(marker), _) => md_wrap(&text, marker, None),

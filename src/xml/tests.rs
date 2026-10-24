@@ -4,6 +4,7 @@ use super::*;
 use crate::cancel::{CHECK_INTERVAL, Call, CancelToken};
 use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
 use crate::error::{ExtractError, Rejection};
+use crate::html_processing::build_html_output;
 
 /// `name="value"` pairs without whitespace in the values.
 fn attributes(source: &str) -> Vec<(LocalName, Arc<str>)> {
@@ -555,8 +556,23 @@ fn chain(levels: usize, level: impl Fn(usize) -> Level) -> Tree {
 /// `(length, "- " count, "x" count, "[" count, "]" count)` of the output.
 type Counts = (usize, usize, usize, usize, usize);
 
-/// A shape of the depth test: its name, its level at an index and the counts for both modes.
-type Shape = (&'static str, fn(usize) -> Level, [Counts; 2]);
+/// `(length, "<ul>", "<li>", "<strong>", "<a " and "x" counts)` of the HTML output.
+type HtmlCounts = (usize, usize, usize, usize, usize, usize);
+
+/// A shape of the depth test: its name, its level at an index, the counts for both text modes and
+/// the counts of the HTML output.
+type Shape = (&'static str, fn(usize) -> Level, [Counts; 2], HtmlCounts);
+
+fn html_counts(html: &str) -> HtmlCounts {
+    (
+        html.chars().count(),
+        html.matches("<ul>").count(),
+        html.matches("<li>").count(),
+        html.matches("<strong>").count(),
+        html.matches("<a ").count(),
+        html.matches('x').count(),
+    )
+}
 
 fn counts(text: &str) -> Counts {
     (
@@ -571,7 +587,8 @@ fn counts(text: &str) -> Counts {
 #[test]
 fn output_deep_nesting_fits_512k_stack() {
     // one tree per recursive shape, past the depth the parser lets through, on the smallest stack a
-    // host may give its threads, in a debug build
+    // host may give its threads, in a debug build. Measured by shrinking the stack: `hi chain` and
+    // `ref in hi` overflow first, below about 390 KiB, `list > item` below about 350 KiB.
     let levels = MAX_DEPTH + 16;
     std::thread::Builder::new()
         .stack_size(512 * 1024)
@@ -588,12 +605,16 @@ fn output_deep_nesting_fits_512k_stack() {
                     },
                     // oracle: for fmt in (False, True): t = xml.xmltotxt(nest(kinds), fmt); (len(t), t.count("- "), t.count("x"), t.count("["), t.count("]")), with nest building 272 nested SubElement levels: a list at the even ones, an item with text x at the odd ones
                     [(18903, 136, 136, 0, 0), (18904, 136, 136, 0, 0)],
+                    // oracle: for the same nest(kinds): out = build_html_output(doc, False) with doc.body = nest(kinds); (len(out), out.count("<ul>"), out.count("<li>"), out.count("<strong>"), out.count("<a "), out.count("x"))
+                    (2613, 135, 136, 0, 0, 136),
                 ),
                 (
                     "hi chain",
                     |_| ("hi", &[("rend", "#b")], Some("x")),
                     // oracle: the same counts for 272 nested hi rend="#b", each with text x
                     [(272, 0, 272, 0, 0), (1360, 0, 272, 0, 0)],
+                    // oracle: the same html counts for the hi chain
+                    (4909, 0, 0, 271, 0, 272),
                 ),
                 (
                     "ref in hi",
@@ -606,9 +627,11 @@ fn output_deep_nesting_fits_512k_stack() {
                     },
                     // oracle: the same counts for 272 levels, hi rend="#b" at the even ones and ref target="u" at the odd ones, each with text x
                     [(1222, 0, 272, 136, 136), (1766, 0, 272, 136, 136)],
+                    // oracle: the same html counts for ref in hi
+                    (4773, 0, 0, 135, 136, 272),
                 ),
             ];
-            for (name, level, expected) in shapes {
+            for (name, level, expected, expected_html) in shapes {
                 for (include_formatting, expected) in [false, true].into_iter().zip(expected) {
                     let mut tree = chain(levels, level);
                     let text = text_of(&mut tree, include_formatting);
@@ -618,6 +641,10 @@ fn output_deep_nesting_fits_512k_stack() {
                         "{name}, formatting {include_formatting}"
                     );
                 }
+                let mut tree = chain(levels, level);
+                let root = tree.root();
+                let html = build_html_output(&mut tree, root, None, &Call::default()).unwrap();
+                assert_eq!(html_counts(&html), expected_html, "{name}, html");
             }
         })
         .unwrap()
