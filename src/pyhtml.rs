@@ -65,6 +65,7 @@ fn charref(after: &str) -> Option<(Charref<'_>, usize)> {
 
 /// The entity `name` stands for (`;` included where the table has it), as one or two code points.
 /// `web_atoms` also lists every proper prefix of a name with `(0, 0)`, which is not an entity.
+// upstream: cpython Lib/html/__init__.py::_replace_charref
 fn entity(name: &str) -> Option<(u32, u32)> {
     NAMED_ENTITIES
         .get(name)
@@ -72,6 +73,7 @@ fn entity(name: &str) -> Option<(u32, u32)> {
         .filter(|&codes| codes != (0, 0))
 }
 
+// upstream: cpython Lib/html/__init__.py::_replace_charref
 fn push_entity(out: &mut String, (first, second): (u32, u32)) {
     out.extend(
         [first, second]
@@ -104,6 +106,7 @@ fn push_named(out: &mut String, name: &str) {
 }
 
 /// Digits read saturating: a value past `0x10FFFF` decodes to U+FFFD whatever its size.
+// upstream: cpython Lib/html/__init__.py::_replace_charref
 fn read_number(digits: &str, radix: u32) -> u32 {
     digits.chars().fold(0_u32, |value, c| {
         value
