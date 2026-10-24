@@ -14,7 +14,7 @@ use trafilatura_rust::__internals::{
     PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt, convert_tags,
     delete_by_link_density, delete_element, dump, extract_content, handle_formatting, handle_image,
     handle_lists, handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_textnode,
-    handle_titles, link_density_test, link_density_test_tables, load_html, parse_document,
+    handle_titles, link_density_test, link_density_test_tables, load_html, md_link, parse_document,
     parse_fragment, process_node, prune_html, prune_unwanted_nodes, prune_unwanted_sections,
     recover_wild_text, sanitize, span, textfilter, tree_cleaning, tree_cleaning_with, trim,
 };
@@ -1532,4 +1532,38 @@ fn test_no_duplicate_content_list_item() {
     convert_tags(&mut tree, root, &ctx, None).unwrap();
     let (_, text) = extract_content(&mut tree, root, &ctx).unwrap();
     assert_eq!(text.matches(para).count(), 1);
+}
+
+#[test]
+fn test_markdown_link_angle_bracket_targets() {
+    // A '<' or '>' in a link/image target must stay inside the angle-bracket destination.
+    // upstream: tests/unit_tests.py::test_markdown_link_angle_bracket_targets; the `xmltotxt` lines
+    // join with the converter.
+    let cases = [
+        ("http://x.com/a>b", "[t](<http://x.com/a\\>b>)"),
+        ("http://x.com/a<b", "[t](<http://x.com/a\\<b>)"),
+        ("http://x.com/a<b>c", "[t](<http://x.com/a\\<b\\>c>)"),
+        ("http://x.com/a b>c", "[t](<http://x.com/a b\\>c>)"),
+        ("http://x.com/end>", "[t](<http://x.com/end\\>>)"),
+        ("<start.example/p", "[t](<\\<start.example/p>)"),
+        ("http://x.com/a\\>b", "[t](<http://x.com/a\\\\\\>b>)"),
+        ("http://x.com/a>>b", "[t](<http://x.com/a\\>\\>b>)"),
+        (">x.com/p", "[t](<\\>x.com/p>)"),
+        ("http://x.com/<>", "[t](<http://x.com/\\<\\>>)"),
+        ("http://x.com/a b/c", "[t](<http://x.com/a b/c>)"),
+        ("http://x.com/a(b)", "[t](<http://x.com/a(b)>)"),
+        ("http://x.com/a)b(c", "[t](<http://x.com/a)b(c>)"),
+        ("http://x.com/a(b", "[t](<http://x.com/a(b>)"),
+        ("http://x.com/plain", "[t](http://x.com/plain)"),
+    ];
+    for (target, expected) in cases {
+        assert_eq!(md_link("t", Some(target), false), expected);
+        assert_eq!(md_link("t", Some(target), true), format!("!{expected}"));
+    }
+    assert_eq!(md_link("t", None, false), "[t]");
+    assert_eq!(md_link("t", None, true), "![t]");
+    assert_eq!(
+        md_link("a[b]c", Some("http://x.com/p>q"), false),
+        "[a\\[b\\]c](<http://x.com/p\\>q>)"
+    );
 }

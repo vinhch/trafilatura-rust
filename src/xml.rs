@@ -91,5 +91,10 @@ pub(crate) fn is_padding_cell(tree: &Tree, element: NodeId) -> bool {
             .is_some_and(|parent| text_chars_test(Some(&tree.itertext(parent).collect::<String>())))
 }
 
+mod markdown;
+// Only the `__internals` tests reach `md_link` from outside the crate.
+#[cfg_attr(not(feature = "__internals"), allow(unused_imports))]
+pub use markdown::md_link;
+
 #[cfg(test)]
 mod tests;

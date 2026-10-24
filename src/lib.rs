@@ -70,7 +70,7 @@ pub mod __internals {
         HtmlInput, decode_file, detect_encoding, load_html, safe_base_url, safe_relative_url,
         sanitize, textfilter, trim,
     };
-    pub use crate::xml::delete_element;
+    pub use crate::xml::{delete_element, md_link};
     pub use crate::xpaths::{
         BODY_XPATH, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, Selector, alt,
     };
