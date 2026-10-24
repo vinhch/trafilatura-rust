@@ -153,5 +153,6 @@ for the `ValueError` and the `KeyError` upstream raises, so either name in a cas
 generator rejects an xml snippet that `xml_tree` would read differently from `etree.fromstring`: one
 with `&#`, a carriage return, a tab or newline in an attribute value, or an `svg` or `math` element.
 The escapes those would test are unit tests of `Tree::tostring` in `src/dom/tests.rs`. In an html
-case a foreign element reaches the output, and lxml writes it with an `ns0:` prefix, so the expected
-HTML is rewritten to local names (D-2) and the generator prints how many cases it touched.
+case a foreign element reaches the output because the html5 tree keeps it; `Tree::tostring` writes it by
+its local name, as a libxml2 tree does, while lxml on the oracle's html5 tree writes `ns0:` prefixes, so the
+generator strips them from the expected HTML (D-2) and prints how many cases it touched.

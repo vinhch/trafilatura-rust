@@ -11,13 +11,15 @@ encoding="unicode")` stripped, which is what `build_html_output` returns without
 error for both. Every `Extractor` is built with `fast=True` (deviation D-1).
 
 `HtmlOutCase`: every `(html, op, options)` of `gen_main_extractor_cases.HTML_CASES` after its `build()`,
-imported and not copied, plus the `summary` `rend` and `hi` `rend` cases of the addendum's finding 2. The
+imported and not copied, plus the `summary` `rend` and `hi` `rend` cases (a `rend` Python `int` rejects, or one missing from
+`HTML_TAG_MAPPING`, raises). The
 snippet goes through `tree_cleaning`, `convert_tags` and `extract_comments` / `extract_content`; the outputs
 are those of the content body and, for `comments_then_content`, of the comments body. The Rust test builds
 the bodies with its own pipeline; `gen_main_extractor_cases` already holds the dump check of the parse.
-A foreign element (`svg`, `math`) that reaches the HTML output is written by lxml as `ns0:title` under an
-`xmlns:ns0` declaration; the crate writes local names (deviation D-2), so the expected HTML is rewritten to
-local names (`rewrite_namespaces`) and the generator prints how many cases it touched.
+A foreign element (`svg`, `math`) reaches the HTML output because the html5 tree keeps it. The oracle's html5
+tree names it `{ns}local`, so lxml writes `ns0:title` under an `xmlns:ns0` declaration, where the crate and a
+libxml2 tree write the local name (deviation D-2); the expected HTML is rewritten to local names
+(`rewrite_namespaces`) and the generator prints how many cases it touched.
 
 `XmlOutCase`: an `etree.fromstring` snippet, the root being the tree. The snippets are grouped by what they
 cover (one function per group, below). `etree.fromstring` decodes `&#NN;` and normalizes whitespace in
@@ -183,7 +185,7 @@ MATH_TEXTS = [
 
 
 def math_cases() -> None:
-    "Block and inline math, nested both ways, finding 8's skip, in every kind of text position."
+    "Block and inline math, nested both ways, a lookbehind that skips an earlier candidate, in every kind of text position."
     for text in MATH_TEXTS:
         body = t(text)
         x(f"<doc><p>{body}</p></doc>")
@@ -198,7 +200,7 @@ def math_cases() -> None:
         x(f"<doc><p><code>{body}</code>{body}</p></doc>")
         x(f'<doc><p><hi rend="#t">{body}</hi></p></doc>')
         x(f'<doc><p>{body}<ref target="u">{body}</ref></p></doc>')
-    # the exact cases of the addendum
+    # a block span inside an inline span keeps the inline delimiters; a lookbehind skips the first `\[`
     x(f"<doc><p>{t(chr(92) + '(a ' + chr(92) + '[b' + chr(92) + '] c' + chr(92) + ')')}</p></doc>")
     x(f"<doc><p>{t('x' + chr(92) + '[a ' + chr(92) + '[b' + chr(92) + ']')}</p></doc>")
 
@@ -302,7 +304,7 @@ def image_cases() -> None:
 
 
 def list_cases() -> None:
-    "Ordered and nested lists with tails; finding 12's two cases."
+    "Ordered and nested lists with tails: a list in a `p` indents its tail by the parent's marker, a bare item has no indent."
     for source in (
         "<doc><list><item>a</item><item>b</item></list></doc>",
         '<doc><list rend="ol"><item>a</item><item>b</item><item>c</item></list></doc>',
@@ -433,7 +435,7 @@ def cell_cases() -> None:
 
 
 def empty_piece_cases() -> None:
-    "An empty piece reads as an empty last character (finding 7)."
+    "An empty piece reads as an empty last character, which separates like a newline."
     for source in (
         "<doc>text<hi><foo/></hi><p>b</p></doc>",
         "<doc>text<p>b</p></doc>",
@@ -706,7 +708,7 @@ def conversion_cases() -> None:
 
 
 def tostring_cases() -> None:
-    "The pretty-print shapes of finding 4 and the escapes."
+    "The pretty-print shapes (text nodes turn indentation off, the 60-space cap, `<x/>` against `<x></x>`) and the escapes."
     deep = "<div>" * 35 + "<p>x</p>" + "</div>" * 35
     deeper = "<div>" * 70 + "<p>x</p>" + "</div>" * 70
     for source in (
@@ -793,7 +795,7 @@ UNESCAPE_TEXTS = [
 
 
 def unescape_cases() -> None:
-    "Each `unescape` form of finding 1 short of the raise, finding 9's references that decode to separators."
+    "Each `unescape` form short of the raise, and references that decode to separators."
     for text in UNESCAPE_TEXTS:
         x(f"<doc><p>{t(text)}</p></doc>")
     for text in UNESCAPE_TEXTS[:12]:
@@ -1016,7 +1018,7 @@ def main() -> None:
             xml_results.append(run_xml(source))
         except Exception as error:
             raise AssertionError(f"xml case raised {error!r}: {source!r}") from error
-    check_finding_2(html_cases, html_results)
+    check_invalid_rend_cases(html_cases, html_results)
 
     out = [HEADER, "#[rustfmt::skip]", "pub const HTML_CASES: &[HtmlOutCase] = &["]
     for item, (comments, body) in zip(html_cases, html_results):
@@ -1054,8 +1056,8 @@ def main() -> None:
           f"rewriting ({rewritten} outputs rewritten in all); errors {errors}", file=sys.stderr)
 
 
-def check_finding_2(cases: list, results: list) -> None:
-    "The `summary` and `hi` cases reach what finding 2 says; a snippet that does not is a generator bug."
+def check_invalid_rend_cases(cases: list, results: list) -> None:
+    "The `summary` and `hi` `rend` cases give the output or exception they pin; a snippet that does not is a generator bug."
     reached = {"hx": False, "h9": False, "h 2": False, "": False, "zz": False}
     for item, (comments, body) in zip(cases, results):
         for rend in reached:
