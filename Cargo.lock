@@ -551,6 +551,7 @@ dependencies = [
  "regex",
  "ruzstd",
  "serde_json",
+ "web_atoms",
 ]
 
 [[package]]

@@ -22,6 +22,8 @@ mod html_processing;
 #[allow(dead_code)]
 mod main_extractor;
 #[allow(dead_code)]
+mod pyhtml;
+#[allow(dead_code)]
 mod pystr;
 #[allow(dead_code)]
 mod pyurl;
@@ -59,6 +61,7 @@ pub mod __internals {
         handle_textelem, handle_titles, process_nested_elements, prune_unwanted_sections,
         recover_wild_text, span,
     };
+    pub use crate::pyhtml::unescape;
     pub use crate::settings::{
         Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED,
         MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE, TAG_CATALOG,

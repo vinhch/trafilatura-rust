@@ -36,8 +36,9 @@ pub enum Rejection {
     WrongLanguage,
     /// The input exceeds the size limit.
     InputTooLarge,
-    /// A value upstream raises `ValueError` on inside extraction: a span of more than 4300 digits,
-    /// a URL `urljoin` rejects.
+    /// A value upstream raises on: either a `ValueError` upstream catches (it returns no result)
+    /// or a raise that escapes `extract` (a span or character reference of more than 4300 digits,
+    /// a URL `urljoin` rejects, a `hi` rend with no HTML tag, a heading level `int` rejects).
     InvalidValue,
 }
 

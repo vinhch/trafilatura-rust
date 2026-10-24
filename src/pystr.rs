@@ -9,6 +9,7 @@ mod printable;
 
 use std::cmp::Ordering;
 
+use crate::error::{ExtractError, Rejection};
 use decimal::ND_ZEROS;
 use printable::{PRINTABLE, SPACE, WORD};
 pub(crate) use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
@@ -51,6 +52,61 @@ pub(crate) fn split_whitespace(s: &str) -> impl Iterator<Item = &str> {
 /// Python `s.strip()` with no argument.
 pub(crate) fn strip(s: &str) -> &str {
     s.trim_matches(is_space)
+}
+
+/// Python `s.lstrip()` with no argument.
+pub(crate) fn lstrip(s: &str) -> &str {
+    s.trim_start_matches(is_space)
+}
+
+/// Python `s.rstrip()` with no argument.
+pub(crate) fn rstrip(s: &str) -> &str {
+    s.trim_end_matches(is_space)
+}
+
+/// The canonical decimal string of Python `int(s)`: no leading zeros, `-` only for a nonzero value.
+///
+/// Fails with `InvalidValue` where `int` raises `ValueError`, including more than
+/// [`MAX_STR_DIGITS`] digits (leading zeros counted, sign and `_` not). `int` strips ASCII
+/// `" \t\n\v\f\r"` and the non-ASCII `isspace` characters, but not `\x1c`-`\x1f`, so this is not
+/// [`strip`].
+pub(crate) fn int_str(s: &str) -> Result<String, ExtractError> {
+    let invalid = || ExtractError::Rejected(Rejection::InvalidValue);
+    let trimmed = s.trim_matches(|c: char| {
+        if c.is_ascii() {
+            matches!(c, ' ' | '\t' | '\n' | '\x0b' | '\x0c' | '\r')
+        } else {
+            is_space(c)
+        }
+    });
+    let (negative, body) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let mut digits = String::new();
+    // A `_` is valid only right after a digit, and the string must end on a digit.
+    let mut after_digit = false;
+    for c in body.chars() {
+        if let Some(value) = decimal_value(c) {
+            digits.push(char::from_digit(value, 10).ok_or_else(invalid)?);
+            after_digit = true;
+        } else if c == '_' && after_digit {
+            after_digit = false;
+        } else {
+            return Err(invalid());
+        }
+    }
+    if !after_digit || digits.len() > MAX_STR_DIGITS {
+        return Err(invalid());
+    }
+    let magnitude = digits.trim_start_matches('0');
+    Ok(if magnitude.is_empty() {
+        "0".to_owned()
+    } else if negative {
+        format!("-{magnitude}")
+    } else {
+        magnitude.to_owned()
+    })
 }
 
 fn is_line_break(c: char) -> bool {
@@ -184,6 +240,61 @@ mod tests {
         assert_eq!(strip(" \x1c\u{a0}a b\u{85} "), "a b");
         // oracle: chr(0x200b).strip() == chr(0x200b)
         assert_eq!(strip("\u{200b}"), "\u{200b}");
+    }
+
+    #[test]
+    fn lstrip_rstrip_match_python() {
+        // oracle: "\x1c a \x1f".lstrip(), "\x1c a \x1f".rstrip(), "\x85　".lstrip()
+        assert_eq!(lstrip("\x1c a \x1f"), "a \x1f");
+        assert_eq!(rstrip("\x1c a \x1f"), "\x1c a");
+        assert_eq!(lstrip("\u{85}\u{3000}"), "");
+        assert_eq!(rstrip("\u{85}\u{3000}"), "");
+    }
+
+    #[test]
+    fn int_str_matches_python() {
+        let invalid = Err(ExtractError::Rejected(Rejection::InvalidValue));
+        // oracle: str(int(s)), or the exception name
+        let long_underscored = "1_".repeat(2500) + "1";
+        let long_negative = format!("-{}7", "0".repeat(4299));
+        let too_long = format!("{}1", "0".repeat(4300));
+        let (expected_long, zeros) = ("1".repeat(2501), "0".repeat(4300));
+        for (s, expected) in [
+            ("2", "2"),
+            (" 1_0 ", "10"),
+            ("-0", "0"),
+            ("+5", "5"),
+            ("-007", "-7"),
+            ("\u{661}\u{662}", "12"),
+            ("\u{FF11}", "1"),
+            ("\u{85}1\u{3000}", "1"),
+            (long_underscored.as_str(), expected_long.as_str()),
+            (long_negative.as_str(), "-7"),
+            ("1_2_3", "123"),
+            (" \t\n\x0b\x0c\r7\r", "7"),
+            ("\u{663}_\u{664}", "34"),
+            (zeros.as_str(), "0"),
+        ] {
+            assert_eq!(int_str(s).as_deref(), Ok(expected), "{:?}", s.get(..20));
+        }
+        for s in [
+            "",
+            "x",
+            "1__0",
+            "_1",
+            "1_",
+            "1 2",
+            "\x1c1\x1f",
+            "\x1f7",
+            "\u{B2}",
+            "+",
+            "-",
+            "- 1",
+            "+-1",
+            too_long.as_str(),
+        ] {
+            assert_eq!(int_str(s), invalid, "{:?}", s.get(..20));
+        }
     }
 
     #[test]
