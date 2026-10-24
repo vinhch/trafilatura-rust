@@ -16,19 +16,20 @@ exists today; phases are in `phase-plan.md`.
 | `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | planned | `extract`, `bare_extraction`, the extraction cascade in fast mode |
 | `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, the `settings.cfg` defaults and the shared tag lists |
 | `main_extractor.py` | `main_extractor.rs` | exists: every constant, helper and handler, `prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`; `extract_body` is upstream's `_extract`, private because `extract` names the public entry point | content and comment extraction, the element handlers |
-| `htmlprocessing.py` | `html_processing.rs` | partial: everything except the output part exists (tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions and `convert_tags`); `HTML_TAG_MAPPING`, `HTML_CONVERSIONS`, `convert_to_html` and `build_html_output` are Phase 3e | tree cleaning, pruning, link density, text-node handling, `convert_tags` |
+| `htmlprocessing.py` | `html_processing.rs` | exists: tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions, `convert_tags` and the HTML output (`HTML_TAG_MAPPING`, `HTML_CONVERSIONS` as `html_conversion`, `convert_to_html`, `build_html_output`) | tree cleaning, pruning, link density, text-node handling, `convert_tags`, HTML output |
 | `xpaths.py` | `xpaths.rs` | partial: the content, comment and discard selectors exist; the metadata selectors are Phase 4 | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | planned | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported | the readability and jusText fallbacks run only when `fast=False` (D-1) |
 | `metadata.py`, `json_metadata.py` | `metadata.rs`, `json_metadata.rs` | planned | metadata from meta tags, JSON-LD, the tree |
 | `deduplication.py` | `deduplication.rs` | stub: `duplicate_test` returns `false` (`// todo(phase 5)`) | the duplicate test, simhash and content fingerprint |
 | `utils.py` | `utils.rs` | partial: decoding and HTML loading, the text helpers (`trim`, `sanitize`, `textfilter`, `line_processing` and the rest), `image_src`, `is_image_file`, `is_acceptable_length` and `check_html_lang` exist; `safe_base_url` and `safe_relative_url` (over `courlan`) exist, `language_filter` and `language_classifier` are stubs (OI-4), `normalize_unicode` and `as_list` are planned | text normalization, trimming, language and size checks, decoding and HTML loading |
-| `xml.py` | `xml.rs` | partial: the tree helpers (`delete_element`, `separates_inline`, `remove_empty_elements`, `keeps_empty`, `is_padding_cell`) exist; the output (TXT, Markdown, HTML, XML, XML-TEI, JSON, CSV), `merge_with_parent` and `strip_double_tags` are planned | tree helpers and output formats |
+| `xml.py` | `xml.rs`, `xml/markdown.rs` | partial: the tree helpers (`delete_element`, `separates_inline`, `remove_empty_elements`, `keeps_empty`, `is_padding_cell`, `merge_with_parent`, `strip_double_tags`) and the TXT and Markdown output (`replace_element_text`, `xml_to_text`; the escaping, math and link helpers are in `xml/markdown.rs`) exist; `meta_items`, the XML, XML-TEI, JSON and CSV output and the TEI checks are planned | tree helpers and output formats |
 | `meta.py` | none | not needed | `reset_caches` clears module-global caches here and in htmldate and courlan; this crate has no global caches (Runtime contract) |
 | `downloads.py`, `feeds.py`, `sitemaps.py`, `spider.py`, `cli.py`, `cli_utils.py` | none | out of scope | fetching and crawling belong to the caller |
-| none | `dom/` (`mod.rs`, `parse.rs`, `mutate.rs`, `walk.rs`, `dump.rs`) | exists | infrastructure upstream gets from lxml: the arena tree with many roots, its html5ever tree sink (`dom/parse.rs`), the lxml-semantics edits (`mutate.rs`: moves, `remove`, `clear`, `strip_tags`, `strip_elements`), the walks and `copy` (`walk.rs`), the tree dump the parity harness compares |
+| none | `dom/` (`mod.rs`, `parse.rs`, `mutate.rs`, `walk.rs`, `serialize.rs`, `dump.rs`) | exists | infrastructure upstream gets from lxml: the arena tree with many roots, its html5ever tree sink (`dom/parse.rs`), the lxml-semantics edits (`mutate.rs`: moves, `remove`, `clear`, `strip_tags`, `strip_elements`), the walks and `copy` (`walk.rs`), the serializer (`serialize.rs`: `Tree::tostring`, lxml's `etree.tostring` with `pretty_print` and `with_tail`, one iterative walk that indents two spaces a level up to 60 spaces and writes a foreign element by its local name, D-2), the tree dump the parity harness compares |
 | none | `pyurl.rs`, `pyurl/` | exists | CPython's `urllib.parse` (`urlsplit`, `urlunsplit`, `urljoin`) and `html.unescape`, which the URL helpers of `courlan` call; `pyurl/tables.rs` (the HTML5 entity table and the NFKC netloc breakers) is generated by `tools/parity/parity/gen_url.py` |
-| none | `pystr.rs` | exists | Python `str` semantics Rust lacks: `isspace`, `split`, `strip`, `splitlines`, `isprintable`, `isdecimal` (`is_decimal`), `unicodedata.decimal` (`decimal_value`) and the `\w` class, plus `MAX_STR_DIGITS`, the digit limit of `int()`; its range tables (`pystr/printable.rs`, and `pystr/decimal.rs`, the run starts of the `Nd` digits) are generated by `tools/parity/parity/gen_printable.py` and `gen_decimal.py` |
+| none | `pyhtml.rs` | exists | CPython's `html.unescape` (`unescape`) over the entity table of `web_atoms`, which the output calls; a decimal reference of more than `MAX_STR_DIGITS` digits fails with `Rejection::InvalidValue`. `pyurl` still carries its own port (F-20) |
+| none | `pystr.rs` | exists | Python `str` semantics Rust lacks: `isspace`, `split`, `strip`, `lstrip`, `rstrip`, `splitlines`, `isprintable`, `isdecimal` (`is_decimal`), `unicodedata.decimal` (`decimal_value`), `int(str)` as its canonical decimal string (`int_str`) and the `\w` class, plus `MAX_STR_DIGITS`, the digit limit of `int()`; its range tables (`pystr/printable.rs`, and `pystr/decimal.rs`, the run starts of the `Nd` digits) are generated by `tools/parity/parity/gen_printable.py` and `gen_decimal.py` |
 | none | `context.rs` | exists | `Ctx`, the per-call context ported functions take where upstream passes `options` (Runtime contract) |
 | none | `cancel.rs`, `error.rs` | exists | `CancelToken` and `Call`, `ExtractError` and `Rejection` |
 | none | `async_api.rs` | planned | `extract_async` (feature `tokio`) |
@@ -36,8 +37,9 @@ exists today; phases are in `phase-plan.md`.
 The hidden feature `__internals` exposes the tree types (`LiveIter` included), `parse_document`,
 `parse_fragment`, `dump`, `dump_from`, `ParseLimits`, `Ctx`, the `settings` types and element lists, the `utils`
 functions, the `html_processing` functions and constants, the `main_extractor` handlers, `span`,
-`prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`,
-`delete_element` and the `xpaths` items
+`prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`, the `xml`
+functions (`delete_element`, `remove_empty_elements`, `merge_with_parent`, `strip_double_tags`,
+`replace_element_text`, `xml_to_text`, `md_link`), `pyhtml::unescape` and the `xpaths` items
 (`Selector`, `alt`, `BODY_XPATH`, `OVERALL_DISCARD_XPATH`, `PRECISION_DISCARD_XPATH`) the
 integration tests call, as `__internals`: unstable, for the crate's own integration tests only.
 
@@ -66,7 +68,7 @@ upstream has no equivalent.
   function that edits a copy of upstream's options clones it, plus `&Call`) passed where upstream
   passes `options`, and is checked at stage
   boundaries and inside every loop over nodes; a ported function that checks it returns `Result`.
-  The `dom` primitives (edits, walks, `copy`) are linear in the subtree and take no `Call`; a ported
+  The `dom` primitives (edits, walks, `copy`, `tostring`) are linear in the subtree and take no `Call`; a ported
   function that loops over nodes checks it itself.
   The handle is `Call` (`cancel.rs`): an optional borrowed `CancelToken` (`Arc<AtomicBool>`, no
   dependency) and an optional deadline `Instant`. Loops check it about every 256 nodes

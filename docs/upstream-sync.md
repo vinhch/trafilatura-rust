@@ -11,14 +11,17 @@ map is in `architecture.md`.
    function that carries its `upstream:` trace comment.
 3. Port the changed upstream tests to their Rust tests by name. A test upstream deleted is deleted
    here.
-4. After porting token, selector or html-processing changes, regenerate the generated test data so it
-   encodes the new upstream (`parity-harness.md`, Generated test data): `gen_xpath_cases`,
-   `gen_html_processing_cases`, `gen_main_extractor_cases` and both outputs of `gen_url`. The
-   selector generator fails with "token table out of date" until each new token has a
+4. After porting token, selector, html-processing or output changes, regenerate the generated test
+   data so it encodes the new upstream (`parity-harness.md`, Generated test data): `gen_xpath_cases`,
+   `gen_html_processing_cases`, `gen_main_extractor_cases`, `gen_xml_output_cases` and both outputs of
+   `gen_url`. The selector generator fails with "token table out of date" until each new token has a
    value in its table. After a `main_extractor.py` change, run the `report()` of
    `gen_main_extractor_cases` and add a case for each line it lists. `gen_decimal` holds the
    Unicode digit data of the oracle image's Python, not upstream's: rerun it when that image's Python
-   or its Unicode data changes.
+   or its Unicode data changes. The size and digest of `html.entities.html5` recorded in
+   `entity_table_matches_python` (`src/pyhtml.rs`) come from that Python too: rerun the snippet in its
+   comment when it changes, and when a `web_atoms` bump fails that test, diff the table before
+   updating the values.
 5. Read upstream's `settings.cfg` diff as well as `settings.py`: defaults such as `MAX_FILE_SIZE`
    live there. Check OI-5 in `phase-plan.md`: a merged upstream parser switch changes D-2 and the
    fixtures. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,

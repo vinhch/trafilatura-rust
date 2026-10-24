@@ -123,6 +123,7 @@ writes it byte for byte.
 | `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin` and the two `courlan` helpers on URL strings |
 | `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
 | `gen_main_extractor_cases.py` | `tests/main_extractor_cases/cases.rs` | the seven element handlers on `etree.fromstring` snippets, and `extract_content` or `extract_comments` then `extract_content` on HTML snippets, each with the options it sets and built with `fast=True` (D-1); results are tree dumps and texts |
+| `gen_xml_output_cases.py` | `tests/xml_output_cases/cases.rs` | the TXT, Markdown and HTML output of `etree.fromstring` snippets and of the bodies the html snippets of `gen_main_extractor_cases` extract (imported, not copied), built with `fast=True` (D-1); an output is the text or the exception upstream raises |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
 `gen_url` takes `tables` or `cases` in place of `main`. The files that hold HTML snippets carry the
@@ -141,3 +142,16 @@ the bodies. Every `Extractor` the generator builds uses `fast=True`, because the
 fast path (D-1). `scripts/oracle.sh 'from parity.gen_main_extractor_cases import report; report()'`
 lists the lines of upstream's `main_extractor.py` that no case reaches; a sync that adds a branch
 shows up there.
+
+The cases of `xml_output_cases` run as an integration test too, `tests/xml_output_cases.rs`.
+`xml_cases_match_upstream` builds each snippet with `xml_tree` and `html_cases_match_upstream` builds
+the bodies with `run_pipeline`, the html pipeline `tests/trees` shares with `tests/main_extractor_cases.rs`
+(`tree_cleaning`, `convert_tags`, then `extract_content` or `extract_comments` and `extract_content`).
+Each tree gives three outputs: `xml_to_text` without and with formatting, and `build_html_output` on a
+copy (`Tree::tostring` with `pretty_print`, stripped). The crate has one error, `Rejection::InvalidValue`,
+for the `ValueError` and the `KeyError` upstream raises, so either name in a case matches it. The
+generator rejects an xml snippet that `xml_tree` would read differently from `etree.fromstring`: one
+with `&#`, a carriage return, a tab or newline in an attribute value, or an `svg` or `math` element.
+The escapes those would test are unit tests of `Tree::tostring` in `src/dom/tests.rs`. In an html
+case a foreign element reaches the output, and lxml writes it with an `ns0:` prefix, so the expected
+HTML is rewritten to local names (D-2) and the generator prints how many cases it touched.

@@ -90,18 +90,26 @@ function.
   first in the source.
 - Python `re` is not Rust `regex`. Rust `regex` has no lookaround and no backreferences, which
   upstream uses (`xml.py` Markdown escaping uses `(?<!...)`, `(?!...)` and `\2`). Rewrite those as
-  explicit code, and test them against upstream's regex on the same inputs. The selectors use regex
+  explicit code, and test them against upstream's regex on the same inputs. Filtering the matches of
+  a lookbehind-free pattern afterwards is not the same: on `"x\[a \[b\]"` Python skips the first
+  `\[` (preceded by `x`) and matches `\[b\]`, where a plain match takes `\[a \[b\]`, drops it and
+  resumes after it. The selectors use regex
   too: EXSLT `re:test(...)` in `xpaths.py` and `settings.py` runs Python `re`, including the
   lookahead in `[Cc]omment(?!ary)` that keeps "commentary" sections out of the comment selector.
   `re:test(s, p)` is `re.search`, not a full match, and its `'i'` flag is `re.IGNORECASE`.
 - Python `re` anchors differ from Rust `regex`. `$` also matches before a final `\n`; Rust needs
-  `\n?\z` for that. `re.match` anchors at the start only, so a pattern used with it starts with
+  `\n?\z` for that. In the block-start patterns of `xml.py` it decides output: `"#\n"` gives
+  `"\#\n"` and `"1.\n"` gives `"1\.\n"`, while `"#\nx"` is unchanged. `re.match` anchors at the
+  start only, so a pattern used with it starts with
   `\A`; `re.search` does not. `{,n}` is written `{0,n}`.
 - `\w`, `\W`, `\b` and `\s` differ. Python `\w` is letters, all numerics (`No` such as U+00B2
   included) and `_`, without combining marks; Rust `\w` includes marks and connector punctuation but
   not `No`. `\W` and `\b` follow from `\w`; `\s` is Python's whitespace set (whitespace bullet below).
   Interpolate `pystr::PY_SPACE_CLASS` and `pystr::PY_WORD_CLASS` into the pattern where upstream
   writes `\s` or `\w` (`IMAGE_EXTENSION` and `RE_FILTER` in `utils.rs`).
+- `\d` is any `Nd` digit in Python: the ordered-list block-start pattern of `xml.py` turns `"١. x"`
+  into `"١\. x"`. The hand-written scanner reads digits with `pystr::decimal_value`, the oracle
+  image's Unicode data, not the `regex` crate's.
 - `re.IGNORECASE` folds U+0130 (capital I with dot) and U+0131 (dotless i) to `i`; Rust `(?i)` does
   not. A pattern that can meet them rewrites each `i` to a class of `i`, U+0130 and U+0131
   (`ignore_case_i` in `pystr.rs`); `COOKIE_CONSENT_RE` in `settings.rs` does the same. The
@@ -138,12 +146,38 @@ function.
 - `urllib.parse` is not WHATWG. `courlan` builds on Python's `urlsplit`, `urlunsplit`, `urljoin` and
   `html.unescape`, which differ from the `url` crate on dot segments, schemes outside `uses_relative`,
   backslashes and what they reject, so the crate never uses the `url` crate; `pyurl.rs` ports CPython.
-  Two behaviors a port misses: `html.unescape` raises `ValueError` on a decimal character reference of
-  more than 4300 digits, and `urlsplit` raises when the NFKC form of a netloc holds one of `/?#@:`
+  Two behaviors a port misses: `html.unescape` raises `ValueError` on a long decimal character
+  reference (next bullet), and `urlsplit` raises when the NFKC form of a netloc holds one of `/?#@:`
   (`_checknetloc`), so `safe_base_url` and `safe_relative_url` return `""` for both. Python 3.13 patch
   releases and 3.14 differ (`_check_bracketed_netloc`, `urljoin`): the oracle image's Python is the
   reference, a local interpreter is not.
+- `html.unescape` is not a table lookup. A name missing from the table falls back to its longest
+  prefix that is in it, which only a legacy name without `;` can be: `&ampx` gives `&x`, `&notin`
+  gives `¬in`. A decimal reference of more than 4300 digits raises `ValueError`, leading zeros
+  counted (`"&#" + "0" * 4299 + "65;"` raises, 4298 zeros give `A`); a hex reference has no limit
+  (`"&#x" + "0" * 5000 + "41;"` gives `A`) and a value past 0x10FFFF gives U+FFFD. Some codes do not
+  decode to themselves: `&#128;` is `€`, `&#0;` is U+FFFD, `&#1;` is the empty string. `xmltotxt` ends
+  with it outside any `try`, so the raise escapes `extract` (`Rejection::InvalidValue`).
+- `web_atoms::NAMED_ENTITIES` is not Python's `html5` table. Besides its 2231 names it holds every
+  proper prefix of a name with the value `(0, 0)` (`"am"`, `""`), which is not an entity, and
+  `C1_REPLACEMENTS` has `None` for 0x81, 0x8D, 0x8F, 0x90 and 0x9D, where Python maps the code to
+  itself. `pyhtml::unescape` skips the first and fills the second; `entity_table_matches_python`
+  fails when a `web_atoms` bump changes the names.
 - lxml keeps `""` apart from `None`. `elem.text, elem.tail = elem.tail, ""` leaves the tail an empty
   string, and `handle_textnode` guards its trim with `if elem.tail:` so it stays one. The tree keeps
   `Some("")` apart from `None` for that reason; a tree dump omits both, so only an assertion on the
   field shows the difference (`test_htmlprocessing`).
+- `etree.tostring(pretty_print=True)` follows libxml2's format rule, not "indent every child". An
+  element with any text node among its children (its text, or a child's tail, even `""` or
+  whitespace) is written without indentation inside, down its whole subtree: `<body><div>
+  <p>x</p></div></body>` gives `<body>\n  <div> <p>x</p></div>\n</body>\n`. Indentation stops at 60
+  spaces (35 nested `div` stay at 60 from level 30 on). `<x/>` needs a `None` text and no children:
+  `p.text = ""` gives `<p></p>`. `Tree::tostring` follows all three.
+- A dict built by inversion keeps the last key. `HTML_TAG_MAPPING` inverts `REND_TAG_MAPPING`, so
+  `#i` gives `i` (not `em`), `#b` gives `strong` and `#t` gives `var`.
+- Python `int(str)` strips ASCII `" \t\n\v\f\r"` and the non-ASCII `isspace` characters, but not
+  `\x1c`-`\x1f` (`int("\x1c1\x1f")` raises, `int("\x851\u3000")` gives 1), so it is not `strip`.
+  `convert_to_html` reads a heading level with it: `<details><summary rend="hx">` raises,
+  `rend="h 2"` gives `<h2>` and `rend="h9"` gives `<h9>`. It also takes a sign and single `_`
+  between digits (`int("1_" * 2500 + "1")` is accepted); only digits count toward the 4300 limit,
+  leading zeros included. `pystr::int_str` ports it.
