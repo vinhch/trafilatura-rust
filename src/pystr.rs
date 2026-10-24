@@ -55,11 +55,13 @@ pub(crate) fn strip(s: &str) -> &str {
 }
 
 /// Python `s.lstrip()` with no argument.
+// upstream: str.lstrip (CPython)
 pub(crate) fn lstrip(s: &str) -> &str {
     s.trim_start_matches(is_space)
 }
 
 /// Python `s.rstrip()` with no argument.
+// upstream: str.rstrip (CPython)
 pub(crate) fn rstrip(s: &str) -> &str {
     s.trim_end_matches(is_space)
 }
@@ -70,6 +72,7 @@ pub(crate) fn rstrip(s: &str) -> &str {
 /// [`MAX_STR_DIGITS`] digits (leading zeros counted, sign and `_` not). `int` strips ASCII
 /// `" \t\n\v\f\r"` and the non-ASCII `isspace` characters, but not `\x1c`-`\x1f`, so this is not
 /// [`strip`].
+// upstream: int (CPython)
 pub(crate) fn int_str(s: &str) -> Result<String, ExtractError> {
     let invalid = || ExtractError::Rejected(Rejection::InvalidValue);
     let trimmed = s.trim_matches(|c: char| {
@@ -88,6 +91,9 @@ pub(crate) fn int_str(s: &str) -> Result<String, ExtractError> {
     let mut after_digit = false;
     for c in body.chars() {
         if let Some(value) = decimal_value(c) {
+            if digits.len() == MAX_STR_DIGITS {
+                return Err(invalid());
+            }
             digits.push(char::from_digit(value, 10).ok_or_else(invalid)?);
             after_digit = true;
         } else if c == '_' && after_digit {
@@ -96,7 +102,7 @@ pub(crate) fn int_str(s: &str) -> Result<String, ExtractError> {
             return Err(invalid());
         }
     }
-    if !after_digit || digits.len() > MAX_STR_DIGITS {
+    if !after_digit {
         return Err(invalid());
     }
     let magnitude = digits.trim_start_matches('0');
@@ -275,7 +281,12 @@ mod tests {
             ("\u{663}_\u{664}", "34"),
             (zeros.as_str(), "0"),
         ] {
-            assert_eq!(int_str(s).as_deref(), Ok(expected), "{:?}", s.get(..20));
+            assert_eq!(
+                int_str(s).as_deref(),
+                Ok(expected),
+                "{:?}",
+                s.chars().take(20).collect::<String>()
+            );
         }
         for s in [
             "",
@@ -293,7 +304,12 @@ mod tests {
             "+-1",
             too_long.as_str(),
         ] {
-            assert_eq!(int_str(s), invalid, "{:?}", s.get(..20));
+            assert_eq!(
+                int_str(s),
+                invalid,
+                "{:?}",
+                s.chars().take(20).collect::<String>()
+            );
         }
     }
 

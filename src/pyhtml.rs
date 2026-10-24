@@ -10,6 +10,7 @@ use crate::pystr::MAX_STR_DIGITS;
 /// One match of Python's `_charref` pattern, without the `&`: `#[0-9]+;?`, `#[xX][0-9a-fA-F]+;?`
 /// or a run of 1 to 32 code points outside `\t \n \f space < & # ;` followed by `;?`. A number
 /// keeps no `;`; a name keeps it, as the table has names with and without it.
+// upstream: cpython Lib/html/__init__.py::_charref
 enum Charref<'a> {
     Decimal(&'a str),
     Hex(&'a str),
@@ -18,6 +19,7 @@ enum Charref<'a> {
 
 /// Matches `_charref` at the start of `after` (the text following a `&`): the reference and the
 /// bytes it spans, `;` included. `None` when the pattern fails there.
+// upstream: cpython Lib/html/__init__.py::_charref
 fn charref(after: &str) -> Option<(Charref<'_>, usize)> {
     let bytes = after.as_bytes();
     let with_semicolon = |end: usize| end + usize::from(bytes.get(end) == Some(&b';'));
@@ -81,6 +83,7 @@ fn push_entity(out: &mut String, (first, second): (u32, u32)) {
 
 /// Python `_replace_charref` for a named reference: the exact name, else its longest prefix of
 /// 2 or more code points that is a name (only the legacy names without `;` can be), else unchanged.
+// upstream: cpython Lib/html/__init__.py::_replace_charref
 fn push_named(out: &mut String, name: &str) {
     if let Some(codes) = entity(name) {
         push_entity(out, codes);
@@ -110,12 +113,14 @@ fn read_number(digits: &str, radix: u32) -> u32 {
 }
 
 /// CPython's `_invalid_codepoints`: 126 values a reference decodes to the empty string.
+// upstream: cpython Lib/html/__init__.py::_invalid_codepoints
 fn is_invalid_codepoint(code: u32) -> bool {
     matches!(code, 0x1..=0x8 | 0xB | 0xE..=0x1F | 0x7F..=0x9F | 0xFDD0..=0xFDEF)
         || (code <= 0x10_FFFF && code & 0xFFFE == 0xFFFE)
 }
 
 /// Python `_replace_charref` for a numeric reference; `None` is the empty string.
+// upstream: cpython Lib/html/__init__.py::_replace_charref, _invalid_charrefs
 fn numeric(code: u32) -> Option<char> {
     match code {
         0 => Some('\u{FFFD}'),
@@ -136,6 +141,7 @@ fn numeric(code: u32) -> Option<char> {
 /// Fails with `InvalidValue` on a decimal character reference of more than [`MAX_STR_DIGITS`]
 /// digits, leading zeros counted: Python's `int` raises `ValueError` there. A hex reference has no
 /// limit.
+// upstream: html.unescape (CPython)
 pub fn unescape(s: &str) -> Result<Cow<'_, str>, ExtractError> {
     if !s.contains('&') {
         return Ok(Cow::Borrowed(s));
