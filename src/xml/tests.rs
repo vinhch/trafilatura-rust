@@ -651,3 +651,20 @@ fn output_deep_nesting_fits_512k_stack() {
         .join()
         .unwrap();
 }
+
+#[test]
+fn merge_adjacent_hi_ticks_in_the_pair_loop() {
+    // `CHECK_INTERVAL` is 256: the visits of the `p` and its two `hi` children tick at 253, 254 and
+    // 255 without a check, so only the tick of the pair loop, at 256, sees the cancelled token
+    assert_eq!(CHECK_INTERVAL, 256);
+    let mut tree = xml("<p><hi rend=#b>a</hi><hi rend=#b>b</hi></p>");
+    let root = tree.root();
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let mut visited = 253;
+    assert_eq!(
+        merge_adjacent_hi(&mut tree, root, &call, &mut visited),
+        Err(ExtractError::Cancelled)
+    );
+}

@@ -962,6 +962,7 @@ fn merge_adjacent_hi(
     }
     // reverse pass: removing the next element never disturbs the pairs still to be visited
     for pair in children.windows(2).rev() {
+        tick(visited, call)?;
         let &[current, next] = pair else { continue };
         let rend = tree.get(current, "rend");
         let mergeable = tree.tag(current) == Some("hi")
