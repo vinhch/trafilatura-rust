@@ -63,6 +63,10 @@ required-features = ["__internals"]
 name = "main_extractor_cases"
 required-features = ["__internals"]
 
+[[test]]
+name = "xml_tei_tests"
+required-features = ["__internals"]
+
 # Measurements, not tests (scripts/measure.{sh,ps1}): they replace the default harness and run only
 # with TRAFILATURA_MEASURE=1. Heap is its own binary because the dhat allocator slows the timings.
 [[test]]

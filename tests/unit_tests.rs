@@ -9,14 +9,16 @@
 use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
-    BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput,
+    BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput, LiveIter,
     MANUALLY_CLEANED, MANUALLY_STRIPPED, MIN_DUPLICATE_LENGTH, NodeId, OVERALL_DISCARD_XPATH,
     PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt, convert_tags,
     delete_by_link_density, delete_element, dump, extract_content, handle_formatting, handle_image,
     handle_lists, handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_textnode,
-    handle_titles, link_density_test, link_density_test_tables, load_html, md_link, parse_document,
-    parse_fragment, process_node, prune_html, prune_unwanted_nodes, prune_unwanted_sections,
-    recover_wild_text, sanitize, span, textfilter, tree_cleaning, tree_cleaning_with, trim,
+    handle_titles, link_density_test, link_density_test_tables, load_html, md_link,
+    merge_with_parent, parse_document, parse_fragment, process_node, prune_html,
+    prune_unwanted_nodes, prune_unwanted_sections, recover_wild_text, remove_empty_elements,
+    replace_element_text, sanitize, span, strip_double_tags, textfilter, tree_cleaning,
+    tree_cleaning_with, trim,
 };
 use trafilatura_rust::{Call, ExtractError};
 
@@ -358,7 +360,31 @@ fn test_htmlprocessing() {
     let before = dump(&tree, DumpMode::Exact);
     delete_element(&mut tree, root, true);
     assert_eq!(dump(&tree, DumpMode::Exact), before);
-    // phase 3e: merge_with_parent
+
+    // merge with parent function
+    let mut element = xml_tree("<test/>");
+    let root = element.root();
+    merge_with_parent(&mut element, root, false, &call).unwrap();
+    assert_eq!(element.tostring(root, false, false), "<test/>");
+
+    let merge_spans = |html: &str| {
+        let (mut mydoc, mydoc_root) = lxml_fromstring(html);
+        let mut spans = LiveIter::new(&mydoc, mydoc_root, &["span"]);
+        while let Some(span) = spans.next(&mydoc) {
+            merge_with_parent(&mut mydoc, span, false, &call).unwrap();
+        }
+        mydoc.tostring(mydoc_root, false, false)
+    };
+    assert!(
+        merge_spans("<html><body><p><span>A</span><span>B</span><span>C</span></p></body></html>")
+            .contains("<p>A B C</p>")
+    );
+    assert!(
+        merge_spans(
+            "<html><body><p><span>A</span><span>B</span> tail<span>C</span></p></body></html>"
+        )
+        .contains("<p>A B tail C</p>")
+    );
 
     // test tail of node deleted if set as text
     let (mut tree, node) = first_child_of("<div><p></p>tail</div>");
@@ -414,6 +440,20 @@ fn test_htmlprocessing() {
         r#"<ref target="/x">link</ref> "#.repeat(5)
     ));
     assert!(!link_density_test_tables(&short_table, short_table.root(), &call).unwrap());
+    // replace_element_text: an empty <ref> (no text) yields an empty string
+    let mut empty_ref = xml_tree("<ref/>");
+    let root = empty_ref.root();
+    assert_eq!(
+        replace_element_text(&mut empty_ref, root, false, false, &call).unwrap(),
+        ""
+    );
+
+    // regression #797: a code block with a tailless <lb> must not emit a literal "None"
+    let mut code = xml_tree("<code>print(1)<lb/></code>");
+    let root = code.root();
+    let code_md = replace_element_text(&mut code, root, true, false, &call).unwrap();
+    assert!(!code_md.contains("None"));
+    assert!(code_md.contains("print(1)"));
 
     // handle_paragraphs: a trailing <lb> with no tail is stripped from the output
     let mut tree = xml_tree("<p>text<lb>x</lb></p>");
@@ -1566,4 +1606,222 @@ fn test_markdown_link_angle_bracket_targets() {
         md_link("a[b]c", Some("http://x.com/p>q"), false),
         "[a\\[b\\]c](<http://x.com/p\\>q>)"
     );
+}
+
+/// `tree.find(".//{parent}/{child}") is not None`.
+fn has_child_path(tree: &Tree, root: NodeId, parent: &str, child: &str) -> bool {
+    tree.iterdescendants(root, &[child])
+        .any(|node| tree.node(node).parent().and_then(|up| tree.tag(up)) == Some(parent))
+}
+
+/// `sanitize(etree.tostring(remove_empty_elements(strip_double_tags(tree)))).replace("\n", "")`.
+fn strip_double_tags_then_clean(tree: &mut Tree, root: NodeId, call: &Call<'_>) -> String {
+    strip_double_tags(tree, root, call).unwrap();
+    remove_empty_elements(tree, root, call).unwrap();
+    sanitize(&tree.tostring(root, false, false), false, false)
+        .unwrap()
+        .replace('\n', "")
+}
+
+/// The source of the last block of upstream's `test_tei`: elements with the same tag nested in an
+/// element of `NESTING_WHITELIST`.
+const WHITELISTED_NESTING: &str = "<html>
+        <body>
+            <div>
+                <p>
+                  <list>
+                    <item>
+                        <p>text</p>
+                    </item>
+                  </list>
+                </p>
+                <p>
+                    <table>
+                      <row>
+                        <cell>
+                          <p>text1</p>
+                         </cell>
+                      </row>
+                    </table>
+                </p>
+                <p>
+                    <note>
+                      <p>text2</p>
+                    </note>
+                </p>
+                <p>
+                    <quote>
+                        <p>text3</p>
+                    </quote>
+                </p>
+                <p>
+                    <figure>
+                        <p>text4</p>
+                    </figure>
+                </p>
+            </div>
+        </body>
+    </html>";
+
+/// `[tree.find(f".//{parent_tag}/p") is not None for parent_tag in [...]]`.
+fn whitelisted_parents_with_p(tree: &Tree, root: NodeId) -> Vec<bool> {
+    ["item", "cell", "quote", "note", "figure"]
+        .iter()
+        .map(|parent_tag| has_child_path(tree, root, parent_tag, "p"))
+        .collect()
+}
+
+// Upstream's other blocks call `extract`, `validate_tei` and `write_fullheader`: 3f and Phase 6.
+#[test]
+fn test_tei() {
+    let call = Call::default();
+    // merge double elements
+    // D-2: upstream parses with libxml2, which closes the outer `p` at the second one and keeps the
+    // `p` inside the `span`, so the result is `<p><span>content</span></p>`. html5 pops the open
+    // `p` together with the `span` above it when the inner `p` starts, so the tree never holds that
+    // nesting: the result is `<p>content</p>` without the `span`. The expected string is
+    // upstream's own functions on the html5 tree; `test_tei_strip_double_tags_libxml2_nesting`
+    // asserts the libxml2 nesting.
+    // oracle: sanitize(etree.tostring(remove_empty_elements(strip_double_tags(parse_document(S))), encoding="unicode")).replace("\n", "") with S the html of this block
+    let (mut tree, root) = lxml_fromstring(
+        "<html>
+        <body>
+            <p><p>
+              <span><p>content</p></span>
+            </p></p>
+        </body>
+        </html>",
+    );
+    assert_eq!(
+        strip_double_tags_then_clean(&mut tree, root, &call),
+        "<html><body><p>content</p></body></html>"
+    );
+
+    let (mut tree, root) = lxml_fromstring(
+        "
+    <html>
+        <body>
+            <div>
+                <div>
+                    <p>
+                        <p>text</p>
+                    <p>
+                </div>
+            </div>
+        </body>
+    </html>
+    ",
+    );
+    strip_double_tags(&mut tree, root, &call).unwrap();
+    assert!(has_child_path(&tree, root, "div", "div"));
+    assert!(!has_child_path(&tree, root, "p", "p"));
+
+    let mut tree = xml_tree(
+        "
+    <html><body>
+        <div>
+            <p>text1<lb/>text2<p>text3</p><lb/>text4</p>
+            <p>text5<p>text6</p></p>
+        </div>
+    </body></html>
+    ",
+    );
+    let root = tree.root();
+    strip_double_tags(&mut tree, root, &call).unwrap();
+    assert!(!has_child_path(&tree, root, "p", "p"));
+
+    let mut tree = xml_tree(
+        "
+    <html><body>
+        <div>
+            <p>text1<lb/>text2<p>text3</p><lb/>text4</p>
+            <p>text5<p>text6<p>text7</p></p></p>
+        </div>
+    </body></html>
+    ",
+    );
+    let root = tree.root();
+    strip_double_tags(&mut tree, root, &call).unwrap();
+    assert!(!has_child_path(&tree, root, "p", "p"));
+    assert!(tree.tostring(root, false, false).contains("text7"));
+
+    // nested elements with same tag not merged
+    // D-2: upstream's libxml2 keeps each `p` around its `list`, `table`, `note`, `quote` and
+    // `figure`, so all five `find` calls hit. html5 closes the open `p` at the inner `p` when only
+    // unknown elements (`item`, `note`, `quote`) lie between, and at a `table` or `figure` start
+    // tag: the `cell` and `figure` paths keep their `p` and the other three find none, before and
+    // after the call. `test_tei_strip_double_tags_libxml2_nesting` asserts the nesting upstream
+    // meant.
+    // oracle: [t.find(f".//{tag}/p") is not None for tag in ("item", "cell", "quote", "note", "figure")] on parse_document(S), before and after strip_double_tags(t)
+    let (mut tree, root) = lxml_fromstring(WHITELISTED_NESTING);
+    let expected = [false, true, false, false, true];
+    assert_eq!(whitelisted_parents_with_p(&tree, root), expected);
+    strip_double_tags(&mut tree, root, &call).unwrap();
+    assert_eq!(whitelisted_parents_with_p(&tree, root), expected);
+}
+
+// Blocks 1 and 5 of `test_tei` on the nesting libxml2 gives them.
+#[test]
+fn test_tei_strip_double_tags_libxml2_nesting() {
+    let call = Call::default();
+    // oracle: sanitize(etree.tostring(remove_empty_elements(strip_double_tags(etree.fromstring(S))), encoding="unicode")).replace("\n", ""), S being the first block's html with its outer `p` closed at the second one, as `lxml.html.fromstring` parses it
+    let mut tree = xml_tree(
+        "<html>
+<body>
+<p/><p>
+<span><p>content</p></span>
+</p>
+</body>
+</html>",
+    );
+    let root = tree.root();
+    assert_eq!(
+        strip_double_tags_then_clean(&mut tree, root, &call),
+        "<html><body><p><span>content</span></p></body></html>"
+    );
+
+    // oracle: [t.find(f".//{tag}/p") is not None for tag in ("item", "cell", "quote", "note", "figure")] on etree.fromstring(S), before and after strip_double_tags(t), S being `WHITELISTED_NESTING`
+    let mut tree = xml_tree(WHITELISTED_NESTING);
+    let root = tree.root();
+    assert_eq!(whitelisted_parents_with_p(&tree, root), [true; 5]);
+    strip_double_tags(&mut tree, root, &call).unwrap();
+    assert_eq!(whitelisted_parents_with_p(&tree, root), [true; 5]);
+}
+
+#[test]
+fn test_heading_level_zero_trust() {
+    // replace_element_text must never crash on a malformed head rend and defaults to level 2
+    let call = Call::default();
+    let cases = [
+        (Some("h1"), "# T"),
+        (Some("h2"), "## T"),
+        (Some("h6"), "###### T"),
+        // absent -> default level 2
+        (None, "## T"),
+        (Some(""), "## T"),
+        // no digit
+        (Some("h"), "## T"),
+        // non-digit
+        (Some("hx"), "## T"),
+        // superscript: isdigit() True but int() raises -> must not crash
+        (Some("h\u{b2}"), "## T"),
+        // non-ASCII decimal digit -> not an accepted level
+        (Some("h\u{664}"), "## T"),
+        // out of range
+        (Some("h0"), "## T"),
+        (Some("h9"), "## T"),
+    ];
+    for (rend, expected) in cases {
+        let mut el = xml_tree("<head/>");
+        let root = el.root();
+        el.node_mut(root).text = Some("T".to_owned());
+        if let Some(rend) = rend {
+            el.set(root, "rend", rend);
+        }
+        assert_eq!(
+            replace_element_text(&mut el, root, true, false, &call).unwrap(),
+            expected,
+            "rend {rend:?}"
+        );
+    }
 }

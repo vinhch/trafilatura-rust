@@ -263,3 +263,93 @@ fn separates_inline_needs_an_lb_before_inline_content() {
     // oracle: r = etree.fromstring("<body><lb/><hi/></body>"); separates_inline(r[0])
     assert_eq!(flags("<body><lb/><hi/></body>", &[0]), (true, true, false));
 }
+
+fn doubled_tags_stripped(source: &str) -> String {
+    let mut tree = xml(source);
+    let root = tree.root();
+    assert_eq!(
+        strip_double_tags(&mut tree, root, &Call::default()),
+        Ok(root)
+    );
+    shown(&tree)
+}
+
+#[test]
+fn strip_double_tags_matches_python() {
+    // the walk goes on inside the subtree a merge just detached, and a merge keeps only the
+    // element's text and tail
+    // oracle: r = etree.fromstring("<doc><p>x<p>a<p>b</p>c</p>d</p><head>h<head>i</head></head></doc>"); strip_double_tags(r); etree.tostring(r, encoding="unicode")
+    assert_eq!(
+        doubled_tags_stripped("<doc><p>x<p>a<p>b</p>c</p>d</p><head>h<head>i</head></head></doc>"),
+        "<doc><p>x a bcd</p><head>h i</head></doc>"
+    );
+    // oracle: r = etree.fromstring("<p>x<code>c<code>d<code>e</code></code></code></p>"); strip_double_tags(r); etree.tostring(r, encoding="unicode")
+    assert_eq!(
+        doubled_tags_stripped("<p>x<code>c<code>d<code>e</code></code></code></p>"),
+        "<p>x<code>c d e</code></p>"
+    );
+    // oracle: r = etree.fromstring("<doc><p>x<p>a</p><p>b</p></p></doc>"); strip_double_tags(r); etree.tostring(r, encoding="unicode")
+    assert_eq!(
+        doubled_tags_stripped("<doc><p>x<p>a</p><p>b</p></p></doc>"),
+        "<doc><p>x a b</p></doc>"
+    );
+    // the root is not one of its own descendants
+    // oracle: r = etree.fromstring("<p>x<p>a</p><p>b</p></p>"); strip_double_tags(r); etree.tostring(r, encoding="unicode")
+    assert_eq!(
+        doubled_tags_stripped("<p>x<p>a</p><p>b</p></p>"),
+        "<p>x<p>a</p><p>b</p></p>"
+    );
+}
+
+#[test]
+fn merge_with_parent_empty_parent_text() {
+    let mut tree = xml("<p><x>z</x>t</p>");
+    let root = tree.root();
+    tree.node_mut(root).text = Some(String::new());
+    let child = at(&tree, &[0]);
+    merge_with_parent(&mut tree, child, false, &Call::default()).unwrap();
+    // oracle: e = etree.fromstring("<p><x>z</x>t</p>"); e.text = ""; merge_with_parent(e[0]); (e.text, etree.tostring(e, encoding="unicode"))
+    assert_eq!(tree.node(root).text.as_deref(), Some(" zt"));
+    assert_eq!(shown(&tree), "<p> zt</p>");
+}
+
+#[test]
+fn merge_with_parent_drops_children() {
+    let mut tree = xml("<doc><p>x<p>a<hi>b</hi></p>t</p></doc>");
+    let inner = at(&tree, &[0, 0]);
+    merge_with_parent(&mut tree, inner, false, &Call::default()).unwrap();
+    // oracle: r = etree.fromstring("<doc><p>x<p>a<hi>b</hi></p>t</p></doc>"); merge_with_parent(r[0][0]); etree.tostring(r, encoding="unicode")
+    assert_eq!(shown(&tree), "<doc><p>x at</p></doc>");
+}
+
+#[test]
+fn replace_element_text_code_removes_lb() {
+    let mut tree = xml("<code>a<lb/>b<lb/>c</code>");
+    let root = tree.root();
+    let text = replace_element_text(&mut tree, root, true, false, &Call::default()).unwrap();
+    // oracle: e = etree.fromstring("<code>a<lb/>b<lb/>c</code>"); (replace_element_text(e, True), etree.tostring(e, encoding="unicode"))
+    assert_eq!(text, "```\na\nb\nc\n```\n");
+    assert_eq!(shown(&tree), "<code>a</code>");
+    assert!(tree.find(root, "lb").is_none());
+}
+
+#[test]
+fn replace_element_text_cancels_inside_inline_walk() {
+    let children = "<hi/>".repeat(1000);
+    let mut tree = xml(&format!("<hi>{children}</hi>"));
+    let root = tree.root();
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    assert_eq!(
+        replace_element_text(&mut tree, root, false, false, &call),
+        Err(ExtractError::Cancelled)
+    );
+    // no children, no walk, no check
+    let mut tree = xml("<hi>x</hi>");
+    let root = tree.root();
+    assert_eq!(
+        replace_element_text(&mut tree, root, false, false, &call),
+        Ok("x".to_owned())
+    );
+}
