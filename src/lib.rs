@@ -72,7 +72,7 @@ pub mod __internals {
     };
     pub use crate::xml::{
         delete_element, md_link, merge_with_parent, remove_empty_elements, replace_element_text,
-        strip_double_tags,
+        strip_double_tags, xml_to_text,
     };
     pub use crate::xpaths::{
         BODY_XPATH, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, Selector, alt,

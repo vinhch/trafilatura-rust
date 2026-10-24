@@ -1,9 +1,23 @@
+use std::sync::Arc;
+
 use super::*;
 use crate::cancel::{CHECK_INTERVAL, Call, CancelToken};
-use crate::dom::{LocalName, NodeId, Ns, Tree};
-use crate::error::ExtractError;
+use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
+use crate::error::{ExtractError, Rejection};
 
-/// Builds a tree from attribute-free XML: `<a>text<b/>tail</a>`; the first tag is the root.
+/// `name="value"` pairs without whitespace in the values.
+fn attributes(source: &str) -> Vec<(LocalName, Arc<str>)> {
+    source
+        .split_whitespace()
+        .map(|pair| {
+            let (key, value) = pair.split_once('=').unwrap();
+            (LocalName::from(key), Arc::from(value.trim_matches('"')))
+        })
+        .collect()
+}
+
+/// Builds a tree from XML: `<a x="1">text<b/>tail</a>`; the first tag is the root. Attribute values
+/// hold no whitespace.
 fn xml(source: &str) -> Tree {
     let mut tree: Option<Tree> = None;
     let mut stack: Vec<NodeId> = Vec::new();
@@ -14,12 +28,16 @@ fn xml(source: &str) -> Tree {
             (None, Some(name)) => (name, false, true),
             (None, None) => (tag, false, false),
         };
-        let tree = tree.get_or_insert_with(|| Tree::new(LocalName::from(name), Ns::Html, vec![]));
+        let (name, attrs) = name.split_once(' ').unwrap_or((name, ""));
+        let tree = tree
+            .get_or_insert_with(|| Tree::new(LocalName::from(name), Ns::Html, attributes(attrs)));
         if closes {
             stack.pop();
         } else {
             let id = match stack.last() {
-                Some(&parent) => tree.add_child(parent, LocalName::from(name), Ns::Html, vec![]),
+                Some(&parent) => {
+                    tree.add_child(parent, LocalName::from(name), Ns::Html, attributes(attrs))
+                }
                 None => tree.root(),
             };
             if !self_closing {
@@ -341,6 +359,8 @@ fn replace_element_text_cancels_inside_inline_walk() {
     let token = CancelToken::new();
     token.cancel();
     let call = Call::default().cancel(&token);
+    // the first tick already checks at count 0, so the 1000 children do not tell a check per child
+    // from one at entry; the zero-child `Ok` below shows that the check sits in the child loop
     assert_eq!(
         replace_element_text(&mut tree, root, false, false, &call),
         Err(ExtractError::Cancelled)
@@ -352,4 +372,255 @@ fn replace_element_text_cancels_inside_inline_walk() {
         replace_element_text(&mut tree, root, false, false, &call),
         Ok("x".to_owned())
     );
+}
+
+#[test]
+fn merge_with_parent_previous_sibling_tail() {
+    let merged = |source: &str, previous_tail: Option<&str>| {
+        let mut tree = xml(source);
+        let previous = at(&tree, &[0]);
+        if let Some(tail) = previous_tail {
+            tree.node_mut(previous).tail = Some(tail.to_owned());
+        }
+        let element = at(&tree, &[1]);
+        merge_with_parent(&mut tree, element, false, &Call::default()).unwrap();
+        (tree.node(previous).tail.clone(), shown(&tree))
+    };
+    // a non-empty tail on the previous sibling joins the merged text with a space
+    // oracle: r = etree.fromstring("<doc><a/>pt<p>c</p>t</doc>"); merge_with_parent(r[1]); (r[0].tail, etree.tostring(r, encoding="unicode"))
+    assert_eq!(
+        merged("<doc><a/>pt<p>c</p>t</doc>", None),
+        (Some("pt ct".to_owned()), "<doc><a/>pt ct</doc>".to_owned())
+    );
+    // no tail: the merged text alone
+    // oracle: r = etree.fromstring("<doc><a/><p>c</p>t</doc>"); merge_with_parent(r[1]); (r[0].tail, etree.tostring(r, encoding="unicode"))
+    assert_eq!(
+        merged("<doc><a/><p>c</p>t</doc>", None),
+        (Some("ct".to_owned()), "<doc><a/>ct</doc>".to_owned())
+    );
+    // an empty tail is as good as none, without the joining space
+    // oracle: r = etree.fromstring("<doc><a/><p>c</p>t</doc>"); r[0].tail = ""; merge_with_parent(r[1]); (r[0].tail, etree.tostring(r, encoding="unicode"))
+    assert_eq!(
+        merged("<doc><a/><p>c</p>t</doc>", Some("")),
+        (Some("ct".to_owned()), "<doc><a/>ct</doc>".to_owned())
+    );
+}
+
+#[test]
+fn strip_double_tags_cancels() {
+    let mut tree = xml("<doc><p>x<p>a</p></p></doc>");
+    let root = tree.root();
+    let token = CancelToken::new();
+    token.cancel();
+    assert_eq!(
+        strip_double_tags(&mut tree, root, &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+/// `xml_to_text` over the whole tree, in the given mode.
+fn text_of(tree: &mut Tree, include_formatting: bool) -> String {
+    let root = tree.root();
+    xml_to_text(tree, Some(root), include_formatting, &Call::default()).unwrap()
+}
+
+#[test]
+fn empty_piece_reads_as_separator() {
+    // `replace_element_text` of `<hi><foo/></hi>` is the empty string, which `_last_char` reads as
+    // a separator: no newline is put before the next block
+    let source = "<doc>text<hi><foo/></hi><p>b</p></doc>";
+    // oracle: xml.xmltotxt(etree.fromstring("<doc>text<hi><foo/></hi><p>b</p></doc>"), False)
+    assert_eq!(text_of(&mut xml(source), false), "textb");
+    // oracle: xml.xmltotxt(etree.fromstring("<doc>text<hi><foo/></hi><p>b</p></doc>"), True)
+    assert_eq!(text_of(&mut xml(source), true), "textb\n");
+    // without the `hi`, the block starts on its own line
+    let source = "<doc>text<p>b</p></doc>";
+    // oracle: xml.xmltotxt(etree.fromstring("<doc>text<p>b</p></doc>"), False)
+    assert_eq!(text_of(&mut xml(source), false), "text\nb");
+    // oracle: xml.xmltotxt(etree.fromstring("<doc>text<p>b</p></doc>"), True)
+    assert_eq!(text_of(&mut xml(source), true), "text\nb\n");
+}
+
+#[test]
+fn unescape_runs_after_escaping_and_sanitize() {
+    // (the text of the `p` after the XML parse, TXT output, Markdown output)
+    let cases = [
+        // entity text in the source comes out unescaped, and `sanitize` drops every U+2424
+        // oracle: xml.xmltotxt(etree.fromstring("<p>a &amp;lt;b&amp;gt; &amp;amp; x␤y</p>"), fmt) for fmt in (False, True)
+        ("a &lt;b&gt; &amp; x\u{2424}y", "a <b> & xy", "a <b> & xy\n"),
+        // a reference that decodes to a line separator or to U+2424 survives: `unescape` runs last
+        // oracle: xml.xmltotxt(etree.fromstring("<p>a&amp;#13;b&amp;#10;c&amp;#9252;d</p>"), fmt) for fmt in (False, True)
+        (
+            "a&#13;b&#10;c&#9252;d",
+            "a\rb\nc\u{2424}d",
+            "a\rb\nc\u{2424}d\n",
+        ),
+        // oracle: xml.xmltotxt(etree.fromstring("<p>a&amp;#8232;b</p>"), fmt) for fmt in (False, True)
+        ("a&#8232;b", "a\u{2028}b", "a\u{2028}b\n"),
+    ];
+    for (text, plain, markdown) in cases {
+        for (include_formatting, expected) in [(false, plain), (true, markdown)] {
+            let mut tree = xml("<p/>");
+            let root = tree.root();
+            tree.node_mut(root).text = Some(text.to_owned());
+            assert_eq!(
+                text_of(&mut tree, include_formatting),
+                expected,
+                "{text:?}, formatting {include_formatting}"
+            );
+        }
+    }
+}
+
+#[test]
+fn list_marker_parent_and_no_list() {
+    // the tail of a list in a `p` is indented by the width of the parent's marker (two spaces, not
+    // the three of `2. `), and the numbering reads the `rend` of the parent whatever it is
+    let source = "<doc><list rend=ol><item>x</item><item>a<p>b<list><item>c</item></list> tail</p></item></list></doc>";
+    // oracle: xml.xmltotxt(etree.fromstring('<doc><list rend="ol"><item>x</item><item>a<p>b<list><item>c</item></list> tail</p></item></list></doc>'), False)
+    assert_eq!(text_of(&mut xml(source), false), "- x\n- a b\n  - c\ntail");
+    // oracle: xml.xmltotxt(etree.fromstring('<doc><list rend="ol"><item>x</item><item>a<p>b<list><item>c</item></list> tail</p></item></list></doc>'), True)
+    assert_eq!(
+        text_of(&mut xml(source), true),
+        "1. x\n2. a b\n  - c\n\n  tail\n"
+    );
+    // a list directly in an ordered item: the indent is the width of `1. `, which is Markdown-only
+    let source = "<doc><list rend=ol><item>a<list><item>c</item></list> tail</item></list></doc>";
+    // oracle: xml.xmltotxt(etree.fromstring('<doc><list rend="ol"><item>a<list><item>c</item></list> tail</item></list></doc>'), False)
+    assert_eq!(text_of(&mut xml(source), false), "- a\n  - c\ntail");
+    // oracle: xml.xmltotxt(etree.fromstring('<doc><list rend="ol"><item>a<list><item>c</item></list> tail</item></list></doc>'), True)
+    assert_eq!(text_of(&mut xml(source), true), "1. a\n  - c\n\n   tail\n");
+    // an item with no `list` ancestor has no indent: `"  " * -1` is empty
+    let source = "<doc><item>a</item><item>b</item></doc>";
+    // oracle: xml.xmltotxt(etree.fromstring("<doc><item>a</item><item>b</item></doc>"), False)
+    assert_eq!(text_of(&mut xml(source), false), "- a\n- b");
+    // oracle: xml.xmltotxt(etree.fromstring("<doc><item>a</item><item>b</item></doc>"), True)
+    assert_eq!(text_of(&mut xml(source), true), "- a\n- b");
+}
+
+#[test]
+fn xml_to_text_raises_on_long_reference() {
+    // a decimal reference of more than 4300 digits makes `html.unescape` raise, and nothing catches it
+    for include_formatting in [false, true] {
+        let mut tree = xml("<p/>");
+        let root = tree.root();
+        tree.node_mut(root).text = Some(format!("&#{};", "1".repeat(5000)));
+        assert_eq!(
+            xml_to_text(&mut tree, Some(root), include_formatting, &Call::default()),
+            Err(ExtractError::Rejected(Rejection::InvalidValue)),
+            "formatting {include_formatting}"
+        );
+    }
+}
+
+#[test]
+fn xml_to_text_markdown_leaves_input_untouched() {
+    let source = "<body><p>formula \\(x\\) <hi rend=#b><hi rend=#i>y</hi></hi><code>a<lb/>b</code> *z*</p></body>";
+    let mut tree = xml(source);
+    let root = tree.root();
+    let before = dump(&tree, DumpMode::Exact);
+    let text = xml_to_text(&mut tree, Some(root), true, &Call::default()).unwrap();
+    assert!(text.contains("$x$") && text.contains("***y***") && text.contains("\\*z\\*"));
+    assert_eq!(dump(&tree, DumpMode::Exact), before);
+    xml_to_text(&mut tree, Some(root), false, &Call::default()).unwrap();
+    assert_eq!(dump(&tree, DumpMode::Exact), before);
+}
+
+type Level = (
+    &'static str,
+    &'static [(&'static str, &'static str)],
+    Option<&'static str>,
+);
+
+/// A chain of `levels` nested elements, each with the name, attributes and text `level` gives.
+fn chain(levels: usize, level: impl Fn(usize) -> Level) -> Tree {
+    let make_attrs = |attrs: &[(&str, &str)]| -> Vec<(LocalName, Arc<str>)> {
+        attrs
+            .iter()
+            .map(|(key, value)| (LocalName::from(*key), Arc::from(*value)))
+            .collect()
+    };
+    let (name, attrs, text) = level(0);
+    let mut tree = Tree::new(LocalName::from(name), Ns::Html, make_attrs(attrs));
+    let mut parent = tree.root();
+    tree.node_mut(parent).text = text.map(str::to_owned);
+    for index in 1..levels {
+        let (name, attrs, text) = level(index);
+        parent = tree.add_child(parent, LocalName::from(name), Ns::Html, make_attrs(attrs));
+        tree.node_mut(parent).text = text.map(str::to_owned);
+    }
+    tree
+}
+
+/// `(length, "- " count, "x" count, "[" count, "]" count)` of the output.
+type Counts = (usize, usize, usize, usize, usize);
+
+/// A shape of the depth test: its name, its level at an index and the counts for both modes.
+type Shape = (&'static str, fn(usize) -> Level, [Counts; 2]);
+
+fn counts(text: &str) -> Counts {
+    (
+        text.chars().count(),
+        text.matches("- ").count(),
+        text.matches('x').count(),
+        text.matches('[').count(),
+        text.matches(']').count(),
+    )
+}
+
+#[test]
+fn output_deep_nesting_fits_512k_stack() {
+    // one tree per recursive shape, past the depth the parser lets through, on the smallest stack a
+    // host may give its threads, in a debug build
+    let levels = MAX_DEPTH + 16;
+    std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(move || {
+            let shapes: [Shape; 3] = [
+                (
+                    "list > item",
+                    |index| {
+                        if index % 2 == 0 {
+                            ("list", &[], None)
+                        } else {
+                            ("item", &[], Some("x"))
+                        }
+                    },
+                    // oracle: for fmt in (False, True): t = xml.xmltotxt(nest(kinds), fmt); (len(t), t.count("- "), t.count("x"), t.count("["), t.count("]")), with nest building 272 nested SubElement levels: a list at the even ones, an item with text x at the odd ones
+                    [(18903, 136, 136, 0, 0), (18904, 136, 136, 0, 0)],
+                ),
+                (
+                    "hi chain",
+                    |_| ("hi", &[("rend", "#b")], Some("x")),
+                    // oracle: the same counts for 272 nested hi rend="#b", each with text x
+                    [(272, 0, 272, 0, 0), (1360, 0, 272, 0, 0)],
+                ),
+                (
+                    "ref in hi",
+                    |index| {
+                        if index % 2 == 0 {
+                            ("hi", &[("rend", "#b")], Some("x"))
+                        } else {
+                            ("ref", &[("target", "u")], Some("x"))
+                        }
+                    },
+                    // oracle: the same counts for 272 levels, hi rend="#b" at the even ones and ref target="u" at the odd ones, each with text x
+                    [(1222, 0, 272, 136, 136), (1766, 0, 272, 136, 136)],
+                ),
+            ];
+            for (name, level, expected) in shapes {
+                for (include_formatting, expected) in [false, true].into_iter().zip(expected) {
+                    let mut tree = chain(levels, level);
+                    let text = text_of(&mut tree, include_formatting);
+                    assert_eq!(
+                        counts(&text),
+                        expected,
+                        "{name}, formatting {include_formatting}"
+                    );
+                }
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }

@@ -1,15 +1,31 @@
-//! Tree helpers of upstream `xml.py`: removing and merging elements, the empty-element pass and the
-//! element text of the Markdown output. The TEI checks of that file are not ported here.
+//! The part of upstream `xml.py` that serves the plain-text and Markdown output: removing and merging
+//! elements, the empty-element pass, the element text and `xml_to_text`. The XML, TEI, JSON and CSV
+//! builders and the TEI checks are not ported.
 
 use crate::cancel::{CHECK_INTERVAL, Call};
-use crate::dom::{LiveIter, NodeId, Tree};
+use crate::dom::{LiveIter, LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
 use crate::html_processing::tick;
-use crate::pystr::strip;
+use crate::pyhtml::unescape;
+use crate::pystr::{is_all_space, is_space, lstrip, rstrip, strip};
 use crate::settings::{INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE};
-use crate::utils::text_chars_test;
+use crate::utils::{sanitize, text_chars_test};
 
-use self::markdown::{code_fence, escape_block_start, escape_inline_specials, md_code, md_wrap};
+use self::markdown::{
+    code_fence, escape_and_convert_math, escape_block_start, escape_cell, escape_inline_specials,
+    md_code, md_wrap,
+};
+
+/// The elements that start on a line of their own.
+// upstream: xml.py::NEWLINE_ELEMS
+pub(crate) const NEWLINE_ELEMS: [&str; 8] = [
+    "graphic", "head", "lb", "list", "p", "quote", "row", "table",
+];
+
+/// The elements whose text carries its own spacing, so no separator follows them.
+// upstream: xml.py::SPECIAL_FORMATTING
+pub(crate) const SPECIAL_FORMATTING: [&str; 7] =
+    ["code", "del", "head", "hi", "ref", "item", "cell"];
 
 /// The `hi` renditions rendered as Markdown, with their markers.
 // upstream: xml.py::HI_FORMATTING
@@ -22,6 +38,16 @@ pub(crate) const HI_HTML_TAGS: [(&str, &str); 3] = [("#sup", "sup"), ("#sub", "s
 /// The heading levels a `head` `rend` may name after its first character.
 // upstream: xml.py::HEADING_LEVELS
 pub(crate) const HEADING_LEVELS: [char; 6] = ['1', '2', '3', '4', '5', '6'];
+
+/// The `hi` renditions that `merge_adjacent_hi` joins: `HI_FORMATTING` and `#u`. Adjacent `sup`
+/// and `sub` stay apart, as they are often distinct footnote references.
+// upstream: xml.py::MERGEABLE_RENDS
+pub(crate) const MERGEABLE_RENDS: [&str; 4] = ["#b", "#i", "#t", "#u"];
+
+/// The preceding characters that already separate content, so no extra space or newline is needed;
+/// the empty string stands for nothing emitted yet.
+// upstream: xml.py::SEPARATORS
+pub(crate) const SEPARATORS: [&str; 4] = [" ", "\n", "|", ""];
 
 /// The parents inside which `strip_double_tags` leaves a nested element alone.
 // upstream: xml.py::NESTING_WHITELIST
@@ -51,8 +77,9 @@ pub fn delete_element(tree: &mut Tree, element: NodeId, keep_tail: bool) {
 }
 
 /// Merges `element` into its parent and converts its text to Markdown when `include_formatting`:
-/// the text goes to the previous sibling's tail or the parent's text, joined by a space. Only the
-/// element's own text and tail are kept, its children are lost. Does nothing without a parent.
+/// the text goes to the previous sibling's tail or the parent's text, joined by a space. The
+/// element's text and tail are kept, with the inline text of its `hi`, `ref` and `del` children;
+/// its other children (`p`, `head`, `code`...) are dropped. Does nothing without a parent.
 ///
 /// Checks `call` while it walks the inline children of the element.
 // upstream: xml.py::merge_with_parent
@@ -242,6 +269,8 @@ fn collect_inline_text(
         } else if tag == Some("lb") {
             collected.push('\n');
         } else if tag.is_some_and(|name| INLINE_FORMATTABLE.contains(&name)) {
+            // `replace_text` calls back into this function: the depth is the tree's, bounded by
+            // `MAX_DEPTH` and proven by `output_deep_nesting_fits_512k_stack`
             let piece = replace_text(tree, child, include_formatting, false, call, visited)?;
             collected.push_str(&piece);
         } else if let Some(text) = &tree.node(child).text {
@@ -378,6 +407,670 @@ fn code_markup(
     }
     let fence = code_fence(&text, 3);
     Ok(format!("{fence}\n{text}\n{fence}\n"))
+}
+
+/// The local name of an HTML element, owned so the tree can be borrowed mutably while the name is
+/// in use; `None` for SVG and MathML, as `Tree::tag`.
+fn tag_name(tree: &Tree, element: NodeId) -> Option<LocalName> {
+    let node = tree.node(element);
+    (node.ns == Ns::Html).then(|| node.name.clone())
+}
+
+/// Whether the element has a non-empty text, as Python's `bool(element.text)`.
+fn has_text(tree: &Tree, element: NodeId) -> bool {
+    tree.node(element)
+        .text
+        .as_deref()
+        .is_some_and(|text| !text.is_empty())
+}
+
+/// The `HI_FORMATTING` marker of a `hi` rendition.
+fn hi_marker(rend: &str) -> Option<&'static str> {
+    HI_FORMATTING
+        .iter()
+        .find(|(key, _)| *key == rend)
+        .map(|(_, marker)| *marker)
+}
+
+/// The output of `xml_to_text`, as one string. Upstream keeps a list of pieces and `_last_char`
+/// reads the last character of the last piece, where an empty piece reads as `""`; this keeps where
+/// that character starts, so an empty piece gives `""` too.
+struct Output {
+    text: String,
+    last_start: usize,
+}
+
+impl Output {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            last_start: 0,
+        }
+    }
+
+    /// Appends one piece, which may be empty.
+    fn push(&mut self, piece: &str) {
+        let start = self.text.len();
+        self.text.push_str(piece);
+        self.last_start = piece
+            .char_indices()
+            .next_back()
+            .map_or(self.text.len(), |(offset, _)| start.saturating_add(offset));
+    }
+
+    /// The last character emitted so far, `""` if nothing yet or if the last piece was empty.
+    // upstream: xml.py::_last_char
+    fn last_char(&self) -> &str {
+        self.text.get(self.last_start..).unwrap_or("")
+    }
+
+    /// Whether the last character already separates content.
+    fn ends_with_separator(&self) -> bool {
+        SEPARATORS.contains(&self.last_char())
+    }
+
+    /// Appends `text`, dropping a leading space after a separator; an empty text is not appended.
+    // upstream: xml.py::_append_spaced
+    fn append_spaced(&mut self, text: &str) {
+        let text = match text.strip_prefix(' ') {
+            Some(rest) if self.ends_with_separator() => rest,
+            _ => text,
+        };
+        if !text.is_empty() {
+            self.push(text);
+        }
+    }
+}
+
+/// The state of one `xml_to_text` walk: the output so far and the count of elements visited, for
+/// `tick`.
+struct State {
+    out: Output,
+    visited: usize,
+}
+
+/// What stays the same down the walk.
+#[derive(Clone, Copy)]
+struct Walk<'c, 'a> {
+    include_formatting: bool,
+    call: &'c Call<'a>,
+}
+
+/// The Markdown marker of a list item: `N. ` or `- `, indented by its nesting. Numbering is
+/// Markdown-only: in plain text it would inject digit tokens, so the marker is `- `.
+///
+/// The parent is whatever element holds the item, and an item with no `list` ancestor has no
+/// indent.
+// upstream: xml.py::_list_marker
+pub(crate) fn list_marker(tree: &Tree, item: NodeId, include_formatting: bool) -> String {
+    let depth = tree.iterancestors(item, &["list"]).count();
+    // upstream computes `"  " * (depth - 1)`, which is empty for a negative count
+    let indent = "  ".repeat(depth.saturating_sub(1));
+    let ordered = include_formatting
+        && tree
+            .node(item)
+            .parent()
+            .is_some_and(|parent| tree.get(parent, "rend") == Some("ol"));
+    if !ordered {
+        return format!("{indent}- ");
+    }
+    let preceding = std::iter::successors(tree.node(item).prev_sibling(), |&sibling| {
+        tree.node(sibling).prev_sibling()
+    })
+    .filter(|&sibling| tree.tag(sibling) == Some("item"))
+    .count();
+    format!("{indent}{}. ", preceding.saturating_add(1))
+}
+
+/// Whether the element carries the trailing content of its enclosing `item` or `cell`: the
+/// container itself when it has no children, else an element with no next sibling, or, in an
+/// `item`, one followed by another `item`.
+// upstream: xml.py::_closes_container
+pub(crate) fn closes_container(tree: &Tree, element: NodeId, tag: &str) -> bool {
+    if tree.tag(element) == Some(tag) {
+        return tree.first_child(element).is_none();
+    }
+    tree.node(element)
+        .next_sibling()
+        .is_none_or(|next| tag == "item" && tree.tag(next) == Some("item"))
+}
+
+/// Whether nothing in the enclosing `item` renders before the element.
+// upstream: xml.py::_opens_item
+pub(crate) fn opens_item(tree: &Tree, element: NodeId) -> bool {
+    let mut current = element;
+    while tree.tag(current) != Some("item") {
+        let node = tree.node(current);
+        let Some(parent) = node.parent() else {
+            return false;
+        };
+        if node.prev_sibling().is_some() || text_chars_test(tree.node(parent).text.as_deref()) {
+            return false;
+        }
+        current = parent;
+    }
+    true
+}
+
+/// Whether the `item` renders content of its own before any sublist, whose items carry their own
+/// markers. Ticks `visited` per child.
+// upstream: xml.py::_item_needs_marker
+pub(crate) fn item_needs_marker(
+    tree: &Tree,
+    item: NodeId,
+    call: &Call<'_>,
+    visited: &mut usize,
+) -> Result<bool, ExtractError> {
+    if text_chars_test(tree.node(item).text.as_deref()) {
+        return Ok(true);
+    }
+    for child in tree.children(item) {
+        tick(visited, call)?;
+        if tree.tag(child) == Some("list") {
+            return Ok(false);
+        }
+        // `itertext` leaves out the tail of the child, which belongs to the item's content
+        let mut content: String = tree.itertext(child).collect();
+        if let Some(tail) = &tree.node(child).tail {
+            content.push_str(tail);
+        }
+        if text_chars_test(Some(&content)) || tree.iter(child, &["graphic"]).next().is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Appends the tail of `element` as the context calls for.
+// upstream: xml.py::_append_tail
+fn append_tail(
+    tree: &Tree,
+    element: NodeId,
+    out: &mut Output,
+    in_cell: bool,
+    in_item: bool,
+    include_formatting: bool,
+) {
+    let Some(tail) = tree
+        .node(element)
+        .tail
+        .as_deref()
+        .filter(|tail| !tail.is_empty())
+    else {
+        return;
+    };
+    let tag = tree.tag(element);
+    let parent = tree.node(element).parent();
+    let stripped = strip(tail);
+    if include_formatting
+        && tag == Some("list")
+        && in_item
+        && !in_cell
+        && !stripped.is_empty()
+        && let Some(parent) = parent
+    {
+        // a blank line and the parent item's indent, else CommonMark continues the last sub-item
+        let indent = list_marker(tree, parent, true).chars().count();
+        out.push(&format!("\u{2424}\n{}{stripped}", " ".repeat(indent)));
+        return;
+    }
+    if in_cell || in_item || tag == Some("list") {
+        let mut core = stripped.to_owned();
+        // keep the source separators, block elements lost theirs during extraction
+        let in_formattable = tag.is_some_and(|name| INLINE_FORMATTABLE.contains(&name));
+        if !core.is_empty() && (tail.chars().next().is_some_and(is_space) || !in_formattable) {
+            core.insert(0, ' ');
+        }
+        let next_is_inline = tree.node(element).next_sibling().is_some_and(|next| {
+            tree.tag(next)
+                .is_some_and(|name| INLINE_CARRIED.contains(&name))
+        });
+        if tail.chars().next_back().is_some_and(is_space) && next_is_inline {
+            core.push(' ');
+        }
+        out.append_spaced(&escape_cell(&core, in_cell));
+        return;
+    }
+    if tag.is_some_and(|name| NEWLINE_ELEMS.contains(&name)) {
+        // block elements already end on their own line, so source HTML indentation in the tail is
+        // noise
+        out.push(lstrip(tail));
+    } else {
+        out.push(tail);
+    }
+}
+
+/// Appends what comes before the children of `element`: separators, the cell and item markers and
+/// the element's own text. Returns whether the children are consumed by that text, and whether the
+/// element renders inline text at all.
+// upstream: xml.py::process_element, up to the loop over the children
+fn open_element(
+    tree: &mut Tree,
+    element: NodeId,
+    state: &mut State,
+    walk: Walk<'_, '_>,
+    in_cell: bool,
+    in_item: bool,
+) -> Result<(bool, bool), ExtractError> {
+    let tag = tag_name(tree, element);
+    let tag = tag.as_deref();
+    let State { out, visited } = state;
+    if tag == Some("cell") && tree.node(element).prev_sibling().is_none() {
+        out.push("| ");
+    }
+
+    let is_block = tag.is_some_and(|name| NEWLINE_ELEMS.contains(&name));
+    if is_block && !in_cell && !in_item && !out.ends_with_separator() {
+        // a block element starts on its own line, not mashed onto preceding loose text
+        out.push("\n");
+    } else if matches!(tag, Some("head" | "p" | "quote" | "table"))
+        && !is_all_space(out.last_char())
+        && !out.ends_with_separator()
+        && (has_text(tree, element)
+            || tree
+                .first_child(element)
+                .is_none_or(|first| tree.tag(first) != Some("lb")))
+    {
+        // flattened into an item or a cell, it still needs a separator
+        out.push(" ");
+    }
+
+    let consumes_children = consumes_inline_children(tree, element);
+    let renders_inline = has_text(tree, element) || consumes_children;
+
+    if tag == Some("item") && !in_cell && item_needs_marker(tree, element, walk.call, visited)? {
+        out.push(&list_marker(tree, element, walk.include_formatting));
+    }
+
+    // whitespace-only item text would split the marker from the content
+    if renders_inline
+        && (tag != Some("item")
+            || consumes_children
+            || text_chars_test(tree.node(element).text.as_deref()))
+    {
+        let text = replace_text(
+            tree,
+            element,
+            walk.include_formatting,
+            in_cell,
+            walk.call,
+            visited,
+        )?;
+        out.push(&escape_cell(&text, in_cell));
+    } else if walk.include_formatting
+        && tag == Some("head")
+        && !in_cell
+        && tree.first_child(element).is_some()
+    {
+        // a heading starting with an inline child still needs its # prefix, the children render below
+        out.push(&format!("{} ", heading_prefix(tree, element)));
+    }
+
+    // a sublist starts on its own line, not mashed onto the parent item
+    if tag == Some("list") && in_item && !matches!(out.last_char(), "\n" | "") {
+        out.push("\n");
+    }
+    Ok((consumes_children, renders_inline))
+}
+
+/// Appends what comes after the children of `element`: its newline or image, the separator, the
+/// tail and the end of its item.
+// upstream: xml.py::process_element, from the loop over the children on
+fn close_element(
+    tree: &Tree,
+    element: NodeId,
+    out: &mut Output,
+    include_formatting: bool,
+    in_cell: bool,
+    in_item: bool,
+    renders_inline: bool,
+) {
+    let tag = tree.tag(element);
+    let is_block = tag.is_some_and(|name| NEWLINE_ELEMS.contains(&name));
+    if !renders_inline {
+        if tag == Some("graphic") {
+            out.push(&escape_cell(
+                &image_markup(tree, element, include_formatting),
+                in_cell,
+            ));
+            if let Some(tail) = tree
+                .node(element)
+                .tail
+                .as_deref()
+                .filter(|tail| !tail.is_empty())
+            {
+                out.push(&escape_cell(&format!(" {}", strip(tail)), in_cell));
+            }
+        } else if is_block {
+            // newlines for textless elements
+            if tag == Some("row") {
+                let cells = || {
+                    tree.children(element)
+                        .filter(|&cell| tree.tag(cell) == Some("cell"))
+                };
+                // rows are materialized to full width upstream; draw the head separator below
+                if cells().any(|cell| tree.get(cell, "role") == Some("head")) {
+                    out.push(&format!("\n|{}\n", "---|".repeat(cells().count())));
+                }
+            } else if !in_cell && !(tag == Some("lb") && in_item && opens_item(tree, element)) {
+                // block elements inside a cell must not inject a row-breaking newline, and a
+                // leading line break in an item must not split the marker from the text
+                out.push("\n");
+            }
+        } else if !matches!(tag, Some("cell" | "item")) {
+            // cells still need to append vertical bars
+            if in_cell {
+                append_tail(tree, element, out, in_cell, in_item, false);
+            }
+            return;
+        }
+    }
+
+    let last_in_item = in_item && closes_container(tree, element, "item");
+    let last_in_cell = in_cell && closes_container(tree, element, "cell");
+    if is_block && !in_cell && !in_item {
+        out.push(if include_formatting && tag != Some("row") {
+            "\n\u{2424}\n"
+        } else {
+            "\n"
+        });
+    } else if tag == Some("cell") {
+        out.push(" | ");
+    } else if matches!(tag, Some("head" | "item")) && in_cell && !last_in_cell {
+        // separate flattened block elements inside a cell (e.g. list items) instead of mashing them
+        out.append_spaced(" ");
+    } else if !tag.is_some_and(|name| SPECIAL_FORMATTING.contains(&name))
+        && !last_in_item
+        && !last_in_cell
+    {
+        out.append_spaced(" ");
+    }
+
+    // a graphic's tail is already handled above
+    if tag != Some("graphic") {
+        append_tail(tree, element, out, in_cell, in_item, include_formatting);
+    }
+
+    // deal with list items alone
+    if last_in_item && !in_cell {
+        out.push("\n");
+    }
+}
+
+/// Converts `element` and its children to the flattened text of the output, appended to `state`.
+///
+/// Recursive: the depth is the tree's, bounded by `MAX_DEPTH` and proven by
+/// `output_deep_nesting_fits_512k_stack`. Ticks `state.visited` per element.
+// upstream: xml.py::process_element
+fn process_element(
+    tree: &mut Tree,
+    element: NodeId,
+    state: &mut State,
+    walk: Walk<'_, '_>,
+    in_cell: bool,
+    in_item: bool,
+) -> Result<(), ExtractError> {
+    tick(&mut state.visited, walk.call)?;
+    // in_cell and in_item are inherited down the recursion instead of re-walking the ancestors
+    let in_cell = in_cell || tree.tag(element) == Some("cell");
+    let in_item = in_item || tree.tag(element) == Some("item");
+
+    let (consumes_children, renders_inline) =
+        open_element(tree, element, state, walk, in_cell, in_item)?;
+    if !consumes_children {
+        let mut next = tree.first_child(element);
+        while let Some(child) = next {
+            next = tree.node(child).next_sibling();
+            process_element(tree, child, state, walk, in_cell, in_item)?;
+        }
+    }
+    close_element(
+        tree,
+        element,
+        &mut state.out,
+        walk.include_formatting,
+        in_cell,
+        in_item,
+        renders_inline,
+    );
+    Ok(())
+}
+
+/// Escapes the inline-syntax characters and rewrites the LaTeX math of the text and tails below
+/// `element`, in place. A `code` element, and a `hi` rendered as inline code, are verbatim and
+/// skipped whole; the tail of such an element is prose and is still converted.
+///
+/// Recursive, bounded like `process_element`. Ticks `visited` per element.
+// upstream: xml.py::_escape_and_convert_math_tree
+fn escape_and_convert_math_tree(
+    tree: &mut Tree,
+    element: NodeId,
+    call: &Call<'_>,
+    visited: &mut usize,
+) -> Result<(), ExtractError> {
+    tick(visited, call)?;
+    let tag = tree.tag(element);
+    let is_code_span =
+        tag == Some("hi") && hi_marker(tree.get(element, "rend").unwrap_or("")) == Some("`");
+    if tag == Some("code") || is_code_span {
+        return Ok(());
+    }
+    if let Some(text) = tree
+        .node(element)
+        .text
+        .as_deref()
+        .filter(|text| !text.is_empty())
+    {
+        let converted = escape_and_convert_math(text);
+        tree.node_mut(element).text = Some(converted);
+    }
+    let mut next = tree.first_child(element);
+    while let Some(child) = next {
+        next = tree.node(child).next_sibling();
+        escape_and_convert_math_tree(tree, child, call, visited)?;
+        if let Some(tail) = tree
+            .node(child)
+            .tail
+            .as_deref()
+            .filter(|tail| !tail.is_empty())
+        {
+            let converted = escape_and_convert_math(tail);
+            tree.node_mut(child).tail = Some(converted);
+        }
+    }
+    Ok(())
+}
+
+/// The bit of a `hi` rendition among the `HI_FORMATTING` ones, for `collapse_emphasis`.
+fn hi_bit(rend: Option<&str>) -> Option<u8> {
+    let rend = rend?;
+    HI_FORMATTING
+        .iter()
+        .position(|(key, _)| *key == rend)
+        .map(|index| 1u8 << index)
+}
+
+/// The only child of the `hi` `element` that `collapse_emphasis` splices out: a `hi` whose emphasis
+/// is already in `active`, in a chain with no text of its own around it.
+fn redundant_child(tree: &Tree, element: NodeId, active: u8) -> Option<NodeId> {
+    let child = tree.first_child(element)?;
+    let only_child = tree.last_child(element) == Some(child);
+    let blank = |text: &Option<String>| strip(text.as_deref().unwrap_or("")).is_empty();
+    let covered = hi_bit(tree.get(child, "rend")).is_some_and(|bit| active & bit != 0);
+    (blank(&tree.node(element).text)
+        && only_child
+        && tree.tag(child) == Some("hi")
+        && blank(&tree.node(child).tail)
+        && covered)
+        .then_some(child)
+}
+
+/// Splices out the redundant emphasis levels in the linear `hi` chains below `element`: nested
+/// `font` junk gives `***X***`, not `*******X*******`. Mutates the tree in place.
+///
+/// Recursive, bounded like `process_element`. Ticks `visited` per element and per splice.
+// upstream: xml.py::_collapse_emphasis
+fn collapse_emphasis(
+    tree: &mut Tree,
+    element: NodeId,
+    mut active: u8,
+    call: &Call<'_>,
+    visited: &mut usize,
+) -> Result<(), ExtractError> {
+    tick(visited, call)?;
+    if tree.tag(element) == Some("hi") {
+        if let Some(bit) = hi_bit(tree.get(element, "rend")) {
+            active |= bit;
+        }
+        while let Some(child) = redundant_child(tree, element, active) {
+            tick(visited, call)?;
+            let merged = format!(
+                "{}{}",
+                tree.node(element).text.as_deref().unwrap_or(""),
+                tree.node(child).text.as_deref().unwrap_or("")
+            );
+            tree.node_mut(element).text = Some(merged);
+            let grandchildren: Vec<NodeId> = tree.children(child).collect();
+            for grandchild in grandchildren {
+                tree.append(element, grandchild);
+            }
+            tree.remove(child);
+        }
+    }
+    let mut next = tree.first_child(element);
+    while let Some(child) = next {
+        next = tree.node(child).next_sibling();
+        collapse_emphasis(tree, child, active, call, visited)?;
+    }
+    Ok(())
+}
+
+/// Merges the adjacent `hi` siblings with the same `MERGEABLE_RENDS` rend below `element` into one,
+/// to avoid `**X** **Y**`. Mutates the tree in place.
+///
+/// Recursive, bounded like `process_element`. Ticks `visited` per element.
+// upstream: xml.py::_merge_adjacent_hi
+fn merge_adjacent_hi(
+    tree: &mut Tree,
+    element: NodeId,
+    call: &Call<'_>,
+    visited: &mut usize,
+) -> Result<(), ExtractError> {
+    tick(visited, call)?;
+    let children: Vec<NodeId> = tree.children(element).collect();
+    for &child in &children {
+        merge_adjacent_hi(tree, child, call, visited)?;
+    }
+    // reverse pass: removing the next element never disturbs the pairs still to be visited
+    for pair in children.windows(2).rev() {
+        let &[current, next] = pair else { continue };
+        let rend = tree.get(current, "rend");
+        let mergeable = tree.tag(current) == Some("hi")
+            && tree.tag(next) == Some("hi")
+            && rend == tree.get(next, "rend")
+            && rend.is_some_and(|rend| MERGEABLE_RENDS.contains(&rend))
+            && tree.first_child(current).is_none()
+            && tree.first_child(next).is_none()
+            && strip(tree.node(current).tail.as_deref().unwrap_or("")).is_empty();
+        if !mergeable {
+            continue;
+        }
+        let joined: String = [
+            tree.node(current).text.as_deref(),
+            tree.node(current).tail.as_deref(),
+            tree.node(next).text.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let next_tail = tree.node(next).tail.clone();
+        let node = tree.node_mut(current);
+        node.text = Some(joined);
+        node.tail = next_tail;
+        tree.remove(next);
+    }
+    Ok(())
+}
+
+/// Strips the whitespace around the text of every `p`, `quote` and `head` below `root` (it is
+/// not meaningful in block Markdown): the leading whitespace of the text of an element with children,
+/// both ends otherwise, and the trailing whitespace of the last child's tail.
+///
+/// Ticks `visited` per element.
+// upstream: xml.py::_strip_block_whitespace
+fn strip_block_whitespace(
+    tree: &mut Tree,
+    root: NodeId,
+    call: &Call<'_>,
+    visited: &mut usize,
+) -> Result<(), ExtractError> {
+    const TAGS: [&str; 3] = ["p", "quote", "head"];
+    let mut walk = LiveIter::new(tree, root, &TAGS);
+    while let Some(block) = walk.next(tree) {
+        tick(visited, call)?;
+        let last_child = tree.last_child(block);
+        let node = tree.node_mut(block);
+        if let Some(text) = node.text.as_mut().filter(|text| !text.is_empty()) {
+            *text = if last_child.is_some() {
+                lstrip(text).to_owned()
+            } else {
+                strip(text).to_owned()
+            };
+        }
+        if let Some(last) = last_child
+            && let Some(tail) = tree
+                .node_mut(last)
+                .tail
+                .as_mut()
+                .filter(|tail| !tail.is_empty())
+        {
+            *tail = rstrip(tail).to_owned();
+        }
+    }
+    Ok(())
+}
+
+/// Converts the tree at `root` to plain text, or to Markdown when `include_formatting`. `None`
+/// gives an empty string. With formatting the passes run on a copy of the tree, so `root` is never
+/// changed; without, nothing is mutated.
+///
+/// Fails with `Rejection::InvalidValue` for a decimal character reference of more than 4300 digits
+/// in the text, which `html.unescape` raises on upstream and nothing catches.
+///
+/// Checks `call` about every `CHECK_INTERVAL` elements.
+// upstream: xml.py::xmltotxt
+pub fn xml_to_text(
+    tree: &mut Tree,
+    root: Option<NodeId>,
+    include_formatting: bool,
+    call: &Call<'_>,
+) -> Result<String, ExtractError> {
+    let Some(root) = root else {
+        return Ok(String::new());
+    };
+    let walk = Walk {
+        include_formatting,
+        call,
+    };
+    let mut state = State {
+        out: Output::new(),
+        visited: 0,
+    };
+    let root = if include_formatting {
+        // the math rewrite, the escaping, the emphasis collapse and the `lb` removal mutate the
+        // tree: protect the caller's
+        let copy = tree.copy(root);
+        escape_and_convert_math_tree(tree, copy, call, &mut state.visited)?;
+        collapse_emphasis(tree, copy, 0, call, &mut state.visited)?;
+        merge_adjacent_hi(tree, copy, call, &mut state.visited)?;
+        strip_block_whitespace(tree, copy, call, &mut state.visited)?;
+        copy
+    } else {
+        root
+    };
+    process_element(tree, root, &mut state, walk, false, false)?;
+    let sanitized = sanitize(&state.out.text, true, false).unwrap_or_default();
+    Ok(unescape(&sanitized)?.into_owned())
 }
 
 mod markdown;

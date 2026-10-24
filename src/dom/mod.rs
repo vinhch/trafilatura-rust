@@ -21,6 +21,9 @@ pub use walk::LiveIter;
 pub use dump::{DumpMode, dump, dump_from};
 #[cfg(any(feature = "__internals", test))]
 pub use parse::parse_fragment;
+// The depth test of the output walks builds trees past it.
+#[cfg(test)]
+pub use parse::MAX_DEPTH;
 
 /// Index of a node in its `Tree`; only valid for the tree that produced it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
