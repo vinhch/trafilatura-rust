@@ -1210,17 +1210,7 @@ HEADER = """\
 //   scripts/oracle.sh 'from parity.gen_main_extractor_cases import main; main()' > tests/main_extractor_cases/cases.rs
 // Upstream's main_extractor handlers and extractors on snippets: the trees and texts they leave.
 
-/// The `Extractor` fields a case sets; the others keep their defaults.
-pub struct CaseOptions {
-    pub tables: bool,
-    pub images: bool,
-    pub links: bool,
-    pub formatting: bool,
-    /// `balanced`, `precision` or `recall`.
-    pub focus: &'static str,
-    pub comments: bool,
-    pub url: Option<&'static str>,
-}
+use crate::trees::CaseOptions;
 
 /// A handler run on an `etree.fromstring` snippet of converted tags.
 pub struct XmlCase {

@@ -22,6 +22,7 @@ use trafilatura_rust::__internals::{
 };
 use trafilatura_rust::{Call, ExtractError};
 
+#[allow(dead_code)]
 mod trees;
 use trees::{ctx_for, lxml_fromstring, xml_tree};
 

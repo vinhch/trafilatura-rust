@@ -14,57 +14,13 @@ mod trees;
 #[path = "main_extractor_cases/cases.rs"]
 mod cases;
 
-use std::collections::HashSet;
-
-use cases::{CaseOptions, HTML_CASES, HtmlCase, XML_CASES, XmlCase};
+use cases::{HTML_CASES, HtmlCase, XML_CASES, XmlCase};
 use trafilatura_rust::__internals::{
-    Config, DumpMode, Extractor, Focus, Format, NodeId, ParseLimits, Tree, convert_tags, dump,
-    dump_from, extract_comments, extract_content, handle_formatting, handle_lists,
+    DumpMode, NodeId, ParseLimits, dump, dump_from, handle_formatting, handle_lists,
     handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_titles, parse_document,
-    tree_cleaning,
 };
 use trafilatura_rust::Call;
-use trees::{ctx_for, xml_tree};
-
-fn extractor(options: &CaseOptions) -> Extractor {
-    let focus = match options.focus {
-        "balanced" => Focus::Balanced,
-        "precision" => Focus::Precision,
-        "recall" => Focus::Recall,
-        other => panic!("bad focus {other}"),
-    };
-    let (with_metadata, only_with_metadata) = (false, false);
-    let mut extractor = Extractor::new(
-        Config::default(),
-        Format::Python,
-        focus == Focus::Precision,
-        focus == Focus::Recall,
-        Some(options.formatting),
-        with_metadata,
-        only_with_metadata,
-        HashSet::new(),
-        HashSet::new(),
-    );
-    extractor.tables = options.tables;
-    extractor.images = options.images;
-    extractor.links = options.links;
-    extractor.comments = options.comments;
-    extractor.url = options.url.map(str::to_string);
-    extractor
-}
-
-fn describe(options: &CaseOptions) -> String {
-    format!(
-        "tables={} images={} links={} formatting={} focus={} comments={} url={:?}",
-        options.tables,
-        options.images,
-        options.links,
-        options.formatting,
-        options.focus,
-        options.comments,
-        options.url
-    )
-}
+use trees::{ctx_for, describe, extractor, run_pipeline, xml_tree};
 
 /// Runs the handler of `case`; returns the dump of its result and of the whole snippet.
 fn run_xml(case: &XmlCase) -> (Option<String>, String) {
@@ -99,25 +55,12 @@ struct HtmlOutcome {
     body: (String, String),
 }
 
-/// `tree_cleaning` and `convert_tags` on the parsed snippet, then the case's operation.
-fn run_html(case: &HtmlCase, mut tree: Tree) -> HtmlOutcome {
-    let options = extractor(&case.options);
-    let call = Call::default();
-    let ctx = ctx_for(&options, &call);
-    let root = tree.root();
-    let root = tree_cleaning(&mut tree, root, &ctx).unwrap();
-    convert_tags(&mut tree, root, &ctx, None).unwrap();
-    let comments = match case.op {
-        "extract_content" => None,
-        "comments_then_content" => {
-            let (body, text) = extract_comments(&mut tree, root, &ctx).unwrap();
-            Some((dump_from(&tree, body, DumpMode::Normalized).0, text))
-        }
-        other => panic!("unknown op {other}"),
-    };
-    let (body, text) = extract_content(&mut tree, root, &ctx).unwrap();
+/// The pipeline of `case` on its html, the bodies as dumps and texts.
+fn run_html(case: &HtmlCase) -> HtmlOutcome {
+    let (tree, comments, body, text) = run_pipeline(case.html, case.op, &case.options);
     HtmlOutcome {
-        comments,
+        comments: comments
+            .map(|(body, text)| (dump_from(&tree, body, DumpMode::Normalized).0, text)),
         body: (dump_from(&tree, body, DumpMode::Normalized).0, text),
     }
 }
@@ -166,7 +109,7 @@ fn html_cases_match_upstream() {
             ));
             continue;
         }
-        let outcome = run_html(case, tree);
+        let outcome = run_html(case);
         let comments = outcome
             .comments
             .as_ref()
