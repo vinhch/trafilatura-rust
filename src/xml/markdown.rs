@@ -367,6 +367,8 @@ fn escape_unescaped_brackets(text: &str) -> String {
         if ch == '`' {
             // a run is always taken whole, so `index` is the start of `runs[run]`
             let Some(&(_, length)) = runs.get(run) else {
+                // unreachable while `run` tracks `index`; keep the rest rather than cut the text
+                out.push_str(&collect(chars_between(&chars, index, chars.len())));
                 break;
             };
             let after_backslash = index

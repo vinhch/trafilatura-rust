@@ -1057,7 +1057,6 @@ pub fn convert_to_html(
             continue;
         };
         tree.set_name(element, &name);
-        // handle attributes
         match &*name {
             "a" => {
                 let target = tree.remove_attr(element, "target");

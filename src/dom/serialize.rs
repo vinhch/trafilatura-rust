@@ -49,8 +49,8 @@ impl Tree {
     /// `etree.tostring(id, encoding="unicode", pretty_print=pretty_print, with_tail=with_tail)`.
     /// Elements are written under their local name, without namespace or prefix. With
     /// `pretty_print` the root is followed by a line break.
+    // upstream: lxml etree.tostring (pretty_print)
     pub fn tostring(&self, id: NodeId, pretty_print: bool, with_tail: bool) -> String {
-        // upstream: lxml etree.tostring (pretty_print)
         let mut out = String::new();
         let mut stack = vec![Step::Open {
             id,
