@@ -7,6 +7,7 @@
 mod dump;
 mod mutate;
 mod parse;
+mod serialize;
 mod walk;
 
 use std::sync::Arc;

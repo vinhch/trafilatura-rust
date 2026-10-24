@@ -21,7 +21,7 @@ use trafilatura_rust::__internals::{
 use trafilatura_rust::{Call, ExtractError};
 
 mod trees;
-use trees::{ctx_for, lxml_fromstring, tostring, xml_tree};
+use trees::{ctx_for, lxml_fromstring, xml_tree};
 
 /// A `<p>` element in a tree of its own, with the given text.
 fn element_with_text(text: &str) -> (Tree, NodeId) {
@@ -875,66 +875,6 @@ fn test_convert_tags_links_off_keeps_contained_links() {
 }
 
 #[test]
-fn tostring_matches_lxml() {
-    // Each expected string is `etree.tostring(e, encoding="unicode")` from the oracle.
-    // oracle: etree.Element("x")
-    let tree = xml_tree("<x/>");
-    assert_eq!(tostring(&tree, tree.root(), true), "<x/>");
-
-    // oracle: e = etree.Element("x"); e.text = ""
-    let mut tree = xml_tree("<x/>");
-    let root = tree.root();
-    tree.node_mut(root).text = Some(String::new());
-    assert_eq!(tostring(&tree, root, true), "<x></x>");
-
-    // oracle: e = etree.Element("x"); e.set("b", "1"); e.set("a", "2")
-    let mut tree = xml_tree("<x/>");
-    let root = tree.root();
-    tree.set(root, "b", "1");
-    tree.set(root, "a", "2");
-    assert_eq!(tostring(&tree, root, true), r#"<x b="1" a="2"/>"#);
-
-    // oracle: x.text = "a & b < c > d"; c = etree.SubElement(x, "c"); c.tail = "e & f < g > h"
-    //   (etree.tostring(c, ...), and with with_tail=False)
-    let tree = xml_tree("<x>a &amp; b &lt; c &gt; d<c/>e &amp; f &lt; g &gt; h</x>");
-    let root = tree.root();
-    let c = tree.first_child(root).unwrap();
-    assert_eq!(
-        tostring(&tree, root, true),
-        "<x>a &amp; b &lt; c &gt; d<c/>e &amp; f &lt; g &gt; h</x>"
-    );
-    assert_eq!(tostring(&tree, c, true), "<c/>e &amp; f &lt; g &gt; h");
-    assert_eq!(tostring(&tree, c, false), "<c/>");
-
-    // oracle: e.set("v", 'q"\n\t\r<&>')
-    let mut tree = xml_tree("<x/>");
-    let root = tree.root();
-    tree.set(root, "v", "q\"\n\t\r<&>");
-    assert_eq!(
-        tostring(&tree, root, true),
-        r#"<x v="q&quot;&#10;&#9;&#13;&lt;&amp;&gt;"/>"#
-    );
-
-    // oracle: e = etree.Element("x"); e.text = "a\rb"
-    let mut tree = xml_tree("<x/>");
-    let root = tree.root();
-    tree.node_mut(root).text = Some("a\rb".to_string());
-    assert_eq!(tostring(&tree, root, true), "<x>a&#13;b</x>");
-
-    // oracle: x.text = "t"; c = SubElement(x, "c"); c.text = ""; c.tail = ""; d = SubElement(x, "d"); d.tail = "z"
-    let mut tree = xml_tree("<x>t<c/><d/>z</x>");
-    let root = tree.root();
-    let (c, d) = (
-        tree.child_at(root, 0).unwrap(),
-        tree.child_at(root, 1).unwrap(),
-    );
-    tree.node_mut(c).text = Some(String::new());
-    tree.node_mut(c).tail = Some(String::new());
-    tree.node_mut(d).tail = Some("z".to_string());
-    assert_eq!(tostring(&tree, root, true), "<x>t<c></c><d/>z</x>");
-}
-
-#[test]
 fn test_formatting() {
     // upstream's `ZERO_CONFIG` changes nothing here: `handle_formatting` reads no size option
     let options = default_options();
@@ -946,14 +886,17 @@ fn test_formatting() {
     tree.node_mut(element).tail = Some("And a tail.".to_string());
     let converted = handle_formatting(&mut tree, element, &ctx).unwrap();
     assert_eq!(
-        tostring(&tree, converted, true),
+        tree.tostring(converted, false, true),
         "<p><hi>Here is the text.</hi>And a tail.</p>"
     );
     // no wrapper inside a protected parent
     let mut tree = xml_tree("<item><hi>Here is the text.</hi></item>");
     let element = tree.first_child(tree.root()).unwrap();
     let kept = handle_formatting(&mut tree, element, &ctx).unwrap();
-    assert_eq!(tostring(&tree, kept, true), "<hi>Here is the text.</hi>");
+    assert_eq!(
+        tree.tostring(kept, false, true),
+        "<hi>Here is the text.</hi>"
+    );
 }
 
 /// `handle_image(html.fromstring(html))`: the tree and the new element, `None` for no image.
@@ -1037,7 +980,7 @@ fn test_srcless_graphic_dropped_text_kept() {
     let mut tree = xml_tree("<quote>a<graphic/></quote>");
     let root = tree.root();
     let quote = handle_quotes(&mut tree, root, &ctx).unwrap().unwrap();
-    assert_eq!(tostring(&tree, quote, true), "<quote>a</quote>");
+    assert_eq!(tree.tostring(quote, false, true), "<quote>a</quote>");
     let mut tree = xml_tree("<p>a<graphic/>b</p>");
     let root = tree.root();
     let tags: Vec<&str> = TAG_CATALOG.iter().copied().chain(["graphic"]).collect();
@@ -1102,7 +1045,7 @@ fn test_handle_lists() {
         let root = tree.root();
         let list = handle_lists(&mut tree, root, &ctx).unwrap().unwrap();
         assert_eq!(
-            tostring(&tree, list, true),
+            tree.tostring(list, false, true),
             format!("<list>{expected}</list>"),
             "{items}"
         );
@@ -1124,7 +1067,7 @@ fn handle_table_of(tree: &mut Tree, table: NodeId, recall: bool) -> Option<Strin
     let call = Call::default();
     let ctx = ctx_for(&options, &call);
     let processed = handle_table(tree, table, TAG_CATALOG, &ctx).unwrap()?;
-    Some(tostring(tree, processed, true))
+    Some(tree.tostring(processed, false, true))
 }
 
 #[test]
@@ -1374,7 +1317,7 @@ fn test_nested_block_tail_kept() {
             handle_table(&mut tree, element, &tags, &ctx)
         };
         assert_eq!(
-            tostring(&tree, result.unwrap().unwrap(), true),
+            tree.tostring(result.unwrap().unwrap(), false, true),
             expected,
             "{block}"
         );
@@ -1402,7 +1345,7 @@ fn test_exotic_tags() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        tostring(&tree, converted, true),
+        tree.tostring(converted, false, true),
         "<p>1st part. 2nd part.</p>"
     );
 }
@@ -1450,7 +1393,7 @@ fn test_recover_wild_text_default_tags() {
     recover_wild_text(&mut tree, root, body, &ctx_for(&options, &call), None, None).unwrap();
     // oracle: etree.tostring(recover_wild_text(tree, etree.Element("body"), Extractor(recall=True)))
     // The frame the parse returns is the div itself, which `.//div` does not select.
-    assert_eq!(tostring(&tree, body, false), "<body/>");
+    assert_eq!(tree.tostring(body, false, false), "<body/>");
 }
 
 /// The trimmed text of each element `recover_wild_text` leaves in a new body for three divs:
