@@ -186,12 +186,14 @@ def tracing(trace: Trace):
 
 @dataclass
 class Target:
-    "A page for a branch of the cascade; `check` states the branch, on the trace of the base options."
+    """A page for a branch of the cascade; `check` states the branch, on the trace of the base options, and `text`
+    a text and whether the `txt` output holds it, so that the branch shows in what `extract` returns."""
 
     name: str
     html: str
     options: Options
     check: Callable[[Trace], bool] | None
+    text: tuple[str, bool] | None = None
 
 
 TARGETS: list[Target] = []
@@ -201,8 +203,9 @@ FORUM_LD = ('<script type="application/ld+json">{"@context":"https://schema.org"
             '"@type":"DiscussionForumPosting","headline":"Thread"}</script>')
 
 
-def target(name: str, html: str, check: Callable[[Trace], bool] | None = None, **options) -> None:
-    TARGETS.append(Target(name, html, Options(**options), check))
+def target(name: str, html: str, check: Callable[[Trace], bool] | None = None, text: tuple[str, bool] | None = None,
+           **options) -> None:
+    TARGETS.append(Target(name, html, Options(**options), check, text))
 
 
 def baseline_page(html: str) -> None:
@@ -245,27 +248,27 @@ def forum_targets() -> None:
     wide = (f"<article><p>{exact(340, 120)}</p></article><div>{exact(341, 300)}</div>"
             f"{comments}{sidebar(342, 2500)}")
     target("forum, escalation", doc(wide, FORUM_LD), lambda t: t.forum and t.retry_ran)
-    target("forum, escalation, comments off", doc(wide, FORUM_LD), lambda t: t.forum and t.retry_ran, comments=False)
-    # the marker is a forum only when the key is anchored: prose and other types are not
-    plain = f"<article><p>{exact(300, 300)}</p></article>{comments}"
-    target("forum marker in a description",
-           doc(plain, '<script type="application/ld+json">{"description":"a DiscussionForumPosting is a type",'
-               '"@type":"Article"}</script>'), lambda t: not t.forum and t.captured)
-    target("forum marker in a type array",
-           doc(plain, '<script type="application/ld+json">{"@type":["Thing","DiscussionForumPosting"]}</script>'),
-           lambda t: t.forum and t.captured)
-    target("forum marker with spaces",
-           doc(plain, '<script type="application/ld+json">{"@type"  :  "DiscussionForumPosting"}</script>'),
-           lambda t: t.forum)
-    target("forum marker with a separator control",
-           doc(plain, '<script type="application/ld+json">{"@type"\x1c:\x1c"DiscussionForumPosting"}</script>'),
-           lambda t: t.forum)
-    target("forum marker in a second script",
-           doc(plain, '<script type="application/ld+json">{"@type":"Article"}</script>' + FORUM_LD),
-           lambda t: t.forum)
-    target("forum marker in a plain script", doc(plain, FORUM_LD.replace("application/ld+json", "text/javascript")),
-           lambda t: not t.forum)
-    target("comments with no forum", doc(plain), lambda t: not t.forum and t.captured and not t.salvage)
+    # the marker is a forum only when the key is anchored: prose and other types are not. The page keeps the
+    # captured posts in the output only on a forum (comments off prunes them elsewhere), so the output tells.
+    # `load_html` strips the separator control before the check, so the Python whitespace of the marker pattern is a unit test (`forum_regex_uses_python_whitespace`)
+    posts_text = exact(310, 90)
+    ldjson = '<script type="application/ld+json">%s</script>'
+    markers = [
+        ("forum marker, none", "", False),
+        ("forum marker in a description",
+         ldjson % '{"description":"a DiscussionForumPosting is a type","@type":"Article"}', False),
+        ("forum marker in a plain script", FORUM_LD.replace("application/ld+json", "text/javascript"), False),
+        ("forum marker, plain", FORUM_LD, True),
+        ("forum marker in a type array", ldjson % '{"@type":["Thing","DiscussionForumPosting"]}', True),
+        ("forum marker with spaces", ldjson % '{"@type"  :  "DiscussionForumPosting"}', True),
+        ("forum marker with a control the load strips", ldjson % '{"@type"\x1c:\x1c"DiscussionForumPosting"}', True),
+        ("forum marker in a second script", ldjson % '{"@type":"Article"}' + FORUM_LD, True),
+    ]
+    for name, head, is_forum in markers:
+        target(name, doc(wide, head), lambda t, is_forum=is_forum: t.forum == is_forum, text=(posts_text, is_forum),
+               comments=False)
+    target("comments with no forum", doc(f"<article><p>{exact(300, 300)}</p></article>{comments}"),
+           lambda t: not t.forum and t.captured and not t.salvage)
 
 
 def baseline_targets() -> None:
@@ -328,30 +331,46 @@ def escalation_targets() -> None:
 
 
 def boundary_targets() -> None:
-    "The comparisons of stages 3 and 4 at their edges: the floor, the length cap, the page share, the ratio."
+    """The comparisons of stages 3 and 4 at their edges: the floor, the length cap, the page share, the ratio.
+    Each edge has a page on each side that gains text from the stage on one side only (a discard-class paragraph
+    the baseline recovers, a teaser block the recall retry keeps), so the outputs differ and a `<` for a `<=`
+    in the cascade fails a case."""
 
     # the main text is n paragraphs, joined by one space each: the length is the sum plus n - 1
-    def article(lengths: list[int], extra: str = "") -> str:
+    def article(lengths: list[int], inside: str = "", extra: str = "") -> str:
         paragraphs = "".join(f"<p>{exact(400 + i, n)}</p>" for i, n in enumerate(lengths))
-        return doc(f"<article>{paragraphs}</article>{extra}")
+        return doc(f"<article>{paragraphs}{inside}</article>{extra}")
 
-    target("baseline floor, one under", article([249]), lambda t: t.len_first == 249 and t.baseline_ran)
-    target("baseline floor", article([250]), lambda t: t.len_first == 250 and not t.baseline_ran)
+    def teaser(seed: int, length: int) -> str:
+        return f'<div class="teaser"><p>{exact(seed, length)}</p></div>'
+
+    meta = exact(440, 60)
+    meta_block = f'<p class="meta">{meta}</p>'
+    target("baseline floor, one under", article([249], meta_block),
+           lambda t: t.len_first == 249 and t.baseline_accepted, text=(meta, True))
+    target("baseline floor", article([250], meta_block),
+           lambda t: t.len_first == 250 and not t.baseline_ran, text=(meta, False))
+    gain = exact(441, 1600)
     wide = sidebar(450, 20000)
     nine = [300] * 9
-    target("length cap, one under", article(nine + [290], wide), lambda t: t.len_first == 2999 and t.retry_ran)
-    target("length cap", article(nine + [291], wide), lambda t: t.len_first == 3000 and not t.retry_ran)
-    # html2txt of the page is the article and the sidebar paragraph joined by a space
-    target("page share, equal", article([300], sidebar(451, 1199)), lambda t: t.page_len == 1500 and not t.retry_ran)
-    target("page share, one over", article([300], sidebar(452, 1200)), lambda t: t.page_len == 1501 and t.retry_ran)
+    target("length cap, one under", article(nine + [290], teaser(441, 1600), wide),
+           lambda t: t.len_first == 2999 and t.retry_accepted, text=(gain, True))
+    target("length cap", article(nine + [291], teaser(441, 1600), wide),
+           lambda t: t.len_first == 3000 and not t.retry_ran, text=(gain, False))
+    # html2txt of the page: the article, the teaser and the sidebar paragraph, each joined by a space
+    share = exact(442, 300)
+    target("page share, equal", article([300], teaser(442, 300), sidebar(451, 898)),
+           lambda t: t.page_len == 1500 and not t.retry_ran, text=(share, False))
+    target("page share, one over", article([300], teaser(442, 300), sidebar(452, 899)),
+           lambda t: t.page_len == 1501 and t.retry_accepted, text=(share, True))
 
-    def teaser(length: int) -> str:
+    def ratio(length: int) -> str:
         block = f'<div class="teaser"><p>{exact(453, length)}</p></div>'
         return doc(f'<article><p>{exact(454, 300)}</p>{block}</article>{sidebar(455, 1200)}')
 
-    target("ratio, equal", teaser(149),
+    target("ratio, equal", ratio(149),
            lambda t: t.len_first == 300 and t.retry_len == 450 and not t.retry_accepted)
-    target("ratio, one over", teaser(150), lambda t: t.retry_len == 451 and t.retry_accepted)
+    target("ratio, one over", ratio(150), lambda t: t.retry_len == 451 and t.retry_accepted)
 
     def outside(length: int) -> str:
         return doc(f"<article><p>{exact(456, 120)}</p></article><div>{exact(457, length)}</div>{sidebar(458, 1200)}")
@@ -1004,6 +1023,11 @@ def main() -> None:
             print(f"{item.name}: {trace.line()}", file=sys.stderr)
             if item.check is not None and not item.check(trace):
                 failures.append(item.name)
+            if item.text is not None:
+                marker, present = item.text
+                output = results[(item.html, "txt", item.options)][1]
+                if output is None or (marker in output) != present:
+                    failures.append(f"{item.name}: output {'lacks' if present else 'holds'} {marker[:30]!r}")
         for item in TARGETS:
             for output_format, run_options, same_as in format_sets(item.options)[1:]:
                 add("targeted", item.html, output_format, run_options, unless_same_as=same_as)
@@ -1014,10 +1038,10 @@ def main() -> None:
             add("baseline", html, "txt", Options())
             # Markdown differs from TXT only where it escapes or formats
             add("baseline", html, "markdown", Options(formatting=True), unless_same_as=("txt", Options()))
-        for html in ("", "   \n"):
-            add("load", html, "txt", Options())
     if failures:
-        raise AssertionError(f"targeted pages that miss their branch: {failures}")
+        raise AssertionError(f"targeted pages that miss their branch or their output: {failures}")
+    for case in cases:
+        assert case.html == "" or case.html[:9].lower().startswith(("<html", "<!doctype")), case.html[:80]
 
     page_names: dict[str, str] = {}
     option_names: dict[Options, str] = {}

@@ -172,7 +172,9 @@ plain-lxml value. A snippet page runs in the three formats under its own options
 stays only when it expects something other than the same page without formatting, and a baseline page runs
 in `markdown` on the same terms against `txt`. A targeted page is checked while generating against a trace of
 `trafilatura_sequence` (wrappers around `_forum_thread_page`, `baseline`, `html2txt` and `_recall_retry`, and
-the salvage log line), so a page that misses its branch fails the generation; the stage thresholds (250, 3000,
-the page share, the ratio) have a page on each side of the edge. The generator prints the counts per kind to
-stderr: 3350 extract cases (2463 from snippets, 262 targeted, 625 from baseline pages and the empty load) and
-538 baseline cases. Pages that nest thousands of levels are unit tests, not cases.
+the salvage log line), so a page that misses its branch fails the generation. A page may also state a text its
+`txt` output must or must not hold: the forum markers, which only a forum turns into output, and the stage
+thresholds (250, 3000, the page share, the ratio, the retry floor), where the page on one side gains text from
+the stage (a discard-class paragraph the baseline recovers, a teaser block the recall retry keeps) and the page
+on the other side does not, so a `<` for a `<=` in the cascade changes an output. The generator prints the
+counts per kind to stderr. Pages that nest thousands of levels are unit tests, not cases.
