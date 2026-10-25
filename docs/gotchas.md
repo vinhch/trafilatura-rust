@@ -182,8 +182,9 @@ function.
   so a 9998-level document overflows a 512 KiB thread stack on drop, even when the parser is a loop.
   `Json` is one flat `Vec` of nodes with index ranges; `deep_document_drops_on_small_stack` drops
   such a document on a 512 KiB stack.
-- `unicodedata` of Python 3.13 is Unicode 15.1. `unicode-normalization` and `icu_normalizer` carry
-  Unicode 16 data and compose U+105D2 U+0307 (Todhri), which Python's NFC leaves as two characters.
+- `unicodedata` of Python 3.13 is Unicode 15.1. `unicode-normalization` carries the tables of a newer
+  Unicode release (its `UNICODE_VERSION`) and composes U+105D2 U+0307 (Todhri) into U+105C9, which
+  Python's NFC leaves as two characters.
   `pyunicodedata::normalize_nfc` runs over tables generated from the interpreter
   (`gen_nfc.py`), the same reason `pystr::is_printable` has a generated table.
 
