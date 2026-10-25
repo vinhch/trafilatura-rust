@@ -124,12 +124,14 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
   below. The Python side covers decode plus parse only: the comparison with upstream is `load_html`
   alone, and an upstream extraction number is followup F-24. Heap is comparable only on the Rust side:
   tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
-  the Rust targets takes about five minutes, and the `cell_budget` page peaks at about 2.1 GB of heap.
-- Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, F-19,
-  F-21, F-23) and each target runs them once, without warm-up, writing
+  the Rust targets takes about five minutes, and the `large_page` page peaks at about 1.4 GB of heap.
+- Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, F-21)
+  and each target runs them once, without warm-up, writing
   `.temp/measure/<version>-rust-<kind>-synthetic.json` beside the corpus file. `large_page` has 1.1M
-  `<p>` elements and a 10x10 table (`max_nodes` raised to 2,000,000). `cell_budget` is a table of
-  exactly `MAX_OUTPUT_NODES` cells (40,000 rows of colspan 100) and `cell_budget_over` has one row
+  `<p>` elements and a 10x10 table, above the default parse limit (`max_nodes` raised to 2,000,000).
+  `node_limit` has 499,000 `<p>` elements and `node_limit_over` 501,000, both with default options:
+  the first is `ok`, the second `too_large` (`DEFAULT_MAX_NODES` is 500,000). `cell_budget` is a table
+  of exactly `MAX_OUTPUT_NODES` cells (10,000 rows of colspan 100) and `cell_budget_over` has one row
   more; the target fails after writing when an outcome differs from the page's expected one (`ok`,
   or `too_large` for `Rejected(TreeTooLarge)`). `ordered_list_50k` and `ordered_list_200k` are
   Markdown lists of 50,000 and 200,000 items inside `<article>` (a bare `<ol>` in `<body>` is flattened

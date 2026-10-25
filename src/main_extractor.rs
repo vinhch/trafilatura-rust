@@ -64,7 +64,7 @@ pub const MAX_SPAN: usize = 100;
 /// the parse and the tree copies add, so the cascade can grow the arena to a few times the page
 /// without costing a table its budget. A page whose arena stayed under this size never reaches it.
 // deviation: D-9
-pub const MAX_OUTPUT_NODES: usize = 4 * DEFAULT_MAX_NODES;
+pub const MAX_OUTPUT_NODES: usize = 2 * DEFAULT_MAX_NODES;
 
 /// Text rendering for the recovery and adjacent dedup checks: plain concatenation, so inline tag
 /// boundaries stay joined (`Hyper<b>link</b>ed` is `Hyperlinked`). Both sides of those checks use

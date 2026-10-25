@@ -123,8 +123,10 @@ fn ordered_list(items: usize) -> String {
     out
 }
 
-/// Pages for the limits and growth paths no corpus page reaches (D-5, D-9, F-19, F-21, F-23).
-/// `cell_budget` is exactly `MAX_OUTPUT_NODES` (4,000,000) cells and `cell_budget_over` one row more.
+/// Pages for the limits and growth paths no corpus page reaches (D-5, D-9, F-21).
+/// `large_page` is above the default parse limit and raises it. `node_limit` is just under
+/// `DEFAULT_MAX_NODES` and `node_limit_over` just over it. `cell_budget` is exactly `MAX_OUTPUT_NODES`
+/// (1,000,000) cells and `cell_budget_over` one row more.
 pub fn synthetic() -> Vec<Synthetic> {
     let mut large = paragraphs(1_100_000);
     large.push_str("<table>");
@@ -144,14 +146,26 @@ pub fn synthetic() -> Vec<Synthetic> {
             expect: Expect::Ok,
         },
         Synthetic {
+            name: "node_limit",
+            html: document(&paragraphs(499_000)),
+            options: Options::new(),
+            expect: Expect::Ok,
+        },
+        Synthetic {
+            name: "node_limit_over",
+            html: document(&paragraphs(501_000)),
+            options: Options::new(),
+            expect: Expect::TooLarge,
+        },
+        Synthetic {
             name: "cell_budget",
-            html: document(&wide_table(40_000)),
+            html: document(&wide_table(10_000)),
             options: Options::new(),
             expect: Expect::Ok,
         },
         Synthetic {
             name: "cell_budget_over",
-            html: document(&wide_table(40_001)),
+            html: document(&wide_table(10_001)),
             options: Options::new(),
             expect: Expect::TooLarge,
         },

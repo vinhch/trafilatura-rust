@@ -70,7 +70,7 @@ impl Options {
     /// Upstream's defaults: no format (unset means [`Format::Txt`] for [`Extractor::extract`] and
     /// [`Format::Python`] for [`Extractor::bare_extraction`]), [`Focus::Balanced`], comments and
     /// tables on, formatting unset (on for Markdown), links and images off, no target language,
-    /// `Config::default()` and `max_nodes` at `DEFAULT_MAX_NODES` (1,000,000).
+    /// `Config::default()` and `max_nodes` at `DEFAULT_MAX_NODES` (500,000).
     pub fn new() -> Self {
         Self {
             format: None,

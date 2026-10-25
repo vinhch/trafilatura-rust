@@ -333,3 +333,31 @@ fn rejections_and_cancellation_propagate() {
         ExtractError::Cancelled
     );
 }
+
+fn paragraph_page(count: usize) -> String {
+    format!("<html><body>{}</body></html>", "<p>w</p>".repeat(count))
+}
+
+#[test]
+fn default_options_reject_a_page_over_the_node_limit() {
+    // D-5: html, head and body count too, so 500,000 paragraphs are over the limit.
+    let page = paragraph_page(500_000);
+    let result = Options::new()
+        .build()
+        .extract(&Input::text(&page), &Call::default());
+    assert_eq!(
+        result.map(|text| text.len()),
+        Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+    );
+}
+
+#[test]
+fn default_options_accept_a_page_just_under_the_node_limit() {
+    let page = paragraph_page(499_000);
+    assert!(
+        Options::new()
+            .build()
+            .extract(&Input::text(&page), &Call::default())
+            .is_ok()
+    );
+}

@@ -1127,8 +1127,10 @@ fn table_with_budget(source: &str, budget: usize) -> Result<Option<String>, Extr
 }
 
 #[test]
-fn max_output_nodes_is_four_parses() {
-    assert_eq!(MAX_OUTPUT_NODES, 4 * DEFAULT_MAX_NODES);
+fn max_output_nodes_is_two_parses() {
+    assert_eq!(DEFAULT_MAX_NODES, 500_000);
+    assert_eq!(MAX_OUTPUT_NODES, 1_000_000);
+    assert_eq!(MAX_OUTPUT_NODES, 2 * DEFAULT_MAX_NODES);
 }
 
 #[test]
