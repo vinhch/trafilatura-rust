@@ -1,7 +1,7 @@
 # Architecture
 
 How the crate is laid out and the contracts it keeps: the module map, the runtime contract, the
-planned public API, and the performance rules. Read it before changing module layout, the public API,
+public API, and the performance rules. Read it before changing module layout, the public API,
 cancellation, input limits or anything performance-related. Items marked planned are decided design
 that no code implements yet.
 
@@ -13,16 +13,16 @@ exists today; phases are in `phase-plan.md`.
 
 | Upstream | Rust | Status | Scope |
 | --- | --- | --- | --- |
-| `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | planned | `extract`, `bare_extraction`, the extraction cascade in fast mode |
-| `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, the `settings.cfg` defaults and the shared tag lists |
+| `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | exists: `determine_returnstring`, `trafilatura_sequence`, `bare_extraction` and `internal_extraction` (upstream's `_internal_extraction`, which `extract` wraps), each with a `Source` (a page or a caller's tree) and the metadata, fingerprint and XML branches as stubs (`// todo(phase N)`) | the extraction cascade in fast mode, `bare_extraction`, `extract` and the output step |
+| `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), `Focus`, `Format`, `Document`, the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, `Document` (the result: metadata fields, texts and an owned compact tree of the body and comments body), the `settings.cfg` defaults and the shared tag lists |
 | `main_extractor.py` | `main_extractor.rs` | exists: every constant, helper and handler, `prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`; `extract_body` is upstream's `_extract`, private because `extract` names the public entry point | content and comment extraction, the element handlers |
 | `htmlprocessing.py` | `html_processing.rs` | exists: tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions, `convert_tags` and the HTML output (`HTML_TAG_MAPPING`, `HTML_CONVERSIONS` as `html_conversion`, `convert_to_html`, `build_html_output`) | tree cleaning, pruning, link density, text-node handling, `convert_tags`, HTML output |
 | `xpaths.py` | `xpaths.rs` | partial: the content, comment and discard selectors exist; the metadata selectors are Phase 4 | the content, comment, discard and metadata selectors |
-| `baseline.py` | `baseline.rs` | planned | `baseline`, `html2txt` |
+| `baseline.py` | `baseline.rs` | exists: `baseline`, `baseline_tree`, `html2txt`, `html2txt_tree`, `basic_cleaning`, `build_body`, `block_text` and the JSON-LD readers; only `html2txt` is public (`api.rs`) | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported | the readability and jusText fallbacks run only when `fast=False` (D-1) |
 | `metadata.py`, `json_metadata.py` | `metadata.rs`, `json_metadata.rs` | planned | metadata from meta tags, JSON-LD, the tree |
 | `deduplication.py` | `deduplication.rs` | stub: `duplicate_test` returns `false` (`// todo(phase 5)`) | the duplicate test, simhash and content fingerprint |
-| `utils.py` | `utils.rs` | partial: decoding and HTML loading, the text helpers (`trim`, `sanitize`, `textfilter`, `line_processing` and the rest), `image_src`, `is_image_file`, `is_acceptable_length` and `check_html_lang` exist; `safe_base_url` and `safe_relative_url` (over `courlan`) exist, `language_filter` and `language_classifier` are stubs (OI-4), `normalize_unicode` and `as_list` are planned | text normalization, trimming, language and size checks, decoding and HTML loading |
+| `utils.py` | `utils.rs` | partial: decoding and HTML loading, the text helpers (`trim`, `sanitize`, `textfilter`, `line_processing` and the rest), `image_src`, `is_image_file`, `is_acceptable_length` and `check_html_lang` exist; `safe_base_url` and `safe_relative_url` (over `courlan`) exist, `language_filter` and `language_classifier` are stubs (OI-4), `normalize_unicode` (NFC, over `pyunicodedata`) and `as_list` (over `pyjson`) exist | text normalization, trimming, language and size checks, decoding and HTML loading |
 | `xml.py` | `xml.rs`, `xml/markdown.rs` | partial: the tree helpers (`delete_element`, `separates_inline`, `remove_empty_elements`, `keeps_empty`, `is_padding_cell`, `merge_with_parent`, `strip_double_tags`) and the TXT and Markdown output (`replace_element_text`, `xml_to_text`; the escaping, math and link helpers are in `xml/markdown.rs`) exist; `META_ATTRIBUTES` and `meta_items` exist; the XML, XML-TEI, JSON and CSV output and the TEI checks are planned (stubs `control_xml_output`, `xml_to_csv` and `build_json_output` return an empty string until phase 6) | tree helpers and output formats |
 | `meta.py` | none | not needed | `reset_caches` clears module-global caches here and in htmldate and courlan; this crate has no global caches (Runtime contract) |
 | `downloads.py`, `feeds.py`, `sitemaps.py`, `spider.py`, `cli.py`, `cli_utils.py` | none | out of scope | fetching and crawling belong to the caller |
@@ -30,18 +30,24 @@ exists today; phases are in `phase-plan.md`.
 | none | `pyurl.rs`, `pyurl/` | exists | CPython's `urllib.parse` (`urlsplit`, `urlunsplit`, `urljoin`) and `html.unescape`, which the URL helpers of `courlan` call; `pyurl/tables.rs` (the HTML5 entity table and the NFKC netloc breakers) is generated by `tools/parity/parity/gen_url.py` |
 | none | `pyhtml.rs` | exists | CPython's `html.unescape` (`unescape`) over the entity table of `web_atoms`, which the output calls; a decimal reference of more than `MAX_STR_DIGITS` digits fails with `Rejection::InvalidValue`. `pyurl` has its own port (F-20) |
 | none | `pystr.rs` | exists | Python `str` semantics Rust lacks: `isspace`, `split`, `strip`, `lstrip`, `rstrip`, `splitlines`, `isprintable`, `isdecimal` (`is_decimal`), `unicodedata.decimal` (`decimal_value`), `int(str)` as its canonical decimal string (`int_str`) and the `\w` class, plus `MAX_STR_DIGITS`, the digit limit of `int()`; its range tables (`pystr/printable.rs`, and `pystr/decimal.rs`, the run starts of the `Nd` digits) are generated by `tools/parity/parity/gen_printable.py` and `gen_decimal.py` |
+| none | `api.rs` | exists | the public API (Public API): `Options`, `Extractor`, `Input`, `Format` and `html2txt` over `extraction.rs` and `baseline.rs` |
+| none | `pyjson.rs` | exists | Python's `json.loads` (with and without `strict`) over a flat document, and `dumps_str`, the string part of `json.dumps(ensure_ascii=False)`; written in the crate because `serde_json` differs from CPython's decoder where it changes which JSON-LD scripts parse |
+| none | `pyunicodedata.rs`, `pyunicodedata/` | exists | `unicodedata.normalize("NFC")` (`normalize_nfc`); `pyunicodedata/nfc.rs` is generated by `tools/parity/parity/gen_nfc.py` |
 | none | `context.rs` | exists | `Ctx`, the per-call context ported functions take where upstream passes `options` (Runtime contract) |
 | none | `cancel.rs`, `error.rs` | exists | `CancelToken` and `Call`, `ExtractError` and `Rejection` |
 | none | `async_api.rs` | planned | `extract_async` (feature `tokio`) |
 
-The hidden feature `__internals` exposes the tree types (`LiveIter` included), `parse_document`,
-`parse_fragment`, `dump`, `dump_from`, `ParseLimits`, `Ctx`, the `settings` types and element lists, the `utils`
-functions, the `html_processing` functions and constants, the `main_extractor` handlers, `span`,
-`prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`, the `xml`
-functions (`delete_element`, `remove_empty_elements`, `merge_with_parent`, `strip_double_tags`,
-`replace_element_text`, `xml_to_text`, `md_link`), `pyhtml::unescape` and the `xpaths` items
-(`Selector`, `alt`, `BODY_XPATH`, `OVERALL_DISCARD_XPATH`, `PRECISION_DISCARD_XPATH`) the
-integration tests call, as `__internals`: unstable, for the crate's own integration tests only.
+The hidden feature `__internals` exposes, for the crate's own integration tests only and unstable, the tree types
+(`LiveIter` included), `parse_document`, `parse_fragment`, `dump`, `dump_from`, `ParseLimits`, `Ctx`, the
+`settings` types and element lists, the `utils` functions, the `html_processing` functions and constants,
+the `main_extractor` handlers, `span`, `prune_unwanted_sections`, `recover_wild_text`, `extract_content`
+and `extract_comments`, the `baseline` functions, the `extraction` entry points (`Source`,
+`bare_extraction`, `internal_extraction`, `determine_returnstring`), the `xml` functions
+(`delete_element`, `remove_empty_elements`, `merge_with_parent`, `strip_double_tags`,
+`replace_element_text`, `xml_to_text`, `md_link`), `pyhtml::unescape`, `pyjson` (`loads`, `dumps_str`, `Json`),
+`pystr::{is_alpha, repr}`, `pyunicodedata::normalize_nfc` and the `xpaths` items (`Selector`, `alt`,
+`BODY_XPATH`, `OVERALL_DISCARD_XPATH`, `PRECISION_DISCARD_XPATH`). `Document` has accessors for its tree under
+it (`body_tree`, `body`, `comments_body`).
 
 Upstream's own dependencies carry extraction logic, so the parts trafilatura calls are ported with it:
 
@@ -103,19 +109,44 @@ upstream has no equivalent.
   caller owns. `Send + Sync` options and results, so concurrent calls need no locking.
 - `unsafe` is forbidden.
 
-## Public API (planned)
+## Public API
 
-The public API is this crate's own; the pipeline under it follows upstream function by function.
-Today only `Call`, `CancelToken`, `ExtractError` and `Rejection` are public. The rest is decided
-design with no code yet:
+The public API is this crate's own and mirrors upstream's `extract` and `bare_extraction`; the pipeline
+under it follows upstream function by function. It lives in `api.rs` and is re-exported at the crate
+root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus` and `Document`.
 
-- `Options` (with `format`, as upstream `Extractor`) builds an immutable `Extractor` once, which
-  resolves the effective `formatting` and `with_metadata` as upstream does.
-- `Extractor::extract(input, &call)` is upstream `bare_extraction` plus the `id` and fingerprint step
-  of upstream `extract`.
-- `Extractor::render(&doc)` is `determine_returnstring` in the extractor's format.
-- `Input` is bytes or a string with an optional URL and record id.
-- `Call` also carries `max_date` and the caller-owned `DedupCache`.
+| Item | Contract |
+| --- | --- |
+| `Options` | Builder over upstream's defaults; each method takes and returns `Self`, `build(&self)` makes an `Extractor`. |
+| `Extractor` | Immutable, `Clone`, `Send + Sync`: one value serves any number of threads and URLs. `extract(&self, &Input, &Call) -> Result<String, ExtractError>` is upstream `extract`; `bare_extraction(&self, &Input, &Call) -> Result<Document, ExtractError>` is upstream `bare_extraction`. |
+| `Input<'a>` | `Input::bytes(&[u8])` or `Input::text(&str)`, with `.url(&str)` and `.record_id(&str)`. The URL belongs to the call: the call's `Ctx` borrows the stored settings, or owns a copy with `url` set when the input has one. |
+| `Format` | `Txt`, `Markdown`, `Html`, `Python`; non-exhaustive. Maps onto `settings::Format`, which also holds the XML, XML-TEI, JSON and CSV variants of a later phase. |
+| `Focus`, `Config` | `Focus` is `Balanced`, `Precision` or `Recall`, in place of upstream's two `favor_*` flags, so upstream's recall-wins resolution cannot arise. `Config` holds the values of `settings.cfg`; `Config::default()` is the cfg file. |
+| `Document` | Non-exhaustive result: the metadata fields (`Option<String>`; `categories` and `tags` `Option<Vec<String>>`), `text`, `comments` and `raw_text`. It owns the body and comments body as a compact tree of its own, so the call's arena is freed on return. |
+| `html2txt(&Input, clean, &Call)` | Upstream `html2txt`. An empty document gives `Ok("")`; `TreeTooLarge` and cancellation are errors. |
+
+`Options` defaults and what they map to:
+
+| Method | Default | Notes |
+| --- | --- | --- |
+| `format` | unset | Resolved per entry point as upstream's defaults are: `extract` takes `Txt`, `bare_extraction` takes `Python`. A set format applies to both. `extract` with `Python` fails with `Rejected(InvalidValue)` after a successful extraction, upstream's `ValueError`. |
+| `focus` | `Balanced` | |
+| `comments` | `true` | |
+| `formatting` | unset | Resolved as upstream: Markdown implies it, other formats do not. |
+| `links`, `images` | `false` | |
+| `tables` | `true` | |
+| `target_language` | none | Two-letter code; with the language classifier a stub (OI-4) only the `html` `lang` check rejects. |
+| `config` | `Config::default()` | |
+| `max_nodes` | `Some(DEFAULT_MAX_NODES)` | `ParseLimits::max_nodes` (D-5); `None` lifts the limit. `ParseLimits::max_depth` is not exposed. |
+
+`Err(Rejected(_))` stands for upstream's `None` and for a raise that escapes upstream's entry point.
+Options that no phase makes work yet are absent, so none silently does nothing: metadata extraction and
+its filters, deduplication, `prune_xpath` and the XML, XML-TEI, JSON and CSV formats. The planned
+additions are `max_date` and the caller-owned deduplication cache on `Call`, and an `Options` method
+for each of the above when its phase lands.
+
+Tree input (upstream's `HtmlElement` for `filecontent`) is internal: `extraction.rs` takes a `Source`,
+a page or an element of a caller's tree, which the public methods and the tests that pass a tree use.
 
 These API types never leak into ported functions beyond the context they pass down.
 

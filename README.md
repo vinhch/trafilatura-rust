@@ -30,7 +30,7 @@ makes each Python release cheaper to follow.
 
 ## Documents
 
-- `docs/architecture.md`: module map, runtime contract, planned public API, performance rules.
+- `docs/architecture.md`: module map, runtime contract, public API, performance rules.
 - `docs/gotchas.md`: traps found reading upstream.
 - `docs/upstream-sync.md`: how to move to a new upstream release.
 - `docs/parity-harness.md`: fixtures, mismatch classes, measurement.

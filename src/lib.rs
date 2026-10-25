@@ -3,12 +3,35 @@
 //!
 //! The upstream release this crate follows is recorded in `Cargo.toml` under
 //! `[package.metadata.upstream]`.
+//!
+//! [`Options`] holds the settings, with upstream's defaults, and builds an immutable [`Extractor`]
+//! that any number of threads share. A call takes an [`Input`] (the page, with its URL and record
+//! id) and a [`Call`] that can cancel it or set a deadline. A page upstream rejects gives
+//! [`ExtractError::Rejected`].
+//!
+//! ```
+//! use trafilatura_rust::{Call, Extractor, Format, Input, Options};
+//!
+//! # fn main() -> Result<(), trafilatura_rust::ExtractError> {
+//! let html = "<html><body><article><h2>Title</h2>\
+//!     <p>A paragraph of the page, with a <a href=\"/more\">link</a> and enough words to keep.</p>\
+//!     </article></body></html>";
+//! let extractor: Extractor = Options::new().format(Format::Markdown).links(true).build();
+//! let input = Input::text(html).url("https://example.org/post");
+//! let text = extractor.extract(&input, &Call::default())?;
+//! assert!(text.starts_with("## Title"));
+//! assert!(text.contains("[link](https://example.org/more)"));
+//! # Ok(())
+//! # }
+//! ```
 
+mod api;
 #[allow(dead_code)]
 mod baseline;
 mod cancel;
-// No caller outside the tests until the extraction modules land (`context`, `settings`, `utils`,
-// `pystr` and `xpaths` items are `pub` in a private module and re-exported only as far as the tests need).
+// Items the pipeline reaches only from later phases or from the tests stay `pub` in a private module
+// (`context`, `settings`, `utils`, `pystr` and `xpaths` among them) and are re-exported only as far as
+// the public API and `__internals` need.
 #[allow(dead_code)]
 mod context;
 #[allow(dead_code)]
@@ -46,8 +69,10 @@ mod xml;
 #[allow(dead_code)]
 mod xpaths;
 
+pub use api::{Extractor, Format, Input, Options, html2txt};
 pub use cancel::{Call, CancelToken};
 pub use error::{ExtractError, Rejection};
+pub use settings::{Config, Document, Focus};
 
 /// Crate internals for the crate's own integration tests; unstable, not public API.
 #[cfg(feature = "__internals")]
