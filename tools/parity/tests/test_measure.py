@@ -111,3 +111,51 @@ def test_combine_rust_fails_on_a_page_in_only_one_run():
 
 def test_ratio_of_zero_is_not_a_division_error():
     assert measure._ratio(5, 0) == "n/a"
+
+
+def _rust_extracted(page_id, extract_ns, extract_peak, extract_ok=True):
+    return {
+        **_rust(page_id, 1_000_000, 100),
+        "extract_ok": extract_ok,
+        "extract_median_ns": extract_ns,
+        "extract_alloc_bytes": 2048,
+        "extract_alloc_count": 7,
+        "extract_peak_bytes": extract_peak,
+    }
+
+
+def test_totals_add_extraction_when_every_page_has_it():
+    pages, _ = _merged(
+        [_rust_extracted("a", 2_000_000, 4096), _rust_extracted("b", 3_000_000, 8192, extract_ok=False)],
+        [_python("a", 1, 1), _python("b", 1, 1)],
+    )
+    rust = measure.totals(pages)["rust"]
+    assert rust["extract_median_ms"] == 5.0
+    assert rust["extract_peak_max_bytes"] == 8192
+    assert (rust["extract_alloc_bytes"], rust["extract_alloc_count"], rust["extract_ok_pages"]) == (4096, 14, 1)
+    assert "extract_median_ms" not in measure.totals(pages)["python"]
+
+
+def test_totals_have_no_extraction_for_a_run_without_it():
+    pages, _ = _merged([_rust("a", 1, 1), _rust_extracted("b", 1, 1)], [_python("a", 1, 1), _python("b", 1, 1)])
+    assert "extract_median_ms" not in measure.totals(pages)["rust"]
+    assert "extraction" not in measure.format_table(pages)
+
+
+def test_table_shows_extraction_columns_and_totals():
+    pages, dropped = _merged(
+        [_rust_extracted("a", 2_500_000, 4096), _rust_extracted("b", 1, 1)], [_python("a", 5_000_000, 4096), _python("b", 1, 1)]
+    )
+    table = measure.format_table(pages, rows=1, dropped=dropped)
+    assert "| extract ms Rust | extract peak KiB Rust |" in table
+    assert "| a | 2.0 | 1.00 | 5.00 | 5.0x | 0 | 4 | 2.50 | 4 |" in table
+    assert "| ... 1 more pages | | | | | | | | |" in table
+    assert "2 of 2 pages gave text" in table
+    assert "| extraction median time, sum (ms) | 2.5 |" in table
+    assert "| extraction allocation count, total | 14 |" in table
+
+
+def test_combine_rust_ands_extract_ok():
+    time_run = {"pin": "p", "upstream_version": "v", "host": HOST, "extra": {}, "pages": [{"id": "a", "loaded": True, "extract_ok": True}]}
+    heap_run = {"pin": "p", "host": HOST, "extra": {}, "pages": [{"id": "a", "loaded": True, "extract_ok": False}]}
+    assert measure.combine_rust(time_run, heap_run)["pages"][0]["extract_ok"] is False

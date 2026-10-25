@@ -117,7 +117,10 @@ def combine_rust(time_run: dict, heap_run: dict) -> dict:
     pages = []
     for t in time_run["pages"]:
         h = heap[t["id"]]
-        pages.append({**h, **t, "loaded": t["loaded"] and h["loaded"]})
+        page = {**h, **t, "loaded": t["loaded"] and h["loaded"]}
+        if "extract_ok" in t and "extract_ok" in h:
+            page["extract_ok"] = t["extract_ok"] and h["extract_ok"]
+        pages.append(page)
     return {
         "pin": time_run["pin"],
         "upstream_version": time_run["upstream_version"],
@@ -143,6 +146,19 @@ def loaded_pages(pages: list[dict]) -> list[dict]:
     return [p for p in pages if p["rust"]["loaded"] and p["python"]["loaded"]]
 
 
+def _extract_totals(rows: list[dict]) -> dict:
+    "Rust only, when the run measured extraction: summed median time and allocations, the largest peak, pages that gave text."
+    if not rows or not all("extract_median_ns" in r for r in rows):
+        return {}
+    return {
+        "extract_median_ms": sum(r["extract_median_ns"] for r in rows) / 1e6,
+        "extract_alloc_bytes": sum(r["extract_alloc_bytes"] for r in rows),
+        "extract_alloc_count": sum(r["extract_alloc_count"] for r in rows),
+        "extract_peak_max_bytes": max(r["extract_peak_bytes"] for r in rows),
+        "extract_ok_pages": sum(1 for r in rows if r["extract_ok"]),
+    }
+
+
 def totals(pages: list[dict]) -> dict:
     "Per side over the loaded pages: summed median time and retained heap, summed allocations (Rust only), peaks."
     result = {}
@@ -157,6 +173,7 @@ def totals(pages: list[dict]) -> dict:
             "retained_blocks": sum(r["retained_blocks"] for r in rows),
             "peak_max_bytes": max(peaks, default=0),
             "peak_mean_bytes": sum(peaks) / len(peaks) if peaks else 0,
+            **(_extract_totals(rows) if side == "rust" else {}),
         }
     return result
 
@@ -173,22 +190,28 @@ def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict
     "Markdown: the first `rows` loaded pages one per line, the totals, then the caveats."
     usable = loaded_pages(pages)
     lines = []
-    if rows:
-        lines += [
-            "| page | input KiB | time ms Rust | time ms Python | Python / Rust | peak KiB Rust | peak KiB Python (*) |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-        ]
-        for p in usable[:rows]:
-            r, y = p["rust"], p["python"]
-            lines.append(
-                f"| {p['source']} | {p['input_bytes'] / 1024:.1f} | {r['median_ns'] / 1e6:.2f} | {y['median_ns'] / 1e6:.2f} "
-                f"| {_ratio(y['median_ns'], r['median_ns'])} | {r['peak_bytes'] / 1024:.0f} | {y['peak_bytes'] / 1024:.0f} |"
-            )
-        if len(usable) > rows:
-            lines.append(f"| ... {len(usable) - rows} more pages | | | | | | |")
-        lines.append("")
     t = totals(pages)
     r, y = t["rust"], t["python"]
+    extracted = "extract_median_ms" in r
+    if rows:
+        header = "| page | input KiB | time ms Rust | time ms Python | Python / Rust | peak KiB Rust | peak KiB Python (*) |"
+        rule = "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+        if extracted:
+            header += " extract ms Rust | extract peak KiB Rust |"
+            rule += " ---: | ---: |"
+        lines += [header, rule]
+        for p in usable[:rows]:
+            pr, py = p["rust"], p["python"]
+            row = (
+                f"| {p['source']} | {p['input_bytes'] / 1024:.1f} | {pr['median_ns'] / 1e6:.2f} | {py['median_ns'] / 1e6:.2f} "
+                f"| {_ratio(py['median_ns'], pr['median_ns'])} | {pr['peak_bytes'] / 1024:.0f} | {py['peak_bytes'] / 1024:.0f} |"
+            )
+            if extracted:
+                row += f" {pr['extract_median_ns'] / 1e6:.2f} | {pr['extract_peak_bytes'] / 1024:.0f} |"
+            lines.append(row)
+        if len(usable) > rows:
+            lines.append(f"| ... {len(usable) - rows} more pages | | | | | | |{' | |' if extracted else ''}")
+        lines.append("")
     lines += [
         f"Totals over {len(usable)} pages, decode + parse:",
         "",
@@ -203,6 +226,23 @@ def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict
         f"| allocation count, total | {r['alloc_count']} | n/a | n/a |",
         "",
         f"(*) {HEAP_NOTE}.",
+        *(
+            [
+                "",
+                f"Rust extraction (`extract`, TXT, fast mode; it repeats the decode and parse), {r['extract_ok_pages']} of "
+                f"{len(usable)} pages gave text, no Python counterpart:",
+                "",
+                "| metric | Rust |",
+                "| --- | ---: |",
+                f"| extraction median time, sum (ms) | {r['extract_median_ms']:.1f} |",
+                f"| extraction peak heap, largest page (KiB) | {r['extract_peak_max_bytes'] / 1024:.0f} |",
+                f"| extraction allocated, total (KiB) | {r['extract_alloc_bytes'] / 1024:.0f} |",
+                f"| extraction allocation count, total | {r['extract_alloc_count']} |",
+                "",
+            ]
+            if extracted
+            else []
+        ),
         f"Pages: {len(usable)} compared, {len(pages) - len(usable)} excluded (not loaded on one side), "
         f"{dropped} dropped (on one side only).",
     ]
