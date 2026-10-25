@@ -6,7 +6,11 @@ adding, changing or removing one. A row is added with the dependency and removed
 ## Policy
 
 - Fewest dependencies that do the job. Write a small piece (a few hundred lines) before taking a crate
-  for it.
+  for it. Two pieces are written here and have no row: JSON parsing (`pyjson`; `serde_json` differs
+  from CPython's decoder on lone surrogates, raw control characters, `NaN`, the digit limit and the
+  nesting cap) and NFC normalization (`pyunicodedata`, over tables generated from the oracle's
+  Python; `unicode-normalization` and `icu_normalizer` carry Unicode 16 data where Python 3.13 has
+  15.1). Details: `gotchas.md`, "json and unicodedata".
 - A Rust crate named after a Python package is not that package. Where upstream calls `htmldate` or
   `courlan`, port the logic it uses; take a crate only for infrastructure with no upstream logic in it
   (HTML parsing, regex, encoding tables and detection).
@@ -28,7 +32,7 @@ adding, changing or removing one. A row is added with the dependency and removed
 | `encoding_rs` | always | Python codecs | The WHATWG encodings, maintained by Firefox's encoding owner |
 | `chardetng` | always | `charset_normalizer` | Firefox's detector, same maintainer as `encoding_rs` (D-3) |
 | `regex` | always | `re` | rust-lang regex; lookaround and backreferences are written by hand (`gotchas.md`) |
-| `web_atoms` | always | none | Servo, shared with `html5ever`; supplies the entity table for `pyhtml::unescape`, which `entity_table_matches_python` checks |
+| `web_atoms` | always | none | Servo, shared with `html5ever`; supplies the entity table for `pyhtml::unescape` (`pyurl` calls it too), which `entity_table_matches_python` checks |
 | `flate2` | feature `decompress` | `gzip`, `zlib` | rust-lang; pure-Rust `miniz_oxide` backend (D-4) |
 | `brotli-decompressor` | feature `decompress` | `brotli` | Decompress-only, forbids `unsafe` by default (D-4) |
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |

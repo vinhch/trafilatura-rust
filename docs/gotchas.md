@@ -122,9 +122,12 @@ function.
   image's Unicode data, not the `regex` crate's.
 - `re.IGNORECASE` folds U+0130 (capital I with dot) and U+0131 (dotless i) to `i`; Rust `(?i)` does
   not. A pattern that can meet them rewrites each `i` to a class of `i`, U+0130 and U+0131
-  (`ignore_case_i` in `pystr.rs`); `COOKIE_CONSENT_RE` in `settings.rs` does the same. The
-  other special folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and
-  need no rewrite.
+  (`ignore_case_i` in `pystr.rs`); `COOKIE_CONSENT_RE` in `settings.rs` and `HTML_MARKUP` in
+  `baseline.rs` do the same, so `<dİv>` and `<dıv>` count as markup as in Python. The other special
+  folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and need no
+  rewrite. `HTML_MARKUP` and `DISCUSSION_FORUM_POSTING_RE` (`extraction.rs`) also take the
+  whitespace class from `PY_SPACE_CLASS`, so a `"@type"` key and its value separated by U+001C are a
+  forum page.
 - Whitespace and line splitting differ. Python `str.split()`, `str.strip()`, `str.isspace()` and the
   `re` class `\s` treat `\x1c`-`\x1f` as whitespace; Rust's `char::is_whitespace` and `regex` `\s` do
   not. `str.splitlines()` splits on
@@ -135,6 +138,15 @@ function.
   private-use and separator characters other than the ASCII space (so false for U+00A0). `pystr`
   searches a table from the interpreter the fixtures were made with, because a Unicode crate would
   follow a newer Unicode version and differ on newly assigned characters.
+- `str.isalpha` is the categories `Lm`, `Lt`, `Lu`, `Ll` and `Lo`; Rust's `char::is_alphabetic` also
+  takes `Nl` and the `Other_Alphabetic` marks. `_yaml_scalar` tests `value[0].isalpha()`, so a value
+  starting with U+216B (`Nl`) or U+0345 (`Mn`) is quoted, while one starting with U+01C5 (`Lt`) stays
+  plain. `pystr::is_alpha` searches a table generated like the printable one (`gen_printable.py alpha`).
+- `repr` of a list writes each string by `repr`: single quotes unless the string holds a `'` and no
+  `"`, escapes for the quote, backslash, tab, newline, carriage return and every character that is not
+  printable (`\x85` for U+0085, never the raw character). The metadata header of the text formats
+  writes `categories` and `tags` this way, so a list is not a JSON array. `pystr::repr` ports it over
+  `is_printable`.
 - A character class upstream did not mean. `utils.py` `LINES_TRIMMING` is `(?<![p{P}>])\n`: Python
   `re` has no `\p{P}`, so the class is the literal characters `p`, `{`, `P`, `}`, `>`. Port the
   literal behavior and keep a comment saying so.
@@ -153,6 +165,27 @@ function.
   `rend="h 2"` gives `<h2>` and `rend="h9"` gives `<h9>`. It also takes a sign and single `_`
   between digits (`int("1_" * 2500 + "1")` is accepted: only digits count toward the limit of the
   `str.isdecimal` bullet). `pystr::int_str` ports it.
+
+## json and unicodedata
+
+- `json.loads` is not `serde_json`. Five differences change which JSON-LD scripts `baseline` reads:
+  raw control characters inside strings pass with `strict=False` (JSON-LD) and fail in `serde_json`;
+  a lone surrogate escape gives a string holding a surrogate, which `serde_json` rejects; `NaN`,
+  `Infinity` and `-Infinity` are numbers; an integer of more than 4300 digits raises `ValueError` where
+  `serde_json` takes any length; and nesting stops at 9998 levels (`RecursionError`) where
+  `serde_json` stops at 128. Duplicate keys keep the first position and the last value, and only
+  space, tab, newline and carriage return are whitespace (a leading U+FEFF or U+00A0 raises).
+  `pyjson::loads` ports the grammar. Two keys that differ only in a lone surrogate (`topic_` followed
+  by U+D800 or by U+D801) stay two keys although both read with U+FFFF, so `pyjson` keeps a side key
+  of their UTF-16 units.
+- A recursive enum drops recursively. A JSON value type that holds itself drops one frame per level,
+  so a 9998-level document overflows a 512 KiB thread stack on drop, even when the parser is a loop.
+  `Json` is one flat `Vec` of nodes with index ranges; `deep_document_drops_on_small_stack` drops
+  such a document on a 512 KiB stack.
+- `unicodedata` of Python 3.13 is Unicode 15.1. `unicode-normalization` and `icu_normalizer` carry
+  Unicode 16 data and compose U+105D2 U+0307 (Todhri), which Python's NFC leaves as two characters.
+  `pyunicodedata::normalize_nfc` runs over tables generated from the interpreter
+  (`gen_nfc.py`), the same reason `pystr::is_printable` has a generated table.
 
 ## html.unescape and URL parsing
 

@@ -5,9 +5,12 @@ the main text, comments and metadata of web pages. The goal is the same output a
 the pinned release, with a synchronous, cancellable, bounded and panic-free API that is safe to call
 from other languages.
 
-Status: phases 0 to 2 are shipped: input decoding, an html5ever parse into an arena tree with depth and
-node limits, and the parity harness that compares the parsed tree with upstream. There is no extraction
-yet; `docs/phase-plan.md` has the roadmap.
+Status: the extraction pipeline of upstream's fast mode works through the public API (`Options`,
+`Extractor`, `html2txt`): main text and comments from bytes or a string, as text, Markdown or HTML, or as
+the `Document` of `bare_extraction`. Not yet there: metadata extraction, deduplication, XML, XML-TEI, JSON
+and CSV output, and `fast=False`. The crate is not published. Extraction is checked by upstream's unit and
+filter tests ported by name and by cases generated from upstream Python; the corpus parity check is next
+(`docs/phase-plan.md` has the roadmap).
 
 Scope: for now only upstream's fast mode (`fast=True`). The readability and jusText fallbacks that
 upstream runs by default are not ported yet; they may come later. When extraction finds nothing usable
@@ -25,8 +28,8 @@ one ports Python directly:
   are listed in `docs/deviations.md`.
 - Production safety: cancellation, deadlines and input limits in the API, no panics, few dependencies.
 
-Is it better? Not yet, since it extracts nothing today. The bet is that staying close to upstream
-makes each Python release cheaper to follow.
+Is it better? Not yet shown: the corpus parity check and the time and memory measurements come first.
+The bet is that staying close to upstream makes each Python release cheaper to follow.
 
 ## Documents
 

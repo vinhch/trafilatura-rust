@@ -122,7 +122,7 @@ writes it byte for byte.
 | `gen_nfc.py` (`tables`) | `src/pyunicodedata/nfc.rs` | decompositions, combining classes, composition pairs and the quick-check sets behind `unicodedata.normalize("NFC", ...)` of the image's Python |
 | `gen_nfc.py` (`cases`) | `src/pyunicodedata/cases.rs` | NFC of every character with a decomposition or combining class (alone and between `a` and U+0301), of every composition pair and of two Hangul jamo sequences |
 | `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
-| `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the HTML5 entity table and the NFKC netloc breakers of the image's Python |
+| `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the NFKC netloc breakers of the image's Python |
 | `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin` and the two `courlan` helpers on URL strings |
 | `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
 | `gen_main_extractor_cases.py` | `tests/main_extractor_cases/cases.rs` | the seven element handlers on `etree.fromstring` snippets, and `extract_content` or `extract_comments` then `extract_content` on HTML snippets, each with the options it sets and built with `fast=True` (D-1); results are tree dumps and texts |
