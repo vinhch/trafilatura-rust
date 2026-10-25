@@ -13,14 +13,12 @@ mod walk;
 use std::sync::Arc;
 
 pub use html5ever::LocalName;
-pub use parse::{ParseLimits, parse_document};
+pub use parse::{ParseLimits, parse_document, parse_fragment};
 pub use walk::LiveIter;
 
 // Only the `__internals` module and the tests use these until the pipeline lands.
 #[cfg(any(feature = "__internals", test))]
 pub use dump::{DumpMode, dump, dump_from};
-#[cfg(any(feature = "__internals", test))]
-pub use parse::parse_fragment;
 // The depth test of the output walks builds trees past it.
 #[cfg(test)]
 pub use parse::MAX_DEPTH;

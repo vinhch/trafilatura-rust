@@ -36,9 +36,10 @@ pub enum Rejection {
     WrongLanguage,
     /// The input exceeds the size limit.
     InputTooLarge,
-    /// A value upstream raises on: either a `ValueError` upstream catches (it returns no result)
-    /// or a raise that escapes `extract` (a span or character reference of more than 4300 digits,
-    /// a URL `urljoin` rejects, a `hi` rend with no HTML tag, a heading level `int` rejects).
+    /// A value upstream raises on: either a `ValueError` or `TypeError` upstream catches (it
+    /// returns no result) or a raise that escapes `extract` (a span or character reference of more
+    /// than 4300 digits, a URL `urljoin` rejects, a `hi` rend with no HTML tag, a heading level
+    /// `int` rejects, a Discourse `posts` value that is not iterable).
     InvalidValue,
 }
 
@@ -70,3 +71,42 @@ impl fmt::Display for ExtractError {
 }
 
 impl std::error::Error for ExtractError {}
+
+/// The result of a step upstream wraps in `except Exception`: `Rejected(_)` stands for that
+/// exception and gives `Ok(None)`. `Cancelled` and `DeadlineExceeded` are the caller's, so they
+/// stay errors.
+pub(crate) fn caught<T>(result: Result<T, ExtractError>) -> Result<Option<T>, ExtractError> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(ExtractError::Rejected(_)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn caught_maps_errors() {
+        assert_eq!(caught::<u8>(Ok(3)), Ok(Some(3)));
+        for rejection in [
+            Rejection::EmptyTree,
+            Rejection::TreeTooLarge,
+            Rejection::InvalidValue,
+        ] {
+            assert_eq!(
+                caught::<u8>(Err(ExtractError::Rejected(rejection))),
+                Ok(None)
+            );
+        }
+        assert_eq!(
+            caught::<u8>(Err(ExtractError::Cancelled)),
+            Err(ExtractError::Cancelled)
+        );
+        assert_eq!(
+            caught::<u8>(Err(ExtractError::DeadlineExceeded)),
+            Err(ExtractError::DeadlineExceeded)
+        );
+    }
+}

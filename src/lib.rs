@@ -4,6 +4,8 @@
 //! The upstream release this crate follows is recorded in `Cargo.toml` under
 //! `[package.metadata.upstream]`.
 
+#[allow(dead_code)]
+mod baseline;
 mod cancel;
 // No caller outside the tests until the extraction modules land (`context`, `settings`, `utils`,
 // `pystr` and `xpaths` items are `pub` in a private module and re-exported only as far as the tests need).
@@ -47,6 +49,9 @@ pub use error::{ExtractError, Rejection};
 #[cfg(feature = "__internals")]
 #[doc(hidden)]
 pub mod __internals {
+    pub use crate::baseline::{
+        baseline, baseline_tree, basic_cleaning, block_text, build_body, html2txt, html2txt_tree,
+    };
     pub use crate::context::Ctx;
     pub use crate::dom::{
         DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from,

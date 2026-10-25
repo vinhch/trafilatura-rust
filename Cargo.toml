@@ -56,6 +56,10 @@ name = "parity"
 required-features = ["__internals"]
 
 [[test]]
+name = "baseline_tests"
+required-features = ["__internals"]
+
+[[test]]
 name = "unit_tests"
 required-features = ["__internals"]
 
