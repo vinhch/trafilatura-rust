@@ -127,6 +127,7 @@ writes it byte for byte.
 | `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
 | `gen_main_extractor_cases.py` | `tests/main_extractor_cases/cases.rs` | the seven element handlers on `etree.fromstring` snippets, and `extract_content` or `extract_comments` then `extract_content` on HTML snippets, each with the options it sets and built with `fast=True` (D-1); results are tree dumps and texts |
 | `gen_xml_output_cases.py` | `tests/xml_output_cases/cases.rs` | the TXT, Markdown and HTML output of `etree.fromstring` snippets and of the bodies the html snippets of `gen_main_extractor_cases` extract (imported, not copied), built with `fast=True` (D-1); an output is the text or the exception upstream raises |
+| `gen_extraction_cases.py` | `tests/extraction_cases/cases.rs` | `extract` in TXT, Markdown and HTML on the html snippets of `gen_main_extractor_cases` (imported) and on pages for each branch of the cascade, and `baseline` with `html2txt` on JSON-LD and Discourse pages, built with `fast=True` (D-1) and `dedup=False` inside the html5 parser swap; results are the text, `None` or the exception class |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
 `gen_url` and `gen_nfc` take `tables` or `cases` in place of `main`, `gen_printable` `alpha` for `alpha.rs`. The files that hold HTML snippets carry the
@@ -159,3 +160,19 @@ The escapes those would test are unit tests of `Tree::tostring` in `src/dom/test
 case a foreign element reaches the output because the html5 tree keeps it; `Tree::tostring` writes it by
 its local name, as a libxml2 tree does, while lxml on the oracle's html5 tree writes `ns0:` prefixes, so the
 generator strips them from the expected HTML (D-2) and prints how many cases it touched.
+
+The cases of `extraction_cases` run as an integration test too, `tests/extraction_cases.rs`.
+`extract_cases_match_upstream` runs each case through the public `Extractor::extract` with the format and
+options of the case: `None` matches any `Rejected` error and a raised exception matches
+`Rejection::InvalidValue`. `baseline_cases_match_upstream` runs the internal `baseline` and `html2txt` with
+cleaning. Every page is a full `<html>` document except the empty load: a fragment such as `"123"` fails the
+crate's emulation of lxml's length check, which the html5 swap does not make, so it is a unit test with the
+plain-lxml value. A snippet page runs in the three formats under its own options, then in `txt` with
+`precision`, `recall` and comments off, then in `markdown` with formatting on (its default); that last run
+stays only when it expects something other than the same page without formatting, and a baseline page runs
+in `markdown` on the same terms against `txt`. A targeted page is checked while generating against a trace of
+`trafilatura_sequence` (wrappers around `_forum_thread_page`, `baseline`, `html2txt` and `_recall_retry`, and
+the salvage log line), so a page that misses its branch fails the generation; the stage thresholds (250, 3000,
+the page share, the ratio) have a page on each side of the edge. The generator prints the counts per kind to
+stderr: 3350 extract cases (2463 from snippets, 262 targeted, 625 from baseline pages and the empty load) and
+538 baseline cases. Pages that nest thousands of levels are unit tests, not cases.
