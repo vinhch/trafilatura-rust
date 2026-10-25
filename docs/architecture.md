@@ -42,7 +42,7 @@ The hidden feature `__internals` exposes, for the crate's own integration tests 
 `settings` types and element lists, the `utils` functions, the `html_processing` functions and constants,
 the `main_extractor` handlers, `span`, `prune_unwanted_sections`, `recover_wild_text`, `extract_content`
 and `extract_comments`, the `baseline` functions, the `extraction` entry points (`Source`,
-`bare_extraction`, `internal_extraction`, `determine_returnstring`), the `xml` functions
+`bare_extraction`, `internal_extraction`, `determine_returnstring`, `yaml_scalar`), the `xml` functions
 (`delete_element`, `remove_empty_elements`, `merge_with_parent`, `strip_double_tags`,
 `replace_element_text`, `xml_to_text`, `md_link`), `pyhtml::unescape`, `pyjson` (`loads`, `dumps_str`, `Json`),
 `pystr::{is_alpha, repr}`, `pyunicodedata::normalize_nfc` and the `xpaths` items (`Selector`, `alt`,

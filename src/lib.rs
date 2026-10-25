@@ -87,7 +87,7 @@ pub mod __internals {
         parse_document, parse_fragment,
     };
     pub use crate::extraction::{
-        Source, bare_extraction, determine_returnstring, internal_extraction,
+        Source, bare_extraction, determine_returnstring, internal_extraction, yaml_scalar,
     };
     pub use crate::html_processing::{
         CODE_INDICATORS, HTML_TAG_MAPPING, REND_TAG_MAPPING, build_html_output, collect_link_info,

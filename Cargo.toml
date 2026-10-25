@@ -64,6 +64,10 @@ name = "unit_tests"
 required-features = ["__internals"]
 
 [[test]]
+name = "filters_tests"
+required-features = ["__internals"]
+
+[[test]]
 name = "extraction_cases"
 required-features = ["__internals"]
 

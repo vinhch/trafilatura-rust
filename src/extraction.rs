@@ -54,7 +54,7 @@ pub const YAML_RESERVED: &[&str] = &[
 /// `value` as a plain YAML scalar when that reads back as the same string, else as a double-quoted
 /// one (a JSON string).
 // upstream: core.py::_yaml_scalar
-fn yaml_scalar(value: &str) -> String {
+pub fn yaml_scalar(value: &str) -> String {
     let plain = value.chars().next().is_some_and(is_alpha)
         && value == pystr::strip(value)
         && !value.contains(": ")
