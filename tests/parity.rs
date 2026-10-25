@@ -60,8 +60,8 @@ const OUTPUT_FORMATS: [(&str, Format); 3] = [
 ];
 
 /// Pages the crate rejects with `InvalidValue` while upstream extracted text, because the oracle's
-/// normalized tree dropped an element whose name is not an XML Name (D-2): (page id, reason). The
-/// Task 1 recon of the corpus lists none.
+/// normalized tree dropped an element whose name is not an XML Name (D-2): (page id, reason). None
+/// today.
 const NORMALIZED_REJECTS: &[(&str, &str)] = &[];
 
 const DIFF_PAGES: usize = 20;
@@ -354,7 +354,7 @@ fn classify_output(case: &OutputCase, normalized_rejects: &[(&str, &str)]) -> &'
         return "encoding";
     }
     if case.upstream_error {
-        return if rejected(None) {
+        return if rejected(Some(Rejection::InvalidValue)) {
             "upstream-error"
         } else {
             "port-bug"
@@ -423,6 +423,17 @@ fn run_output_page(upstream: &Path, fixtures: &Path, entry: &Value) -> Vec<Outpu
         .collect()
 }
 
+/// Indices of the outputs worth a diff: `port-bug` and `normalized` first, then the other classes
+/// that differ, each group in page order.
+fn diff_order(classes: &[&str]) -> Vec<usize> {
+    let (urgent, rest): (Vec<_>, Vec<_>) = classes
+        .iter()
+        .enumerate()
+        .filter(|(_, class)| !matches!(**class, "match" | "upstream-error"))
+        .partition(|(_, class)| matches!(**class, "port-bug" | "normalized"));
+    urgent.into_iter().chain(rest).map(|(i, _)| i).collect()
+}
+
 fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
     let mut out = String::from("# Parity report: output against the html5 fixtures\n\n");
     let _ = writeln!(out, "Pages: {pages}\n");
@@ -455,10 +466,12 @@ fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
         }
     }
     out.push_str("\n## Diffs (first outputs that do not match)\n\n");
-    let differing = results
-        .iter()
-        .filter(|r| !matches!(r.class, "match" | "upstream-error"));
-    for row in differing.take(DIFF_PAGES) {
+    let classes: Vec<&str> = results.iter().map(|r| r.class).collect();
+    for row in diff_order(&classes)
+        .into_iter()
+        .take(DIFF_PAGES)
+        .map(|i| &results[i])
+    {
         let _ = writeln!(
             out,
             "### {} {} ({})\n\n```diff\n{}```\n",
@@ -492,6 +505,19 @@ fn strip_lxml_namespaces_removes_only_ns_prefixes() {
         "<svg:g>x</svg:g>"
     );
     assert_eq!(strip_lxml_namespaces("<p>ns0:x</p>"), "<p>ns0:x</p>");
+}
+
+#[test]
+fn output_report_lists_port_bugs_first() {
+    let mut classes = vec!["encoding"; 25];
+    classes.push("port-bug");
+    classes.insert(3, "match");
+    let order = diff_order(&classes);
+    let port_bug = classes.len() - 1;
+    assert_eq!(order[0], port_bug);
+    assert!(order[..DIFF_PAGES].contains(&port_bug));
+    assert_eq!(order.len(), 26);
+    assert_eq!(order[1..4], [0, 1, 2]);
 }
 
 #[test]
@@ -534,7 +560,8 @@ fn classify_output_names_each_class() {
     };
     assert_eq!(class(&latin1), "encoding");
 
-    assert_eq!(class(&case(None, true, &too_short)), "upstream-error");
+    assert_eq!(class(&case(None, true, &invalid)), "upstream-error");
+    assert_eq!(class(&case(None, true, &too_short)), "port-bug");
     assert_eq!(class(&case(None, true, &text)), "port-bug");
 
     let dropped = case(Some("a"), false, &invalid);

@@ -37,11 +37,10 @@ pub enum Rejection {
     WrongLanguage,
     /// The input exceeds the size limit.
     InputTooLarge,
-    /// A value upstream raises on: either a `ValueError` or `TypeError` upstream catches (it
-    /// returns no result) or a raise that escapes `extract` (a span or character reference of more
-    /// than 4300 digits, a URL `urljoin` rejects, a `hi` rend with no HTML tag, a heading level
-    /// `int` rejects, a Discourse `posts` value that is not iterable, a tag name lxml refuses to
-    /// create).
+    /// A value upstream raises on: either a `ValueError` or `TypeError` upstream catches (a tag name
+    /// lxml refuses to create; it returns no result) or a raise that escapes `extract` (a span or
+    /// character reference of more than 4300 digits, a URL `urljoin` rejects, a `hi` rend with no
+    /// HTML tag, a heading level `int` rejects, a Discourse `posts` value that is not iterable).
     InvalidValue,
 }
 
