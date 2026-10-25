@@ -503,6 +503,7 @@ fn extract(html: &str, kw: &Kw) -> Option<String> {
 }
 
 /// `extract(content, **kw)` on bytes.
+#[cfg(feature = "decompress")]
 fn extract_bytes(content: &[u8], kw: &Kw) -> Option<String> {
     let input = match &kw.url {
         Some(url) => Input::bytes(content).url(url),
@@ -4796,6 +4797,9 @@ fn test_markdown_metadata_yaml_safe_phase_4_lines() {
     );
     let result = extract_with_metadata(html, &Kw::zero().markdown(), None).unwrap();
     assert!(result.contains("title: \"COP30: a beginner\u{2019}s guide\""));
+    // oracle: extract(html, output_format="markdown", config=ZERO_CONFIG, with_metadata=True) with
+    // fast=True gives the header lines `title: "COP30: a beginner's guide"` (U+2019 for the
+    // apostrophe, as in the title above) and `author: Indu K Murthy`
     assert!(result.contains("author: Indu K Murthy"));
 }
 

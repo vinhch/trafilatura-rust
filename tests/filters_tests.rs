@@ -120,7 +120,8 @@ fn test_filters() {
 }
 
 // The lines of `test_filters` that need the language detection of OI-4: upstream takes this branch
-// with `py3langid` installed.
+// with `py3langid` installed, which the oracle's container does not have, so these values are
+// upstream's assertions as written.
 #[test]
 #[ignore = "phase 4"]
 fn test_filters_phase_4_lines() {
