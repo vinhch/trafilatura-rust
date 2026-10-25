@@ -53,7 +53,7 @@ def class_body(runs: list[tuple[int, int]]) -> str:
 
 
 def constant(name: str, doc: str, runs: list[tuple[int, int]]) -> str:
-    return f'/// {doc}\npub(crate) const {name}: &str = r"{class_body(runs)}";\n'
+    return f'/// {doc}\npub const {name}: &str = r"{class_body(runs)}";\n'
 
 
 def main() -> None:

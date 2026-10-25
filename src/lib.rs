@@ -106,7 +106,7 @@ pub mod __internals {
     };
     pub use crate::pyhtml::unescape;
     pub use crate::pyjson::{Json, JsonRef, Kind, dumps_str, loads};
-    pub use crate::pystr::{is_alpha, repr};
+    pub use crate::pystr::{PY_WORD_CLASS, is_alpha, repr, splitlines};
     pub use crate::pyunicodedata::normalize_nfc;
     pub use crate::settings::{
         Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Document, Extractor, Focus, Format,

@@ -14,7 +14,7 @@ use crate::error::{ExtractError, Rejection};
 use alpha::ALPHA;
 use decimal::ND_ZEROS;
 use printable::{PRINTABLE, SPACE, WORD};
-pub(crate) use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
+pub use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
 
 /// Python's `int()` refuses a decimal string of more digits than this
 /// (`sys.int_info.default_max_str_digits`); bases that are powers of two, such as hex, have no
@@ -135,7 +135,7 @@ fn is_line_break(c: char) -> bool {
 
 /// Python `s.splitlines()`: lines without their terminator; `\r\n` is one break, and a final
 /// terminator adds no empty line.
-pub(crate) fn splitlines(s: &str) -> impl Iterator<Item = &str> {
+pub fn splitlines(s: &str) -> impl Iterator<Item = &str> {
     let mut rest = s;
     std::iter::from_fn(move || {
         if rest.is_empty() {
