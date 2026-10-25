@@ -1,10 +1,12 @@
 #Requires -Version 7.2
 
-# Measure decode + parse, Rust against upstream Python: time (5-run median) and heap per page over
-# the parity corpus. The Rust targets write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json,
+# Measure the parity corpus: time (5-run median) and heap per page. The Rust side covers decode, parse and
+# extraction of every page plus the synthetic pages; the Python side decode + parse only. The Rust targets
+# write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json (and -synthetic.json files),
 # the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
 # prints a Markdown table. Needs the fixtures (scripts/fixtures.ps1): their index.json
-# lists the pages. Run it by hand; the numbers depend on the machine.
+# lists the pages. Run it by hand; the numbers depend on the machine. A full run takes about 5 minutes
+# and 4 GB of RAM.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

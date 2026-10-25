@@ -5,8 +5,8 @@ mismatch, the test and the measurement. Read it before touching `tools/parity/`,
 `tests/common/`, `scripts/fixtures.*`, `scripts/measure.*`, `scripts/oracle.*` or the fixture archive.
 
 Two tests compare the crate with the fixtures: the parsed tree and the `txt`, `markdown` and `html` output.
-The fixtures also hold the `xml`, `xmltei` and `json` outputs and the metadata fields; the extraction phases in
-`phase-plan.md` start comparing them.
+The fixtures also hold the `xml`, `xmltei` and `json` outputs and the metadata fields; the metadata and
+output-format phases of `phase-plan.md` start comparing them.
 
 ## Corpus and fixtures
 
@@ -117,9 +117,26 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
 - With `PARITY_REQUIRE_FIXTURES` set, missing fixtures or an index without pages fail the test
   instead. CI's Ubuntu job unpacks the archive and sets it, and uploads the report as an artifact;
   the Windows job does not unpack fixtures, so its parity test skips.
-- `scripts/measure.sh` (or `.ps1`) times decode plus parse per page for crate and upstream and
-  measures heap per page, into `.temp/measure/<version>.json`. Heap is comparable only on the Rust
-  side: tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine.
+- `scripts/measure.sh` (or `.ps1`) measures, into `.temp/measure/<version>.json`, time (5-run median)
+  and heap per page of the corpus. The Rust side covers `load_html` (decode plus parse) and `extract`
+  (TXT, which repeats both) with the keys `loaded`, `median_ns`, `extract_ok`, `extract_median_ns`,
+  `extract_alloc_bytes`, `extract_alloc_count` and `extract_peak_bytes`, and also the synthetic pages
+  below. The Python side covers decode plus parse only: the comparison with upstream is `load_html`
+  alone, and an upstream extraction number is followup F-24. Heap is comparable only on the Rust side:
+  tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
+  the Rust targets takes about five minutes and about four GB of RAM.
+- Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, F-19,
+  F-21, F-23) and each target runs them once, without warm-up, writing
+  `.temp/measure/<version>-rust-<kind>-synthetic.json` beside the corpus file. `large_page` has 1.1M
+  `<p>` elements and a 10x10 table (`max_nodes` raised to 2,000,000). `cell_budget` is a table of
+  exactly `MAX_OUTPUT_NODES` cells (40,000 rows of colspan 100) and `cell_budget_over` has one row
+  more; the target fails after writing when an outcome differs from the page's expected one (`ok`,
+  or `too_large` for `Rejected(TreeTooLarge)`). `ordered_list_50k` and `ordered_list_200k` are
+  Markdown lists of 50,000 and 200,000 items inside `<article>` (a bare `<ol>` in `<body>` is flattened
+  and never reaches `xml::list_marker`); the heap target skips them, because dhat would multiply their
+  runtime (the 200k list alone takes about 150 s). A synthetic entry holds `name`, `input_bytes`,
+  `expected`, `outcome`, and `output_bytes` and `elapsed_ns` (time) or `alloc_bytes`, `alloc_count` and
+  `peak_bytes` (heap).
 - `scripts/oracle.sh 'CODE'` (or `.ps1`) runs one Python snippet with upstream importable at the pin
   and prints its stdout: the way to get an expected value for a ported test. It runs where
   `scripts/fixtures.sh` runs (uv on Linux, Docker elsewhere), so lxml is libxml2 2.14.6 in both.
@@ -130,7 +147,7 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
 | `TRAFILATURA_FIXTURES` | tests | fixture directory instead of `.temp/fixtures/<version>` |
 | `PARITY_REQUIRE_FIXTURES` | parity test | missing fixtures fail instead of skip |
 | `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap` | `1` lets the targets run; they skip otherwise |
-| `TRAFILATURA_MEASURE_ONLY` | measure targets | limits a measurement to pages whose source path contains the text |
+| `TRAFILATURA_MEASURE_ONLY` | measure targets | unset: the corpus, then the synthetic pages; `synthetic`: only the synthetic pages, the corpus file untouched; any other text: only the corpus pages whose source path contains it |
 | `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure` | labels the host of a Python measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |
 
 ## Generated test data
