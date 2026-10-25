@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use trafilatura_rust::__internals::{HtmlInput, ParseLimits, Tree, load_html};
+use trafilatura_rust::__internals::{HtmlInput, MAX_FILE_SIZE, ParseLimits, Tree, load_html};
 use trafilatura_rust::Call;
 use trafilatura_rust::ExtractError;
 
@@ -31,6 +31,7 @@ pub fn requested(name: &str) -> bool {
 pub fn load(bytes: &[u8]) -> Result<Tree, ExtractError> {
     load_html(
         HtmlInput::Bytes(bytes),
+        MAX_FILE_SIZE,
         &ParseLimits::default(),
         &Call::default(),
     )

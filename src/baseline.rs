@@ -16,7 +16,7 @@ use crate::html_processing::tick;
 use crate::pyhtml::unescape;
 use crate::pyjson::{Json, JsonRef, Kind, loads};
 use crate::pystr::{self, PY_SPACE_CLASS, ignore_case_i};
-use crate::settings::{BASIC_CLEAN_XPATH, DEDUPE_SCAN_CAP, MIN_DUPLICATE_LENGTH};
+use crate::settings::{BASIC_CLEAN_XPATH, DEDUPE_SCAN_CAP, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH};
 use crate::utils::{HtmlInput, as_list, load_html, remove_control_characters, trim};
 use crate::xml::delete_element;
 
@@ -591,7 +591,7 @@ fn load(
     limits: &ParseLimits,
     call: &Call<'_>,
 ) -> Result<Option<Tree>, ExtractError> {
-    match load_html(input, limits, call) {
+    match load_html(input, MAX_FILE_SIZE, limits, call) {
         Ok(tree) => Ok(Some(tree)),
         Err(ExtractError::Rejected(Rejection::EmptyTree)) => Ok(None),
         Err(error) => Err(error),

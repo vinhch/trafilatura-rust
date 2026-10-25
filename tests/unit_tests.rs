@@ -10,9 +10,9 @@ use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
     BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput, LiveIter,
-    MANUALLY_CLEANED, MANUALLY_STRIPPED, MIN_DUPLICATE_LENGTH, NodeId, OVERALL_DISCARD_XPATH,
-    PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt, convert_tags,
-    convert_to_html, delete_by_link_density, delete_element, dump, extract_content,
+    MANUALLY_CLEANED, MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, NodeId,
+    OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits, Selector, TAG_CATALOG, Tree, alt,
+    convert_tags, convert_to_html, delete_by_link_density, delete_element, dump, extract_content,
     handle_formatting, handle_image, handle_lists, handle_paragraphs, handle_quotes, handle_table,
     handle_textelem, handle_textnode, handle_titles, link_density_test, link_density_test_tables,
     load_html, md_link, merge_with_parent, parse_document, parse_fragment, process_node,
@@ -559,7 +559,13 @@ fn test_wrapper_form_kept() {
     let call = Call::default();
     let options = default_options();
     let load = |html: &str| {
-        let tree = load_html(HtmlInput::Str(html), &ParseLimits::default(), &call).unwrap();
+        let tree = load_html(
+            HtmlInput::Str(html),
+            MAX_FILE_SIZE,
+            &ParseLimits::default(),
+            &call,
+        )
+        .unwrap();
         let root = tree.root();
         (tree, root)
     };

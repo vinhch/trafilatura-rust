@@ -61,6 +61,9 @@ pub mod __internals {
         DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from,
         parse_document, parse_fragment,
     };
+    pub use crate::extraction::{
+        Source, bare_extraction, determine_returnstring, internal_extraction,
+    };
     pub use crate::html_processing::{
         CODE_INDICATORS, HTML_TAG_MAPPING, REND_TAG_MAPPING, build_html_output, collect_link_info,
         convert_deletions, convert_details, convert_headings, convert_line_breaks, convert_link,

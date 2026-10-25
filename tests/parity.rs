@@ -14,7 +14,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use trafilatura_rust::__internals::{DumpMode, HtmlInput, ParseLimits, dump, load_html};
+use trafilatura_rust::__internals::{
+    DumpMode, HtmlInput, MAX_FILE_SIZE, ParseLimits, dump, load_html,
+};
 use trafilatura_rust::{Call, ExtractError, Rejection};
 
 /// Elements whose tree differs because html5lib (the fixture parser) predates a WHATWG change that
@@ -170,6 +172,7 @@ fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, bool) {
     let bytes = std::fs::read(upstream.join(source)).unwrap();
     let loaded = load_html(
         HtmlInput::Bytes(&bytes),
+        MAX_FILE_SIZE,
         &ParseLimits::default(),
         &Call::default(),
     );

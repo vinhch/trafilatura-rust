@@ -1,11 +1,14 @@
 use super::*;
 use encoding_rs::{WINDOWS_1251, WINDOWS_1252};
 
+use crate::settings::MAX_FILE_SIZE;
+
 const SIZE: usize = MAX_FILE_SIZE;
 
 fn load(html: &str) -> Result<Tree, ExtractError> {
     load_html(
         HtmlInput::Str(html),
+        SIZE,
         &ParseLimits::default(),
         &Call::default(),
     )
@@ -14,6 +17,7 @@ fn load(html: &str) -> Result<Tree, ExtractError> {
 fn load_bytes(bytes: &[u8]) -> Result<Tree, ExtractError> {
     load_html(
         HtmlInput::Bytes(bytes),
+        SIZE,
         &ParseLimits::default(),
         &Call::default(),
     )

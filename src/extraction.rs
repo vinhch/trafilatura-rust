@@ -1,5 +1,5 @@
-//! The extraction entry points of upstream `core.py`: the output step and the extraction cascade;
-//! the public functions follow in later tasks.
+//! The extraction entry points of upstream `core.py`: the output step, the extraction cascade and the
+//! functions that run them on a page or a caller's tree.
 
 use std::borrow::Cow;
 use std::sync::LazyLock;
@@ -9,16 +9,18 @@ use regex::Regex;
 use crate::baseline::{baseline_tree, html2txt_tree};
 use crate::cancel::Call;
 use crate::context::Ctx;
-use crate::dom::{NodeId, ParseLimits, Tree};
-use crate::error::{ExtractError, caught};
+use crate::deduplication::{content_fingerprint, duplicate_test};
+use crate::dom::{LocalName, NodeId, Ns, ParseLimits, Tree};
+use crate::error::{ExtractError, Rejection, caught};
 use crate::html_processing::{
     build_html_output, convert_tags, prune_unwanted_nodes, tick, tree_cleaning,
 };
 use crate::main_extractor::{elem_text, extract_comments, extract_content};
+use crate::metadata::extract_metadata;
 use crate::pyjson::dumps_str;
 use crate::pystr::{self, PY_SPACE_CLASS, is_alpha};
 use crate::settings::{Document, Extractor, Field, Focus, Format};
-use crate::utils::normalize_unicode;
+use crate::utils::{HtmlInput, check_html_lang, language_filter, load_html, normalize_unicode};
 use crate::xml::{build_json_output, control_xml_output, meta_items, xml_to_csv, xml_to_text};
 use crate::xpaths::{RAW_TREE_PRUNE_XPATH, REMOVE_COMMENTS_AND_LISTS_XPATH, REMOVE_COMMENTS_XPATH};
 
@@ -408,6 +410,188 @@ pub fn trafilatura_sequence(
         temp_text = text;
     }
     Ok((postbody, temp_text, comments_body, temp_comments))
+}
+
+/// What an extraction reads, upstream's `filecontent`.
+// upstream: core.py::bare_extraction (filecontent)
+#[derive(Clone, Copy, Debug)]
+pub enum Source<'a> {
+    /// An HTML page, as bytes or text.
+    Input(HtmlInput<'a>),
+    /// An element of a caller's tree. Its subtree is copied into the call's own arena, so the
+    /// caller's tree stays as it is. The subtree must be at most `MAX_DEPTH` deep, as the parser
+    /// guarantees, or the caller must provide the stack the recursive output walks need.
+    Tree(&'a Tree, NodeId),
+}
+
+/// Upstream's tree size check on the extracted body: more than `max_tree_size` children are first
+/// cut by dissolving the `hi` elements, then rejected when still too many. `None` and `Some(0)`
+/// skip the check, as upstream's `if options.max_tree_size:` does.
+// upstream: core.py::bare_extraction (tree size sanity check)
+fn check_tree_size(
+    tree: &mut Tree,
+    postbody: NodeId,
+    max_tree_size: Option<usize>,
+) -> Result<(), ExtractError> {
+    let Some(max) = max_tree_size.filter(|&max| max != 0) else {
+        return Ok(());
+    };
+    if tree.child_count(postbody) <= max {
+        return Ok(());
+    }
+    tree.strip_tags(postbody, &["hi"]);
+    if tree.child_count(postbody) > max {
+        return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+    }
+    Ok(())
+}
+
+/// Extracts the main text and the comments of `source` into a [`Document`], rejecting what upstream
+/// discards: an empty tree, a wrong `html` language, a blacklisted URL or missing metadata, a tree
+/// over `max_tree_size`, a text and comments both under the minimum sizes, a duplicate and a wrong
+/// language. With the Python format the document carries `text` and `comments` as strings; with any
+/// other it keeps only `raw_text`, and the comments body always.
+// upstream: core.py::bare_extraction
+pub fn bare_extraction(
+    source: Source<'_>,
+    ctx: &Ctx<'_>,
+    limits: &ParseLimits,
+) -> Result<Document, ExtractError> {
+    let call = ctx.call;
+    let options = &ctx.options;
+    let (mut tree, root) = match source {
+        Source::Input(input) => {
+            let tree = load_html(input, options.max_file_size, limits, call)?;
+            let root = tree.root();
+            (tree, root)
+        }
+        Source::Tree(caller, element) => {
+            // the cascade prunes and edits the tree it gets
+            let mut tree = Tree::new(LocalName::from("html"), Ns::Html, Vec::new());
+            let root = caller.copy_into(element, &mut tree);
+            (tree, root)
+        }
+    };
+    call.check()?;
+
+    let lang = options.lang.as_deref().filter(|lang| !lang.is_empty());
+    // deviation: D-1 (`options.fast or not LANGID_FLAG`: the check runs in fast mode)
+    if let Some(lang) = lang
+        && !check_html_lang(&tree, root, lang, false)
+    {
+        return Err(ExtractError::Rejected(Rejection::WrongHtmlLang));
+    }
+
+    let mut document = if options.with_metadata {
+        // todo(phase 4): metadata
+        // deviation: D-1 (upstream passes `options.fast` as `extensive`)
+        let document = extract_metadata(
+            &tree,
+            root,
+            options.url.as_deref(),
+            &options.date_params,
+            true,
+            &options.author_blacklist,
+        );
+        if document
+            .url
+            .as_ref()
+            .is_some_and(|url| options.url_blacklist.contains(url))
+        {
+            return Err(ExtractError::Rejected(Rejection::BlacklistedUrl));
+        }
+        if options.only_with_metadata
+            && !["date", "title", "url"]
+                .iter()
+                .all(|&name| document.field(name).is_some())
+        {
+            return Err(ExtractError::Rejected(Rejection::MissingMetadata));
+        }
+        document
+    } else {
+        Document::new()
+    };
+    call.check()?;
+
+    // `options.url or document.url`: an empty string is no URL
+    let url = options
+        .url
+        .as_deref()
+        .filter(|url| !url.is_empty())
+        .or(document.url.as_deref().filter(|url| !url.is_empty()));
+    let (postbody, temp_text, comments_body, temp_comments) =
+        trafilatura_sequence(&mut tree, root, ctx, url, limits)?;
+    call.check()?;
+
+    check_tree_size(&mut tree, postbody, options.max_tree_size)?;
+    if temp_text.chars().count() < options.min_output_size
+        && temp_comments.chars().count() < options.min_output_comm_size
+    {
+        return Err(ExtractError::Rejected(Rejection::TooShort));
+    }
+    if options.dedup && duplicate_test(&tree, postbody, ctx) {
+        return Err(ExtractError::Rejected(Rejection::Duplicate));
+    }
+    // todo(phase 4): language (the detected language goes into `document.language`)
+    if let Some(lang) = lang
+        && language_filter(&temp_text, &temp_comments, Some(lang))
+    {
+        return Err(ExtractError::Rejected(Rejection::WrongLanguage));
+    }
+    call.check()?;
+
+    // outside upstream's `try`: an error here escapes
+    let keeps_comments_body = options.format != Format::Python || options.comments;
+    if options.format == Format::Python {
+        let text = xml_to_text(&mut tree, Some(postbody), options.formatting, call)?;
+        if options.comments {
+            document.comments = Some(xml_to_text(
+                &mut tree,
+                Some(comments_body),
+                options.formatting,
+                call,
+            )?);
+        }
+        document.raw_text = Some(text.clone());
+        document.text = Some(text);
+    } else {
+        document.raw_text = Some(temp_text);
+    }
+    // the document owns just the two bodies, so the call's arena goes away with `tree`
+    document.body = tree.copy_into(postbody, &mut document.tree);
+    if keeps_comments_body {
+        document.comments_body = tree.copy_into(comments_body, &mut document.tree);
+    }
+    Ok(document)
+}
+
+/// Extracts `source` and renders it in the format of `options` into `Document::text`; `record_id`
+/// goes to `Document::id` and a content fingerprint to `Document::fingerprint` for the formats
+/// that carry them. Fails with `Rejection::InvalidValue` after a successful extraction for the
+/// Python format, which only `bare_extraction` serves.
+// upstream: core.py::_internal_extraction
+pub fn internal_extraction(
+    source: Source<'_>,
+    record_id: Option<&str>,
+    ctx: &Ctx<'_>,
+    limits: &ParseLimits,
+) -> Result<Document, ExtractError> {
+    let options = &ctx.options;
+    let mut document = bare_extraction(source, ctx, limits)?;
+    // the TXT formats show the ID and the fingerprint only in their metadata header
+    if !TXT_FORMATS.contains(&options.format) || options.with_metadata {
+        if options.format == Format::Python {
+            return Err(ExtractError::Rejected(Rejection::InvalidValue));
+        }
+        document.id = record_id.map(str::to_owned);
+        if let Some(raw_text) = &document.raw_text {
+            let title = document.title.as_deref().unwrap_or("None");
+            // todo(phase 5): deduplication
+            document.fingerprint = Some(content_fingerprint(&format!("{title} {raw_text}")));
+        }
+    }
+    document.text = Some(determine_returnstring(&mut document, options, ctx.call)?);
+    Ok(document)
 }
 
 #[cfg(test)]

@@ -15,7 +15,6 @@ use crate::error::{ExtractError, Rejection};
 use crate::pyjson::{Json, JsonRef, Kind};
 use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS, ignore_case_i};
 use crate::pyunicodedata::normalize_nfc;
-use crate::settings::MAX_FILE_SIZE;
 
 /// Input accepted by `load_html`.
 // upstream: utils.py::HtmlInput
@@ -301,18 +300,20 @@ fn leading_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<&str> {
 }
 
 /// Decodes, repairs and parses `input`; rejects with `Rejection::EmptyTree` what upstream
-/// returns `None` for.
+/// returns `None` for. `max_size` only caps the decompression of byte input (upstream's
+/// `max_size`); a decoded string is never cut.
 ///
 /// Expects a full document: a single-block fragment without `html` near its start is rejected,
 /// as upstream does.
 // upstream: utils.py::load_html
 pub fn load_html(
     input: HtmlInput<'_>,
+    max_size: usize,
     limits: &ParseLimits,
     call: &Call<'_>,
 ) -> Result<Tree, ExtractError> {
     let html = match input {
-        HtmlInput::Bytes(bytes) => decode_file(bytes, MAX_FILE_SIZE),
+        HtmlInput::Bytes(bytes) => decode_file(bytes, max_size),
         HtmlInput::Str(text) => Cow::Borrowed(text),
     };
     let beginning = html.chars().take(50).collect::<String>().to_lowercase();
