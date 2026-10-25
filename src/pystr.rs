@@ -1,15 +1,17 @@
-//! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable`, `\w` and
-//! decimal digits.
+//! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable`, `isalpha`,
+//! `repr`, `\w` and decimal digits.
 //!
 //! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py` and
 //! `gen_decimal.py`); the functions only search them.
 
+mod alpha;
 mod decimal;
 mod printable;
 
 use std::cmp::Ordering;
 
 use crate::error::{ExtractError, Rejection};
+use alpha::ALPHA;
 use decimal::ND_ZEROS;
 use printable::{PRINTABLE, SPACE, WORD};
 pub(crate) use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
@@ -19,7 +21,8 @@ pub(crate) use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
 /// limit. Leading zeros count.
 pub const MAX_STR_DIGITS: usize = 4300;
 
-fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
+/// Whether `c` lies in one of the sorted, disjoint inclusive `(start, end)` ranges of `table`.
+pub(crate) fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
     let c = u32::from(c);
     table
         .binary_search_by(|&(start, end)| {
@@ -167,6 +170,51 @@ pub(crate) fn is_printable(c: char) -> bool {
 /// Python `s.isprintable()`: true for the empty string.
 pub(crate) fn is_all_printable(s: &str) -> bool {
     s.chars().all(is_printable)
+}
+
+/// Python `str.isalpha` for one character: the categories `Lm`, `Lt`, `Lu`, `Ll` and `Lo`. Rust's
+/// `char::is_alphabetic` also takes `Nl` and `Other_Alphabetic` marks.
+pub fn is_alpha(c: char) -> bool {
+    in_ranges(ALPHA, c)
+}
+
+/// Python `repr(s)` of a `str`: single quotes unless `s` holds a `'` and no `"`, backslash escapes
+/// for the quote, `\\`, `\t`, `\n`, `\r` and every character that is not printable
+/// (`\xNN`, `\uNNNN` or `\UNNNNNNNN`, lowercase hex).
+// upstream: repr (CPython)
+pub fn repr(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::with_capacity(s.len().saturating_add(2));
+    out.push(quote);
+    for c in s.chars() {
+        let code = u32::from(c);
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            _ if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            ' '..='~' => out.push(c),
+            _ if c.is_ascii() => out.push_str(&format!("\\x{code:02x}")),
+            _ if is_printable(c) => out.push(c),
+            _ if code <= 0xff => out.push_str(&format!("\\x{code:02x}")),
+            _ => {
+                let (marker, width) = if code <= 0xffff { ('u', 4) } else { ('U', 8) };
+                out.push('\\');
+                out.push(marker);
+                out.push_str(&format!("{code:0width$x}"));
+            }
+        }
+    }
+    out.push(quote);
+    out
 }
 
 /// Python `re` `\w` in Unicode mode: alphanumerics (`isalnum`, so `\u{b2}` counts) and `_`; Rust's
@@ -350,6 +398,60 @@ mod tests {
         assert!(!is_printable('\u{2028}')); // oracle: chr(0x2028).isprintable()
         assert!(!is_printable('\u{e000}')); // oracle: chr(0xe000).isprintable()
         assert!(!is_printable('\u{e0001}')); // oracle: chr(0xe0001).isprintable()
+    }
+
+    #[test]
+    fn is_alpha_matches_python() {
+        // oracle: [c.isalpha() for c in (chr(0x2160), chr(0x345), chr(0x1c5), chr(0xe9))]
+        assert!(!is_alpha('\u{2160}'));
+        assert!(!is_alpha('\u{345}'));
+        assert!(is_alpha('\u{1c5}'));
+        assert!(is_alpha('\u{e9}'));
+        // oracle: chr(0x2160).isalpha() is False, while Rust's `is_alphabetic` says true
+        assert!('\u{2160}'.is_alphabetic());
+        // oracle: [(c, chr(c).isalpha()) for c in range(0x110000)], by the edges of its true runs
+        for &(start, end) in ALPHA {
+            for (code, expected) in [
+                (start.checked_sub(1), false),
+                (Some(start), true),
+                (Some(end), true),
+                (end.checked_add(1), false),
+            ] {
+                let Some(c) = code.and_then(char::from_u32) else {
+                    continue;
+                };
+                assert_eq!(is_alpha(c), expected, "U+{:04X}", u32::from(c));
+            }
+        }
+    }
+
+    /// `repr` expected values name a backslash as `@`, so that no escape sequence stands in the source.
+    fn at(s: &str) -> String {
+        s.replace('@', "\\")
+    }
+
+    #[test]
+    fn repr_matches_python() {
+        // oracle: repr(s)
+        for (s, expected) in [
+            ("it's", at("\"it's\"")),
+            ("say \"hi\"", at("'say \"hi\"'")),
+            ("a\nb", at("'a@nb'")),
+            ("\u{85}", at("'@x85'")),
+            ("\u{e9}", at("'\u{e9}'")),
+            ("it's \"x\"", at("'it@'s \"x\"'")),
+            ("\u{2028}", at("'@u2028'")),
+            ("\u{e0001}", at("'@U000e0001'")),
+            ("a\\b", at("'a@@b'")),
+            ("t\tc\r", at("'t@tc@r'")),
+            ("\x7f\x1f\u{a0}", at("'@x7f@x1f@xa0'")),
+            ("\u{ff}\u{100}", at("'\u{ff}\u{100}'")),
+            ("'", at("\"'\"")),
+            ("\"", at("'\"'")),
+            ("", at("''")),
+        ] {
+            assert_eq!(repr(s), expected, "{s:?}");
+        }
     }
 
     #[test]

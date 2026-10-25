@@ -118,6 +118,9 @@ writes it byte for byte.
 | --- | --- | --- |
 | `gen_printable.py` | `src/pystr/printable.rs` | the `str.isprintable` ranges of the image's Python |
 | `gen_decimal.py` | `src/pystr/decimal.rs` | the run starts of the `Nd` decimal digits of the image's Python |
+| `gen_printable.py` (`alpha`) | `src/pystr/alpha.rs` | the `str.isalpha` ranges of the image's Python |
+| `gen_nfc.py` (`tables`) | `src/pyunicodedata/nfc.rs` | decompositions, combining classes, composition pairs and the quick-check sets behind `unicodedata.normalize("NFC", ...)` of the image's Python |
+| `gen_nfc.py` (`cases`) | `src/pyunicodedata/cases.rs` | NFC of every character with a decomposition or combining class (alone and between `a` and U+0301), of every composition pair and of two Hangul jamo sequences |
 | `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
 | `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the HTML5 entity table and the NFKC netloc breakers of the image's Python |
 | `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin` and the two `courlan` helpers on URL strings |
@@ -126,7 +129,7 @@ writes it byte for byte.
 | `gen_xml_output_cases.py` | `tests/xml_output_cases/cases.rs` | the TXT, Markdown and HTML output of `etree.fromstring` snippets and of the bodies the html snippets of `gen_main_extractor_cases` extract (imported, not copied), built with `fast=True` (D-1); an output is the text or the exception upstream raises |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_url` takes `tables` or `cases` in place of `main`. The files that hold HTML snippets carry the
+`gen_url` and `gen_nfc` take `tables` or `cases` in place of `main`, `gen_printable` `alpha` for `alpha.rs`. The files that hold HTML snippets carry the
 `treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
 parse dumps the same: a snippet that parses differently is changed, never the expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized

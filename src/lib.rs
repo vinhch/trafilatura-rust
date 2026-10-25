@@ -28,6 +28,8 @@ mod pyjson;
 #[allow(dead_code)]
 mod pystr;
 #[allow(dead_code)]
+mod pyunicodedata;
+#[allow(dead_code)]
 mod pyurl;
 #[allow(dead_code)]
 mod settings;
@@ -66,13 +68,15 @@ pub mod __internals {
     };
     pub use crate::pyhtml::unescape;
     pub use crate::pyjson::{Json, JsonRef, Kind, dumps_str, loads};
+    pub use crate::pystr::{is_alpha, repr};
+    pub use crate::pyunicodedata::normalize_nfc;
     pub use crate::settings::{
         Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED,
         MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE, TAG_CATALOG,
     };
     pub use crate::utils::{
-        HtmlInput, decode_file, detect_encoding, load_html, safe_base_url, safe_relative_url,
-        sanitize, textfilter, trim,
+        HtmlInput, decode_file, detect_encoding, load_html, normalize_unicode, safe_base_url,
+        safe_relative_url, sanitize, textfilter, trim,
     };
     pub use crate::xml::{
         delete_element, md_link, merge_with_parent, remove_empty_elements, replace_element_text,

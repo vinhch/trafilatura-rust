@@ -949,3 +949,10 @@ fn as_list_matches_python() {
     // oracle: as_list(json.loads('null')) gives []
     assert_eq!(as_list(&json, get("z")), []);
 }
+
+#[test]
+fn normalize_unicode_is_nfc() {
+    // oracle: normalize_unicode("e" + chr(0x301) + " " + chr(0x212b)), normalize_unicode("\xe9")
+    assert_eq!(normalize_unicode("e\u{301} \u{212b}"), "\u{e9} \u{c5}");
+    assert!(matches!(normalize_unicode("\u{e9}"), Cow::Borrowed(_)));
+}

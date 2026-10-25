@@ -14,6 +14,7 @@ use crate::dom::{NodeId, ParseLimits, Tree, parse_document};
 use crate::error::{ExtractError, Rejection};
 use crate::pyjson::{Json, JsonRef, Kind};
 use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS, ignore_case_i};
+use crate::pyunicodedata::normalize_nfc;
 use crate::settings::MAX_FILE_SIZE;
 
 /// Input accepted by `load_html`.
@@ -785,6 +786,12 @@ pub fn as_list(json: &Json, value: Option<JsonRef>) -> Vec<JsonRef> {
         Some(r) if json.kind(r) != Kind::Null => vec![r],
         _ => Vec::new(),
     }
+}
+
+/// `s` in Unicode normal form NFC, the only form upstream passes; borrowed when already normalized.
+// upstream: utils.py::normalize_unicode
+pub fn normalize_unicode(s: &str) -> Cow<'_, str> {
+    normalize_nfc(s)
 }
 
 #[cfg(test)]
