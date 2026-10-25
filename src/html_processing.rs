@@ -857,8 +857,9 @@ pub fn convert_link(tree: &mut Tree, elem: NodeId, base_url: &str) {
 }
 
 /// Simplifies the markup below `root` and converts the relevant HTML tags to the XML standard of
-/// the pipeline; `url` resolves relative links. Checks `ctx.call` about every `CHECK_INTERVAL`
-/// matched elements of each walk; the live walks themselves take no `Call`.
+/// the pipeline; `url` resolves relative links. Checks `ctx.call` before each walk and about every
+/// `CHECK_INTERVAL` matched elements of a walk; the live walks themselves take no `Call`, so one
+/// walk runs unchecked, bounded by `max_nodes`.
 // upstream: htmlprocessing.py::convert_tags
 pub fn convert_tags(
     tree: &mut Tree,
@@ -869,6 +870,7 @@ pub fn convert_tags(
     let call = ctx.call;
     let options = &ctx.options;
     // upstream edits inside `tree.iter(...)` in each loop below, hence the live walks
+    call.check()?;
     if !options.links {
         // delete links for faster processing
         let containers: &[&str] = if options.tables {
@@ -905,6 +907,7 @@ pub fn convert_tags(
     }
 
     // Yoast FAQ blocks: question headers are bold but act as titles (#471)
+    call.check()?;
     let tags = ["strong"];
     let mut walk = LiveIter::new(tree, root, &tags);
     let mut visited = 0usize;
@@ -924,6 +927,7 @@ pub fn convert_tags(
     // an empty sup/sub carries nothing to raise or lower, and process_node() would later
     // hand it the following text as its own, so the marker would wrap the wrong words.
     // The tail is kept in every focus mode, unlike the pruning of CUT_EMPTY_ELEMS.
+    call.check()?;
     let tags = ["sub", "sup"];
     let mut walk = LiveIter::new(tree, root, &tags);
     let mut visited = 0usize;
@@ -935,6 +939,7 @@ pub fn convert_tags(
     }
 
     let rend_tags: Vec<&str> = REND_TAG_MAPPING.iter().map(|&(tag, _)| tag).collect();
+    call.check()?;
     if options.formatting {
         let mut walk = LiveIter::new(tree, root, &rend_tags);
         let mut visited = 0usize;
@@ -953,6 +958,7 @@ pub fn convert_tags(
     }
 
     // iterate over all concerned elements
+    call.check()?;
     let mut walk = LiveIter::new(tree, root, CONVERSION_TAGS);
     let mut visited = 0usize;
     while let Some(elem) = walk.next(tree) {
@@ -962,6 +968,7 @@ pub fn convert_tags(
 
     // images
     if options.images {
+        call.check()?;
         let tags = ["img"];
         let mut walk = LiveIter::new(tree, root, &tags);
         let mut visited = 0usize;

@@ -1,4 +1,4 @@
-"""Generates the files behind `crate::pyurl`: Python's `html.unescape` and `urllib.parse` tables and cases.
+"""Generates the files behind `crate::pyurl`: the netloc table and the cases of `html.unescape` and `urllib.parse`.
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -49,22 +49,13 @@ def netloc_breakers() -> list[str]:
 
 
 def tables() -> None:
-    from html.entities import html5
-
-    entities = sorted(html5.items(), key=lambda item: item[0].encode())
     breakers = netloc_breakers()
     out = header(
         "src/pyurl/tables.rs",
         "tables",
-        "Python's HTML5 entity table (sorted by name, byte order) and the NFKC netloc breakers (sorted).",
+        "Python's NFKC netloc breakers (sorted).",
     )
     out += [
-        "/// `html.entities.html5`, sorted by name in byte order for `binary_search_by`.",
-        "#[rustfmt::skip]",
-        "pub(super) static HTML5_ENTITIES: &[(&str, &str)] = &[",
-        *[f"    ({rust_str(name)}, {rust_str(value)})," for name, value in entities],
-        "];",
-        "",
         "/// Non-ASCII characters whose NFKC form contains one of `/?#@:`, sorted: the characters",
         "/// `urllib.parse._checknetloc` rejects.",
         "#[rustfmt::skip]",

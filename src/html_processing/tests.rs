@@ -583,6 +583,24 @@ fn convert_tags_stops_when_cancelled() {
 }
 
 #[test]
+fn convert_tags_checks_call_between_walks() {
+    // no element matches any walk, so no per-element tick runs
+    let (mut tree, root) = fragment("<div><p>text</p></div>");
+    let token = crate::CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let options = options();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    assert_eq!(
+        convert_tags(&mut tree, root, &ctx, None),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
 fn convert_line_breaks_renames_and_keeps_attributes() {
     // oracle: convert_line_breaks(etree.fromstring(source)) for each source
     for (source, expected) in [

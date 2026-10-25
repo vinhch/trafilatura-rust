@@ -3,7 +3,7 @@
 use super::cases::{
     NFKC_COMPOSITION_CASES, UNESCAPE_CASES, URLJOIN_CASES, URLSPLIT_CASES, URLUNSPLIT_CASES,
 };
-use super::tables::{HTML5_ENTITIES, NFKC_NETLOC_BREAKERS};
+use super::tables::NFKC_NETLOC_BREAKERS;
 use super::*;
 
 #[test]
@@ -34,16 +34,6 @@ fn unescape_raises_above_the_decimal_digit_limit() {
         Err(UrlError)
     );
     assert!(unescape(&format!("&#x{}", "9".repeat(5000))).is_ok());
-}
-
-#[test]
-fn charref_pattern_compiles() {
-    assert!(CHARREF.is_some());
-}
-
-#[test]
-fn entity_table_is_sorted() {
-    assert!(HTML5_ENTITIES.windows(2).all(|pair| pair[0].0 < pair[1].0));
 }
 
 #[test]
