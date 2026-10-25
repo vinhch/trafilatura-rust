@@ -30,7 +30,7 @@ The parity bar for every phase is upstream Python output at the pinned release w
 | 7 | First release: lift `publish = false`, set the version, publish 0.1.0 through `release.yml`, move the .NET binding onto this crate | Not started | Crate on crates.io; the .NET binding builds and passes its tests against it | 3, 4, 5 |
 
 Phase 3 sub-phases. Each brings its modules to parity with unit tests before the next starts; the
-corpus parity check for main text turns on in 3f. Each sub-phase after 3b gets a short design addendum
+corpus parity check for main text turns on in 3g. Each sub-phase after 3b gets a short design addendum
 before its code.
 
 | Sub-phase | Scope | Status |
@@ -40,7 +40,8 @@ before its code.
 | 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | done |
 | 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | done |
 | 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | done |
-| 3f `baseline.rs`, `extraction.rs`, public API | `baseline`, `html2txt`, the cascade, `bare_extraction`, `extract`, `determine_returnstring`, `normalize_unicode`, `meta_items`, `Options`, `Extractor`, `Input`, `Document`; corpus parity on `txt`, `markdown`, `html`; memory measurement of the arena copies | next |
+| 3f `baseline.rs`, `extraction.rs`, public API | `baseline`, `html2txt`, the cascade, `bare_extraction`, `extract`, `determine_returnstring`, `normalize_unicode`, `meta_items`, `Options`, `Extractor`, `Input`, `Document` | next |
+| 3g Corpus parity | corpus parity on `txt`, `markdown`, `html`; `realworld_tests.py` and `repeated_output_tests.py`; time and memory measurement of extraction, the arena copies included | not started |
 
 ### Shipped phases
 
@@ -81,6 +82,6 @@ Work worth doing after the phases it depends on, not scheduled yet.
 | F-16 | `prune_xpath` (D-7): an XPath engine, or a caller-supplied predicate in place of the XPath strings. | Phase 3f |
 | F-17 | Cancellation granularity of the tree walks: `dom/` walks and `LiveIter::new` take no `Call`, and `convert_tags` runs several walks in a row that check it only on a matched element, so a tree without matches runs them unchecked. The bound today is `max_nodes` (D-5). Decide, from a measured cancel latency, whether the walks take a `Call` or `convert_tags` checks it between walks. | Phase 3f |
 | F-18 | `ParseLimits.max_depth` is a settable field; a value above 256 voids the claim that recursion is bounded by `MAX_DEPTH` and fits a 512 KiB stack (`AGENTS.md`, Runtime rules, Bounded; `docs/architecture.md`, Runtime contract). When Phase 3f exposes `max_depth` publicly, clamp it to 256 or state the cap. | Phase 3f |
-| F-19 | Tune `MAX_OUTPUT_NODES` (D-9, `4 * DEFAULT_MAX_NODES`) from the peak-memory numbers of the fuzz targets (F-2) and benchmarks (F-3); decide whether nested `fill_cell` construction and `Tree::copy` count against the budget. | After Phase 3f |
+| F-19 | Tune `MAX_OUTPUT_NODES` (D-9, `4 * DEFAULT_MAX_NODES`) from the peak-memory numbers of the fuzz targets (F-2) and benchmarks (F-3); decide whether nested `fill_cell` construction and `Tree::copy` count against the budget. | After Phase 3g |
 | F-20 | Share `html.unescape`: `pyurl::unescape` (the `courlan` port: a regex, its own entity table `HTML5_ENTITIES` in `src/pyurl/tables.rs`, errors as `UrlError`) duplicates `pyhtml::unescape`, which runs over `web_atoms`. Move `pyurl` onto `pyhtml::unescape` (or share its scanner), mapping its error to `UrlError`, drop `HTML5_ENTITIES` and its part of `gen_url.py` (`tables`), and check that both agree on `UNESCAPE_CASES` in `src/pyurl/cases.rs` before removing the old one. | Phase 3f |
-| F-21 | Decide from the measurements whether `xml::list_marker` carries a running index. It counts the preceding `item` siblings per item, so numbering an ordered list is quadratic (50k items: 5 s, 200k items: 161 s in Markdown mode); cancellation still works because `process_element` ticks per item. Upstream uses the same algorithm through `itersiblings`. | Phase 3f |
+| F-21 | Decide from the measurements whether `xml::list_marker` carries a running index. It counts the preceding `item` siblings per item, so numbering an ordered list is quadratic (50k items: 5 s, 200k items: 161 s in Markdown mode); cancellation still works because `process_element` ticks per item. Upstream uses the same algorithm through `itersiblings`. | Phase 3g |
