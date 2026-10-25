@@ -12,12 +12,14 @@ mod common;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde_json::Value;
 use trafilatura_rust::__internals::{
     DumpMode, HtmlInput, MAX_FILE_SIZE, ParseLimits, dump, load_html,
 };
-use trafilatura_rust::{Call, ExtractError, Rejection};
+use trafilatura_rust::{Call, ExtractError, Format, Input, Options, Rejection};
 
 /// Elements whose tree differs because html5lib (the fixture parser) predates a WHATWG change that
 /// html5ever has: the 2025 "customizable select" parsing, where `select` and `option` keep phrasing
@@ -41,6 +43,26 @@ const CLASSES: [&str; 7] = [
     "port-bug",
     "upstream-error",
 ];
+
+const OUTPUT_CLASSES: [&str; 6] = [
+    "match",
+    "decompress",
+    "encoding",
+    "normalized",
+    "port-bug",
+    "upstream-error",
+];
+
+const OUTPUT_FORMATS: [(&str, Format); 3] = [
+    ("txt", Format::Txt),
+    ("markdown", Format::Markdown),
+    ("html", Format::Html),
+];
+
+/// Pages the crate rejects with `InvalidValue` while upstream extracted text, because the oracle's
+/// normalized tree dropped an element whose name is not an XML Name (D-2): (page id, reason). The
+/// Task 1 recon of the corpus lists none.
+const NORMALIZED_REJECTS: &[(&str, &str)] = &[];
 
 const DIFF_PAGES: usize = 20;
 const DIFF_LINES: usize = 10;
@@ -126,7 +148,7 @@ fn classify(
 
 /// The first `DIFF_LINES` lines that differ, position by position: `-` fixture, `+` crate.
 fn diff(expected: &Option<String>, actual: &Option<String>) -> String {
-    let shown = |tree: &Option<String>| tree.clone().unwrap_or_else(|| "<no tree>".to_string());
+    let shown = |text: &Option<String>| text.clone().unwrap_or_else(|| "<none>".to_string());
     let (expected, actual) = (shown(expected), shown(actual));
     let (mut left, mut right) = (expected.lines(), actual.lines());
     let mut out = String::new();
@@ -255,17 +277,8 @@ fn gate(require: bool, present: bool, page_count: Option<usize>) -> Result<bool,
     }
 }
 
-#[test]
-fn gate_skips_only_when_fixtures_are_not_required() {
-    assert_eq!(gate(false, false, None), Ok(false));
-    assert!(gate(true, false, None).is_err());
-    assert!(gate(true, true, Some(0)).is_err());
-    assert_eq!(gate(false, true, Some(0)), Ok(true));
-    assert_eq!(gate(true, true, Some(3)), Ok(true));
-}
-
-#[test]
-fn tree_dump_matches_html5_fixture() {
+/// The fixture directory, the upstream checkout and the index, or `None` when the test skips.
+fn load_corpus() -> Option<(PathBuf, PathBuf, Value)> {
     let require = common::require_fixtures();
     let found = common::fixture_dir().zip(common::upstream_root());
     let index = found
@@ -281,11 +294,259 @@ fn tree_dump_matches_html5_fixture() {
             eprintln!(
                 "parity: fixtures or the upstream checkout are missing; run scripts/fixtures.sh (or set TRAFILATURA_FIXTURES and TRAFILATURA_UPSTREAM) to enable this test"
             );
-            return;
+            None
         }
-        Ok(true) => {}
+        Ok(true) => found
+            .zip(index)
+            .map(|((fixtures, upstream), index)| (fixtures, upstream, index)),
     }
-    let (Some((fixtures, upstream)), Some(index)) = (found, index) else {
+}
+
+#[test]
+fn gate_skips_only_when_fixtures_are_not_required() {
+    assert_eq!(gate(false, false, None), Ok(false));
+    assert!(gate(true, false, None).is_err());
+    assert!(gate(true, true, Some(0)).is_err());
+    assert_eq!(gate(false, true, Some(0)), Ok(true));
+    assert_eq!(gate(true, true, Some(3)), Ok(true));
+}
+
+static NS_DECLARATION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#" xmlns:ns\d+="[^"]*""#).unwrap());
+static NS_TAG_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(/?)ns\d+:").unwrap());
+
+/// Removes the `nsN:` prefixes lxml writes for foreign elements of the oracle's html5 tree, as
+/// `rewrite_namespaces` in `tools/parity/parity/gen_xml_output_cases.py` does (D-2): the crate writes
+/// such an element by its local name.
+fn strip_lxml_namespaces(expected: &str) -> String {
+    let without_declarations = NS_DECLARATION.replace_all(expected, "");
+    NS_TAG_PREFIX
+        .replace_all(&without_declarations, "<$1")
+        .into_owned()
+}
+
+/// One page and format of the output check.
+struct OutputCase<'a> {
+    id: &'a str,
+    source: &'a str,
+    valid_utf8: bool,
+    expected: Option<&'a str>,
+    upstream_error: bool,
+    actual: &'a Result<String, ExtractError>,
+}
+
+/// Class of one output, in order: match, decompress, encoding, upstream-error, normalized (a page in
+/// `normalized_rejects` only), port-bug.
+fn classify_output(case: &OutputCase, normalized_rejects: &[(&str, &str)]) -> &'static str {
+    let rejected = |rejection: Option<Rejection>| match case.actual {
+        Err(ExtractError::Rejected(found)) => rejection.is_none_or(|want| want == *found),
+        _ => false,
+    };
+    match (case.expected, case.actual) {
+        (Some(expected), Ok(actual)) if expected == actual => return "match",
+        (None, Err(ExtractError::Rejected(_))) if !case.upstream_error => return "match",
+        _ => {}
+    }
+    if case.source.ends_with(".gz") && cfg!(not(feature = "decompress")) {
+        return "decompress";
+    }
+    if !case.valid_utf8 {
+        return "encoding";
+    }
+    if case.upstream_error {
+        return if rejected(None) {
+            "upstream-error"
+        } else {
+            "port-bug"
+        };
+    }
+    let listed = normalized_rejects.iter().any(|(id, _)| *id == case.id);
+    if listed && case.expected.is_some() && rejected(Some(Rejection::InvalidValue)) {
+        return "normalized";
+    }
+    "port-bug"
+}
+
+struct OutputResult {
+    id: String,
+    format: &'static str,
+    class: &'static str,
+    expected: Option<String>,
+    actual: Option<String>,
+}
+
+fn run_output_page(upstream: &Path, fixtures: &Path, entry: &Value) -> Vec<OutputResult> {
+    let id = entry["id"].as_str().unwrap();
+    let source = entry["source"].as_str().unwrap();
+    let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
+    let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
+    let bytes = std::fs::read(upstream.join(source)).unwrap();
+    OUTPUT_FORMATS
+        .iter()
+        .map(|&(name, format)| {
+            let expected = fixture["html5"]["formats"][name]
+                .as_str()
+                .map(|text| match name {
+                    "html" => {
+                        let stripped = strip_lxml_namespaces(text);
+                        assert!(
+                            !stripped.contains(" xmlns:ns") && !NS_TAG_PREFIX.is_match(&stripped),
+                            "{id}: namespace prefixes left in the expected html"
+                        );
+                        stripped
+                    }
+                    _ => text.to_string(),
+                });
+            let actual = Options::new()
+                .format(format)
+                .build()
+                .extract(&Input::bytes(&bytes), &Call::default());
+            let class = classify_output(
+                &OutputCase {
+                    id,
+                    source,
+                    valid_utf8,
+                    expected: expected.as_deref(),
+                    upstream_error: fixture["html5"]["errors"][name].is_string(),
+                    actual: &actual,
+                },
+                NORMALIZED_REJECTS,
+            );
+            OutputResult {
+                id: id.to_string(),
+                format: name,
+                class,
+                expected,
+                actual: actual.ok(),
+            }
+        })
+        .collect()
+}
+
+fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
+    let mut out = String::from("# Parity report: output against the html5 fixtures\n\n");
+    let _ = writeln!(out, "Pages: {pages}\n");
+    out.push_str("## Classes\n\n");
+    for (name, _) in OUTPUT_FORMATS {
+        let counts: Vec<String> = OUTPUT_CLASSES
+            .iter()
+            .map(|class| {
+                let count = results
+                    .iter()
+                    .filter(|r| r.format == name && r.class == *class)
+                    .count();
+                format!("{class} {count}")
+            })
+            .collect();
+        let _ = writeln!(out, "- {name}: {}", counts.join(", "));
+    }
+    for class in OUTPUT_CLASSES.iter().filter(|c| **c != "match") {
+        let mut rows = results.iter().filter(|r| r.class == *class).peekable();
+        if rows.peek().is_none() {
+            continue;
+        }
+        let _ = writeln!(out, "\n## Pages: {class}\n");
+        for row in rows {
+            let reason = NORMALIZED_REJECTS
+                .iter()
+                .find(|(id, _)| *id == row.id && *class == "normalized")
+                .map_or(String::new(), |(_, reason)| format!(": {reason}"));
+            let _ = writeln!(out, "{} {}{reason}", row.id, row.format);
+        }
+    }
+    out.push_str("\n## Diffs (first outputs that do not match)\n\n");
+    let differing = results
+        .iter()
+        .filter(|r| !matches!(r.class, "match" | "upstream-error"));
+    for row in differing.take(DIFF_PAGES) {
+        let _ = writeln!(
+            out,
+            "### {} {} ({})\n\n```diff\n{}```\n",
+            row.id,
+            row.format,
+            row.class,
+            diff(&row.expected, &row.actual)
+        );
+    }
+    let dir = common::report_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("output-report.md");
+    std::fs::write(&path, out).unwrap();
+    path
+}
+
+#[test]
+fn strip_lxml_namespaces_removes_only_ns_prefixes() {
+    assert_eq!(
+        strip_lxml_namespaces(
+            r#"<p><ns0:svg xmlns:ns0="http://www.w3.org/2000/svg"><ns0:path/></ns0:svg></p>"#
+        ),
+        "<p><svg><path/></svg></p>"
+    );
+    assert_eq!(
+        strip_lxml_namespaces("<ns12:g xmlns:ns12=\"u\"></ns12:g>"),
+        "<g></g>"
+    );
+    assert_eq!(
+        strip_lxml_namespaces("<svg:g>x</svg:g>"),
+        "<svg:g>x</svg:g>"
+    );
+    assert_eq!(strip_lxml_namespaces("<p>ns0:x</p>"), "<p>ns0:x</p>");
+}
+
+#[test]
+fn classify_output_names_each_class() {
+    let rejected = |r| Err(ExtractError::Rejected(r));
+    let text: Result<String, ExtractError> = Ok("a".to_string());
+    let other: Result<String, ExtractError> = Ok("b".to_string());
+    let too_short = rejected(Rejection::TooShort);
+    let invalid = rejected(Rejection::InvalidValue);
+    let case = |expected, upstream_error, actual| OutputCase {
+        id: "page",
+        source: "page.html",
+        valid_utf8: true,
+        expected,
+        upstream_error,
+        actual,
+    };
+    let listed = [("page", "element name is not an XML Name")];
+    let class = |case: &OutputCase| classify_output(case, &[]);
+
+    assert_eq!(class(&case(Some("a"), false, &text)), "match");
+    assert_eq!(class(&case(None, false, &too_short)), "match");
+    assert_eq!(class(&case(None, false, &text)), "port-bug");
+    assert_eq!(class(&case(Some("a"), false, &too_short)), "port-bug");
+    assert_eq!(class(&case(Some("a"), false, &other)), "port-bug");
+
+    let gz = OutputCase {
+        source: "page.html.gz",
+        ..case(Some("a"), false, &other)
+    };
+    let gz_class = if cfg!(feature = "decompress") {
+        "port-bug"
+    } else {
+        "decompress"
+    };
+    assert_eq!(class(&gz), gz_class);
+    let latin1 = OutputCase {
+        valid_utf8: false,
+        ..case(Some("a"), false, &other)
+    };
+    assert_eq!(class(&latin1), "encoding");
+
+    assert_eq!(class(&case(None, true, &too_short)), "upstream-error");
+    assert_eq!(class(&case(None, true, &text)), "port-bug");
+
+    let dropped = case(Some("a"), false, &invalid);
+    assert_eq!(classify_output(&dropped, &listed), "normalized");
+    assert_eq!(classify_output(&dropped, &[]), "port-bug");
+    let two_texts = case(Some("a"), false, &other);
+    assert_eq!(classify_output(&two_texts, &listed), "port-bug");
+}
+
+#[test]
+fn tree_dump_matches_html5_fixture() {
+    let Some((fixtures, upstream, index)) = load_corpus() else {
         return;
     };
     let mut pages = Vec::new();
@@ -305,6 +566,31 @@ fn tree_dump_matches_html5_fixture() {
     assert!(
         port_bugs.is_empty(),
         "{} port-bug pages (see {}): {port_bugs:?}",
+        port_bugs.len(),
+        path.display()
+    );
+}
+
+#[test]
+fn outputs_match_html5_fixture() {
+    let Some((fixtures, upstream, index)) = load_corpus() else {
+        return;
+    };
+    let entries = index["pages"].as_array().unwrap();
+    let results: Vec<OutputResult> = entries
+        .iter()
+        .flat_map(|entry| run_output_page(&upstream, &fixtures, entry))
+        .collect();
+    let path = write_output_report(&results, entries.len());
+    let port_bugs: Vec<String> = results
+        .iter()
+        .filter(|r| r.class == "port-bug")
+        .map(|r| format!("{} {}", r.id, r.format))
+        .collect();
+    eprintln!("parity: output report at {}", path.display());
+    assert!(
+        port_bugs.is_empty(),
+        "{} port-bug outputs (see {}): {port_bugs:?}",
         port_bugs.len(),
         path.display()
     );

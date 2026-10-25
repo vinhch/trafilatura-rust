@@ -4,8 +4,9 @@ How crate output is compared with upstream Python: the fixture generator, the ar
 mismatch, the test and the measurement. Read it before touching `tools/parity/`, `tests/parity.rs`,
 `tests/common/`, `scripts/fixtures.*`, `scripts/measure.*`, `scripts/oracle.*` or the fixture archive.
 
-Today the parity test compares the parsed tree only. The fixtures also hold every output format and
-the metadata fields; the extraction phases in `phase-plan.md` start comparing them.
+Two tests compare the crate with the fixtures: the parsed tree and the `txt`, `markdown` and `html` output.
+The fixtures also hold the `xml`, `xmltei` and `json` outputs and the metadata fields; the extraction phases in
+`phase-plan.md` start comparing them.
 
 ## Corpus and fixtures
 
@@ -64,7 +65,7 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
   `f1.json`, so run it only after a full `--generate`. A new release gets a new archive name
   (`upstream-sync.md`).
 
-## Classes
+## Tree classes
 
 Every page gets a class. Only `port-bug` fails the test.
 
@@ -81,6 +82,32 @@ Every page gets a class. Only `port-bug` fails the test.
 The report also counts `parser`: pages whose `lxml` and `html5` fixtures differ (D-2). It is a count,
 not a class. A class excludes the whole page from the `port-bug` check; classifying each differing
 line is followup F-12. The report is `.temp/parity/report.md`.
+
+## Output check
+
+`outputs_match_html5_fixture` in `tests/parity.rs` runs `Extractor::extract` over every page in `txt`,
+`markdown` and `html` and compares the text with `fixture["html5"]["formats"][format]`. The input is
+`Input::bytes` of the upstream file and the options are the ones the fixtures were generated with
+(`fast=True`, `dedup=False`, no metadata, no URL). A page whose fixture holds no text and no error must be
+rejected by the crate with any `Rejected` error. The expected `html` text goes through
+`strip_lxml_namespaces` first, which removes the ` xmlns:nsN="..."` declarations and the `nsN:` tag
+prefixes lxml writes for foreign elements of the html5 tree, because the crate writes such an element by
+its local name (D-2); the test fails when any are left. Each output gets the first class that applies, in
+this order, and only `port-bug` fails the test:
+
+| Class | Meaning |
+| --- | --- |
+| `match` | equal text, or no text upstream and a `Rejected` error from the crate |
+| `decompress` | compressed input without the `decompress` feature (D-4) |
+| `encoding` | input is not valid UTF-8 (D-3) |
+| `upstream-error` | upstream raised and the crate returned a `Rejected` error |
+| `normalized` | the page is listed in `NORMALIZED_REJECTS`: the crate rejects it with `InvalidValue` where upstream extracted text, because the oracle's normalized tree dropped an element whose name is not an XML Name (D-2) |
+| `port-bug` | anything else |
+
+`normalized` here is narrower than the tree check's class of the same name: the tree dump excludes every
+page the copy rule touched, the output check only the pages in `NORMALIZED_REJECTS` (empty today). The
+report is `.temp/parity/output-report.md`: counts per format and class, the pages of each other class
+(with the reason of a `normalized` page) and the first diffs.
 
 ## Test and measurement
 
