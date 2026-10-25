@@ -94,6 +94,9 @@ impl Node {
 #[derive(Clone, Debug)]
 pub struct Tree {
     nodes: Vec<Node>,
+    /// Cells `main_extractor` table construction has minted here; copies of the tree share it
+    /// because they live in the same arena (D-9).
+    pub(crate) table_cells: usize,
 }
 
 impl Tree {
@@ -101,6 +104,7 @@ impl Tree {
     pub fn new(name: LocalName, ns: Ns, attrs: Vec<(LocalName, Arc<str>)>) -> Self {
         Self {
             nodes: vec![Node::new(name, ns, attrs)],
+            table_cells: 0,
         }
     }
 

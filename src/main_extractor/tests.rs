@@ -1110,19 +1110,18 @@ fn deep_nesting_fits_512k_stack() {
     worker.join().unwrap();
 }
 
-/// `handle_table_limited` on `source` with room for `room` more nodes than the tree holds.
-fn table_with_room(source: &str, room: usize) -> Result<Option<String>, ExtractError> {
+/// `handle_table_limited` on `source` with a budget of `budget` cells.
+fn table_with_budget(source: &str, budget: usize) -> Result<Option<String>, ExtractError> {
     let mut tree = xml(source);
     let root = tree.root();
     let options = options();
     let call = Call::default();
-    let max_len = tree.len() + room;
     let processed = handle_table_limited(
         &mut tree,
         root,
         TAG_CATALOG,
         &ctx_for(&options, &call),
-        max_len,
+        budget,
     )?;
     Ok(processed.map(|id| show(&tree, id)))
 }
@@ -1142,9 +1141,9 @@ fn table_span_amplification_is_bounded() {
     let padding = format!("<table><tr><td colspan=\"100\">a</td></tr>{narrow_rows}</table>");
     let rejected = Err(ExtractError::Rejected(Rejection::TreeTooLarge));
     // 5_000: the first row alone overruns it; 15_000: it is the phantoms of the later rows
-    assert_eq!(table_with_room(&phantoms, 5_000), rejected);
-    assert_eq!(table_with_room(&phantoms, 15_000), rejected);
-    assert_eq!(table_with_room(&padding, 100_000), rejected);
+    assert_eq!(table_with_budget(&phantoms, 5_000), rejected);
+    assert_eq!(table_with_budget(&phantoms, 15_000), rejected);
+    assert_eq!(table_with_budget(&padding, 100_000), rejected);
 }
 
 #[test]
@@ -1152,7 +1151,49 @@ fn table_under_the_node_budget_matches_handle_table() {
     let source = "<table><tr><td colspan=\"3\">a</td></tr><tr><td>b</td></tr></table>";
     let expected = table(source);
     assert!(expected.is_some());
-    assert_eq!(table_with_room(source, 100), Ok(expected));
+    assert_eq!(table_with_budget(source, 100), Ok(expected));
+}
+
+#[test]
+fn table_budget_ignores_the_arena_size() {
+    let source = "<table><tr><td colspan=\"3\">a</td></tr><tr><td>b</td></tr></table>";
+    let expected = table(source);
+    assert!(expected.is_some());
+    let mut tree = xml(source);
+    let root = tree.root();
+    // detached elements, as the copies of the cascade leave in the arena
+    for _ in 0..500 {
+        tree.new_element("p");
+    }
+    let (options, call) = (options(), Call::default());
+    let budget = 10;
+    assert!(tree.len() > 50 * budget);
+    let processed = handle_table_limited(
+        &mut tree,
+        root,
+        TAG_CATALOG,
+        &ctx_for(&options, &call),
+        budget,
+    )
+    .unwrap()
+    .map(|id| show(&tree, id));
+    assert_eq!(processed, expected);
+}
+
+#[test]
+fn table_budget_is_shared_by_the_tables_of_one_tree() {
+    let source = "<table><tr><td>a</td><td>b</td><td>c</td></tr></table>";
+    let (options, call) = (options(), Call::default());
+    let ctx = ctx_for(&options, &call);
+    let mut tree = xml(source);
+    let first = tree.root();
+    let second = tree.copy(first);
+    // a 3-cell table fits a budget of 4 once, not twice
+    assert!(handle_table_limited(&mut tree, first, TAG_CATALOG, &ctx, 4).is_ok());
+    assert_eq!(
+        handle_table_limited(&mut tree, second, TAG_CATALOG, &ctx, 4),
+        Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+    );
 }
 
 #[test]

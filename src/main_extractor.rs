@@ -59,9 +59,10 @@ pub const QUOTE_TAGS: &[&str] = &[
 // upstream: main_extractor.py::_MAX_SPAN
 pub const MAX_SPAN: usize = 100;
 
-/// Arena size, in nodes, above which table construction fails with `Rejection::TreeTooLarge`: a
-/// parse of at most `DEFAULT_MAX_NODES` elements, `extract_content`'s backup copy and the nodes
-/// table construction creates all fit.
+/// Cells table construction may mint in one tree before it fails with `Rejection::TreeTooLarge`.
+/// The count runs over every table and every cascade pass of one extraction and ignores the nodes
+/// the parse and the tree copies add, so the cascade can grow the arena to a few times the page
+/// without costing a table its budget. A page whose arena stayed under this size never reaches it.
 // deviation: D-9
 pub const MAX_OUTPUT_NODES: usize = 4 * DEFAULT_MAX_NODES;
 
@@ -550,17 +551,18 @@ pub fn handle_paragraphs(
 }
 
 /// Determines the cell element type and mints a new element; fails with `Rejection::TreeTooLarge`
-/// once the arena holds more than `max_len` nodes.
+/// once table construction has already minted `budget` cells in this tree.
 // upstream: main_extractor.py::define_cell_type
 fn define_cell_type(
     tree: &mut Tree,
     is_header: bool,
-    max_len: usize,
+    budget: usize,
 ) -> Result<NodeId, ExtractError> {
     // deviation: D-9
-    if tree.len() > max_len {
+    if tree.table_cells >= budget {
         return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
     }
+    tree.table_cells = tree.table_cells.saturating_add(1);
     let cell = tree.new_element("cell");
     if is_header {
         tree.set(cell, "role", "head");
@@ -619,7 +621,7 @@ fn flush_rowspan_phantoms(
     tree: &mut Tree,
     rowspan_map: &mut HashMap<usize, usize>,
     newrow: &mut Row,
-    max_len: usize,
+    budget: usize,
 ) -> Result<(), ExtractError> {
     while let Some(remaining) = rowspan_map.get_mut(&newrow.len) {
         let col = newrow.len;
@@ -627,7 +629,7 @@ fn flush_rowspan_phantoms(
         if *remaining == 0 {
             rowspan_map.remove(&col);
         }
-        let phantom = define_cell_type(tree, false, max_len)?;
+        let phantom = define_cell_type(tree, false, budget)?;
         newrow.push(tree, phantom);
     }
     Ok(())
@@ -642,9 +644,9 @@ fn finalize_row(
     newrow: &mut Row,
     rowspan_map: &mut HashMap<usize, usize>,
     max_cols: usize,
-    max_len: usize,
+    budget: usize,
 ) -> Result<(), ExtractError> {
-    flush_rowspan_phantoms(tree, rowspan_map, newrow, max_len)?;
+    flush_rowspan_phantoms(tree, rowspan_map, newrow, budget)?;
     let filled = tree.children(newrow.id).any(|cell| {
         has_content(tree.node(cell).text.as_deref()) || tree.first_child(cell).is_some()
     });
@@ -653,7 +655,7 @@ fn finalize_row(
         return Ok(());
     }
     while newrow.len < max_cols {
-        let padding = define_cell_type(tree, false, max_len)?;
+        let padding = define_cell_type(tree, false, budget)?;
         newrow.push(tree, padding);
     }
     tree.append(newtable, newrow.id);
@@ -755,13 +757,13 @@ pub fn handle_table(
     handle_table_limited(tree, table_elem, potential_tags, ctx, MAX_OUTPUT_NODES)
 }
 
-/// `handle_table` with the arena size limit as a parameter, so tests can use a small one.
+/// `handle_table` with the cell budget as a parameter, so tests can use a small one.
 fn handle_table_limited(
     tree: &mut Tree,
     table_elem: NodeId,
     potential_tags: &[&str],
     ctx: &Ctx<'_>,
-    max_len: usize,
+    budget: usize,
 ) -> Result<Option<NodeId>, ExtractError> {
     let newtable = tree.new_element("table");
     let ptags_with_div: Vec<&str> = potential_tags.iter().copied().chain(["div"]).collect();
@@ -830,7 +832,7 @@ fn handle_table_limited(
     let max_cols = max_cols.min(MAX_SPAN);
 
     for caption_text in captions.into_iter().filter(|caption| !caption.is_empty()) {
-        let caption_cell = define_cell_type(tree, true, max_len)?;
+        let caption_cell = define_cell_type(tree, true, budget)?;
         tree.node_mut(caption_cell).text = Some(caption_text);
         let mut caption_row = Row::new(tree);
         caption_row.push(tree, caption_cell);
@@ -840,7 +842,7 @@ fn handle_table_limited(
             &mut caption_row,
             &mut HashMap::new(),
             max_cols,
-            max_len,
+            budget,
         )?;
     }
 
@@ -855,8 +857,8 @@ fn handle_table_limited(
             tick(&mut visited, ctx.call)?;
             let is_header = tree.tag(cell) == Some("th") && !header_row_emitted;
             row_has_th = row_has_th || is_header;
-            flush_rowspan_phantoms(tree, &mut rowspan_map, &mut newrow, max_len)?;
-            let new_child_elem = define_cell_type(tree, is_header, max_len)?;
+            flush_rowspan_phantoms(tree, &mut rowspan_map, &mut newrow, budget)?;
+            let new_child_elem = define_cell_type(tree, is_header, budget)?;
             let colspan = span(tree, cell, "colspan")?;
             // mark all spanned columns as occupied for the following rows
             let rowspan = span(tree, cell, "rowspan")?;
@@ -877,7 +879,7 @@ fn handle_table_limited(
             newrow.push(tree, new_child_elem);
             // inline colspan: pad with empty cells so the following rows align
             for _ in 1..colspan {
-                let padding = define_cell_type(tree, is_header, max_len)?;
+                let padding = define_cell_type(tree, is_header, budget)?;
                 newrow.push(tree, padding);
             }
             tree.set_name(cell, "done");
@@ -888,7 +890,7 @@ fn handle_table_limited(
             &mut newrow,
             &mut rowspan_map,
             max_cols,
-            max_len,
+            budget,
         )?;
         header_row_emitted = header_row_emitted || row_has_th;
     }

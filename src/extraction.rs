@@ -511,6 +511,7 @@ pub fn bare_extraction(
     } else {
         Document::new()
     };
+    // deviation: D-7 (`prune_xpath`: no caller selectors, so no prune runs here)
     call.check()?;
 
     // `options.url or document.url`: an empty string is no URL
