@@ -23,24 +23,10 @@ The parity bar for every phase is upstream Python output at the pinned release w
 
 | Order | Phase | Status | Done when | Blocked by |
 | --- | --- | --- | --- | --- |
-| 3 | Extraction core: `settings`, the rest of `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, and TXT, Markdown (with its escaping) and HTML output | In progress, by sub-phase below | Upstream extraction tests ported by name pass; parity fixtures for main text match or have a deviation row | none |
-| 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | 3 |
-| 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | 3 |
-| 6 | Output formats: `xml` (XML, XML-TEI, JSON, CSV) | Not started | Upstream `xml_tei_tests.py` cases ported by name pass; the XML branch of `determine_returnstring` (the empty-element cleaning loop and `control_xml_output`) replaces its stub | 3 |
-| 7 | First release: lift `publish = false`, set the version, publish 0.1.0 through `release.yml`, move the .NET binding onto this crate | Not started | Crate on crates.io; the .NET binding builds and passes its tests against it | 3, 4, 5 |
-
-Phase 3 sub-phases. Each brings its modules to parity with unit tests before the next starts. Each
-sub-phase after 3b gets a short design addendum before its code.
-
-| Sub-phase | Scope | Status |
-| --- | --- | --- |
-| 3a Foundations | `dom/` mutation, walks and copy in lxml semantics; `pystr`; `settings.rs`; the text helpers of `utils.rs`; the `xml.py` tree helpers | done |
-| 3b Selectors | `xpaths.rs` (content, comment and discard selectors), `BASIC_CLEAN_XPATH` | done |
-| 3c `html_processing.rs` | tree cleaning, pruning, link density, `convert_tags`; the `courlan` URL parts it calls | done |
-| 3d `main_extractor.rs` | the element handlers, tables, lists, `extract_content`, `extract_comments` | done |
-| 3e Output | TXT and Markdown (with its escaping) and HTML output, `merge_with_parent`, `strip_double_tags` | done |
-| 3f `baseline.rs`, `extraction.rs`, public API | `baseline`, `html2txt`, the cascade, `bare_extraction`, `extract`, `determine_returnstring`, `normalize_unicode`, `meta_items`, `Options`, `Extractor`, `Input`, `Document` | done |
-| 3g Corpus parity | corpus parity on `txt`, `markdown`, `html`; `realworld_tests.py` and `repeated_output_tests.py`; time and memory measurement of extraction, the arena copies included, with a page of 1.1M elements and one table as a fixture for the table cell budget (D-9) | done |
+| 4 | Metadata: `metadata`, `json_metadata`, and the `htmldate` and `courlan` parts they call | Not started | Upstream metadata tests ported by name pass; metadata fixtures match or have a deviation row | none |
+| 5 | Deduplication: `deduplication` (the fallbacks are followup F-6, D-1) | Not started | Upstream dedup tests ported by name pass | none |
+| 6 | Output formats: `xml` (XML, XML-TEI, JSON, CSV) | Not started | Upstream `xml_tei_tests.py` cases ported by name pass; the XML branch of `determine_returnstring` (the empty-element cleaning loop and `control_xml_output`) replaces its stub | none |
+| 7 | First release: lift `publish = false`, set the version, publish 0.1.0 through `release.yml`, move the .NET binding onto this crate | Not started | Crate on crates.io; the .NET binding builds and passes its tests against it | 4, 5 |
 
 ### Shipped phases
 
@@ -49,6 +35,7 @@ sub-phase after 3b gets a short design addendum before its code.
 | 0. Scaffold: Apache-2.0 license and NOTICE, crate skeleton with panic and unsafe lints, `cargo-deny` policy, `.sh`/`.ps1` scripts, CI, release and quality workflows, Dependabot, `AGENTS.md` | `eac2d8d` |
 | 1. Core design: tree model, public API, cancellation, limits, module layout, first dependencies (`AGENTS.md`, D-2..D-4) | `521051e` |
 | 2. Parity harness: `tools/parity/` fixture generator, `scripts/fixtures` and `scripts/measure`, the parity test and report, `dom/` (arena tree, html5ever parse, depth and node limits), `utils::decode_file`, `error.rs`, `cancel.rs` | `35a3e8a` |
+| 3. Extraction core: `settings`, `utils`, `htmlprocessing`, `xpaths`, `main_extractor`, `baseline`, `core`, the `xml` tree helpers, TXT, Markdown (with its escaping) and HTML output, the public API (`Options`, `Extractor`, `Input`, `Document`, `html2txt`), corpus parity on `txt`, `markdown` and `html`, and the extraction measurements | `b42ba5a` |
 
 ## Open items register
 
