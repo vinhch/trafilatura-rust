@@ -26,7 +26,8 @@ pub enum Rejection {
     BlacklistedUrl,
     /// Required metadata is missing.
     MissingMetadata,
-    /// The tree exceeds a node limit: the parse limit, or `max_tree_size` on the extracted body.
+    /// The tree exceeds a node limit: the parse limit, `max_tree_size` on the extracted body, or the
+    /// cell budget of table construction (D-9).
     TreeTooLarge,
     /// The extracted text is shorter than the minimum.
     TooShort,

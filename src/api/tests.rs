@@ -298,7 +298,7 @@ fn options_reach_the_extractor() {
 }
 
 #[test]
-fn record_id_is_per_call_and_input_decodes_bytes() {
+fn bytes_input_matches_text_and_record_id_leaves_txt_unchanged() {
     let extractor = Options::new().build();
     let from_bytes = extractor
         .extract(&Input::bytes(PAGE.as_bytes()), &Call::default())
@@ -314,6 +314,8 @@ fn record_id_is_per_call_and_input_decodes_bytes() {
 #[test]
 fn rejections_and_cancellation_propagate() {
     let extractor = Options::new().build();
+    // oracle: core.bare_extraction("", fast=True) is None: load_html("") is None, which raises
+    // ValueError inside the function
     assert_eq!(
         extractor.extract(&Input::text(""), &Call::default()),
         rejected(Rejection::EmptyTree)

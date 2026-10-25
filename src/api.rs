@@ -32,14 +32,14 @@ pub enum Format {
     Python,
 }
 
-impl From<Format> for settings::Format {
-    fn from(format: Format) -> Self {
-        match format {
-            Format::Txt => Self::Txt,
-            Format::Markdown => Self::Markdown,
-            Format::Html => Self::Html,
-            Format::Python => Self::Python,
-        }
+/// The internal format of a public one. A function, not a `From` impl: the default build cannot
+/// name `settings::Format`, so a public impl would show in the docs as `From<Format> for Format`.
+pub fn settings_format(format: Format) -> settings::Format {
+    match format {
+        Format::Txt => settings::Format::Txt,
+        Format::Markdown => settings::Format::Markdown,
+        Format::Html => settings::Format::Html,
+        Format::Python => settings::Format::Python,
     }
 }
 
@@ -154,7 +154,7 @@ impl Options {
         let resolve = |format: Format| {
             let mut settings = settings::Extractor::new(
                 self.config.clone(),
-                format.into(),
+                settings_format(format),
                 self.focus == Focus::Precision,
                 self.focus == Focus::Recall,
                 self.formatting,
@@ -215,9 +215,9 @@ impl<'a> Input<'a> {
         self
     }
 
-    /// Sets the id that [`Extractor::extract`] adds to the metadata header of its output; the TXT
-    /// and Markdown formats show that header only with metadata extraction, which is not offered
-    /// yet.
+    /// Sets the id of the record, stored on the document of [`Extractor::extract`]. No output format
+    /// shows it yet: TXT, Markdown and HTML print it only in a metadata header, and metadata
+    /// extraction is not offered.
     pub fn record_id(mut self, record_id: &'a str) -> Self {
         self.record_id = Some(record_id);
         self

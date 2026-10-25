@@ -36,17 +36,20 @@ pub struct Config {
     pub min_output_size: usize,
     /// Shortest comments text, in characters, that is kept.
     pub min_output_comm_size: usize,
-    /// Shortest text, in characters, that the duplicate test looks at.
+    /// Shortest text, in characters, that the duplicate test looks at. No effect until phase 5
+    /// ports the duplicate test.
     pub min_duplcheck_size: usize,
-    /// Number of repetitions after which a text counts as a duplicate.
+    /// Number of repetitions after which a text counts as a duplicate. No effect until phase 5.
     pub max_repetitions: usize,
-    /// Largest input in bytes.
+    /// Largest decompressed size, in bytes, of byte input; only the `decompress` feature reads it,
+    /// and a decoded string is never cut.
     pub max_file_size: usize,
-    /// Smallest input in bytes.
+    /// Smallest input in bytes for `utils::is_acceptable_length`, which no extraction path calls, so
+    /// extraction ignores it.
     pub min_file_size: usize,
     /// Element count above which a page is discarded; `None` = no limit.
     pub max_tree_size: Option<usize>,
-    /// Whether the date search is extensive.
+    /// Whether the date search is extensive. No effect until phase 4 ports the date search.
     pub extensive_date_search: bool,
 }
 

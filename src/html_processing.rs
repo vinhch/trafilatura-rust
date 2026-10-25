@@ -869,8 +869,8 @@ pub fn convert_tags(
 ) -> Result<(), ExtractError> {
     let call = ctx.call;
     let options = &ctx.options;
-    // upstream edits inside `tree.iter(...)` in each loop below, hence the live walks
     call.check()?;
+    // upstream edits inside `tree.iter(...)` in each loop below, hence the live walks
     if !options.links {
         // delete links for faster processing
         let containers: &[&str] = if options.tables {

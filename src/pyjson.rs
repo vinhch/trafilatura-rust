@@ -608,7 +608,8 @@ impl<'a> Parser<'a> {
 /// strings, `NaN`, `Infinity` and `-Infinity` are numbers, a lone surrogate escape reads as U+FFFF,
 /// an integer of more than 4300 digits and nesting deeper than 9998 levels fail. `Ok(None)` is a
 /// Python parse failure; `Err` is a cancellation or deadline from `call`, which is checked once per
-/// value.
+/// value, or `Rejection::InputTooLarge` when a node count or offset does not fit 32 bits (text over
+/// 4 GiB).
 // upstream: json.loads (CPython)
 pub fn loads(text: &str, strict: bool, call: &Call<'_>) -> Result<Option<Json>, ExtractError> {
     let mut parser = Parser::new(text, strict);

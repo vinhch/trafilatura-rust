@@ -726,8 +726,8 @@ pub fn language_classifier(_temp_text: &str, _temp_comments: &str) -> Option<Str
     None
 }
 
-/// Whether the text is in another language than the target; the detected language is not stored
-/// until `Document` exists.
+/// Whether the text is in another language than the target; the detected language is not written
+/// to the document until phase 4.
 // upstream: utils.py::language_filter
 // todo(phase 4): language
 pub fn language_filter(

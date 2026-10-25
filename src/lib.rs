@@ -78,6 +78,7 @@ pub use settings::{Config, Document, Focus};
 #[cfg(feature = "__internals")]
 #[doc(hidden)]
 pub mod __internals {
+    pub use crate::api::settings_format;
     pub use crate::baseline::{
         baseline, baseline_tree, basic_cleaning, block_text, build_body, html2txt, html2txt_tree,
     };

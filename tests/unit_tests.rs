@@ -54,8 +54,9 @@ use trafilatura_rust::__internals::{
     handle_titles, html2txt_tree, internal_extraction, link_density_test, link_density_test_tables,
     load_html, md_link, merge_with_parent, normalize_unicode, parse_document, parse_fragment,
     process_node, prune_html, prune_unwanted_nodes, prune_unwanted_sections, recover_wild_text,
-    remove_empty_elements, replace_element_text, sanitize, span, strip_double_tags, textfilter,
-    tree_cleaning, tree_cleaning_with, trim, xml_to_text, yaml_scalar,
+    remove_empty_elements, replace_element_text, sanitize, settings_format, span,
+    strip_double_tags, textfilter, tree_cleaning, tree_cleaning_with, trim, xml_to_text,
+    yaml_scalar,
 };
 use trafilatura_rust::{Call, ExtractError, Format as ApiFormat, Input, Options};
 
@@ -466,7 +467,7 @@ impl Kw {
     fn settings(&self) -> Extractor {
         let mut settings = Extractor::new(
             self.config.clone(),
-            self.format.into(),
+            settings_format(self.format),
             self.focus == Focus::Precision,
             self.focus == Focus::Recall,
             self.formatting,
@@ -616,9 +617,14 @@ fn md_inline(body: &str, kw: Kw) -> String {
 }
 
 /// The file `name` of upstream's `tests/resources`, read from the checkout; `None` (with a note)
-/// when the checkout is absent, as `parity.rs` does.
+/// when the checkout is absent, as `parity.rs` does; with `PARITY_REQUIRE_FIXTURES` set an absent
+/// checkout panics instead.
 fn resource(name: &str) -> Option<Vec<u8>> {
     let Some(root) = common::upstream_root() else {
+        assert!(
+            std::env::var_os("PARITY_REQUIRE_FIXTURES").is_none_or(|v| v.is_empty()),
+            "PARITY_REQUIRE_FIXTURES is set but the upstream checkout is missing, so {name} cannot be read"
+        );
         eprintln!("unit_tests: no upstream checkout, skipping the lines that read {name}");
         return None;
     };
