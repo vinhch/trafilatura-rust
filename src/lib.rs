@@ -24,6 +24,8 @@ mod main_extractor;
 #[allow(dead_code)]
 mod pyhtml;
 #[allow(dead_code)]
+mod pyjson;
+#[allow(dead_code)]
 mod pystr;
 #[allow(dead_code)]
 mod pyurl;
@@ -63,6 +65,7 @@ pub mod __internals {
         recover_wild_text, span,
     };
     pub use crate::pyhtml::unescape;
+    pub use crate::pyjson::{Json, JsonRef, Kind, dumps_str, loads};
     pub use crate::settings::{
         Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED,
         MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE, TAG_CATALOG,

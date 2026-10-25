@@ -927,3 +927,25 @@ mod text {
         );
     }
 }
+
+#[test]
+fn as_list_matches_python() {
+    let text = r#"{"o":{},"s":"x","l":[1,"a"],"e":[],"z":null,"n":5,"b":true}"#;
+    let json = crate::pyjson::loads(text, true, &Call::default())
+        .unwrap()
+        .unwrap();
+    let root = json.root();
+    let get = |key: &str| json.get(root, key);
+    let items = |key: &str| json.items(get(key).unwrap()).collect::<Vec<_>>();
+    // oracle: as_list(None) gives []
+    assert_eq!(as_list(&json, None), []);
+    // oracle: as_list([1, 'a']) gives the list, as_list([]) gives []
+    assert_eq!(as_list(&json, get("l")), items("l"));
+    assert_eq!(as_list(&json, get("e")), []);
+    // oracle: as_list('x') gives ['x'], as_list({}) gives [{}], as_list(5) gives [5], as_list(True) gives [True]
+    for key in ["s", "o", "n", "b"] {
+        assert_eq!(as_list(&json, get(key)), [get(key).unwrap()], "{key}");
+    }
+    // oracle: as_list(json.loads('null')) gives []
+    assert_eq!(as_list(&json, get("z")), []);
+}

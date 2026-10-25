@@ -12,6 +12,7 @@ use crate::context::Ctx;
 use crate::courlan::{fix_relative_urls, get_base_url};
 use crate::dom::{NodeId, ParseLimits, Tree, parse_document};
 use crate::error::{ExtractError, Rejection};
+use crate::pyjson::{Json, JsonRef, Kind};
 use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS, ignore_case_i};
 use crate::settings::MAX_FILE_SIZE;
 
@@ -773,6 +774,17 @@ pub fn safe_base_url(url: &str) -> String {
 // upstream: utils.py::safe_relative_url
 pub fn safe_relative_url(baseurl: &str, url: &str) -> String {
     fix_relative_urls(baseurl, url).unwrap_or_default()
+}
+
+/// The elements of a JSON value as a list: none for an absent value or `null`, a list's own items,
+/// otherwise the value alone.
+// upstream: utils.py::as_list
+pub fn as_list(json: &Json, value: Option<JsonRef>) -> Vec<JsonRef> {
+    match value {
+        Some(r) if json.kind(r) == Kind::List => json.items(r).collect(),
+        Some(r) if json.kind(r) != Kind::Null => vec![r],
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]
