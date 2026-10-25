@@ -1719,3 +1719,88 @@ fn extract_entry_points_check_cancellation() {
         Err(ExtractError::Cancelled)
     );
 }
+
+const LEAD: &str = "The harbor market opens early and the fishermen carry baskets of fresh herring along the old stone quay while gulls circle above the nets and the cold morning light slowly warms the wet cobbles.";
+const TRAIL: &str = "By noon the stalls are empty, the quay falls quiet again, and the last boats drift back toward the narrow mouth of the river as the tide turns and the evening wind begins to rise.";
+const SHORT_NOTE: &str = "A short note about the river mill and the boats that pass it each morning, written while the fog still lay thick over the water and the first lamps were lit.";
+const SVG_TITLE: &str = "<svg><title>t</title></svg>";
+
+/// `extract` in text format on a full page, through the public API.
+fn extract_txt(page: &str) -> Result<String, ExtractError> {
+    let extractor = crate::api::Options::new()
+        .format(crate::api::Format::Txt)
+        .build();
+    extractor.extract(&crate::api::Input::text(page), &Call::default())
+}
+
+/// A page whose article holds `middle` between two paragraphs.
+fn article_page(middle: &str) -> String {
+    format!(
+        "<html><head><title>t</title></head><body><article><p>{LEAD}</p>{middle}<p>{TRAIL}</p></article></body></html>"
+    )
+}
+
+#[test]
+fn define_newelem_rejects_colon_tag() {
+    // oracle: extract(page, options=Extractor(output_format="txt", fast=True, dedup=False)) inside
+    //   html5_parsers() is None: define_newelem raises ValueError("Invalid tag name 'o:p'") (or
+    //   'http:') in the main pass, which bare_extraction catches
+    for middle in [
+        "<ul><li><o:p>x</o:p> y</li></ul>",
+        "<ul><li>a <o:p>x</o:p> y</li><li>c</li></ul>",
+        "<blockquote>a <o:p>x</o:p> b</blockquote>",
+        "<blockquote>a <http://example.com/x>b</blockquote>",
+    ] {
+        assert_eq!(
+            extract_txt(&article_page(middle)),
+            Err(ExtractError::Rejected(Rejection::InvalidValue)),
+            "{middle}"
+        );
+    }
+}
+
+#[test]
+fn define_newelem_keeps_svg_child() {
+    // oracle: the same call on these pages returns the text below; the namespaced `title` passes
+    //   lxml's check on its local name
+    let want = format!("{LEAD}\n- a t b\n- c\n{TRAIL}");
+    assert_eq!(
+        extract_txt(&article_page(&format!(
+            "<ul><li>a {SVG_TITLE} b</li><li>c</li></ul>"
+        ))),
+        Ok(want)
+    );
+    let want = format!("{LEAD}\na t b\n{TRAIL}");
+    assert_eq!(
+        extract_txt(&article_page(&format!(
+            "<blockquote>a {SVG_TITLE} b</blockquote>"
+        ))),
+        Ok(want)
+    );
+}
+
+#[test]
+fn colon_tag_in_paragraph_is_stripped() {
+    // oracle: the same call returns the text below: handle_paragraphs strips `o:p` before any
+    //   element is built, so nothing raises
+    let page = article_page(
+        "<p>a <o:p>x</o:p> b, and then some more words so that the paragraph is long enough to stay.</p>",
+    );
+    let want = format!(
+        "{LEAD}\na x b, and then some more words so that the paragraph is long enough to stay.\n{TRAIL}"
+    );
+    assert_eq!(extract_txt(&page), Ok(want));
+}
+
+#[test]
+fn recall_retry_rejection_keeps_first_pass() {
+    // oracle: the same call returns SHORT_NOTE. The first pass keeps only the paragraph; the recall
+    //   retry (core._recall_retry, patched to record the raise) meets `<o:p>` in the list on the
+    //   fallback branch of process_nested_elements and raises ValueError, which its caller
+    //   swallows
+    let fill = "The quiet river carries small boats past the old mill. ".repeat(55);
+    let page = format!(
+        "<html><head><title>t</title></head><body><div><p>{SHORT_NOTE}</p></div><div class='x'><ul><li><o:p>x</o:p> more words here</li></ul>{fill}</div></body></html>"
+    );
+    assert_eq!(extract_txt(&page), Ok(SHORT_NOTE.to_string()));
+}

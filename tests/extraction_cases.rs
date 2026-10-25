@@ -11,6 +11,8 @@
 //! the baseline.
 
 #[allow(dead_code)]
+mod common;
+#[allow(dead_code)]
 mod trees;
 
 #[path = "extraction_cases/cases.rs"]
@@ -158,4 +160,31 @@ fn baseline_cases_match_upstream() {
         "{}",
         summary(&found, BASELINE_CASES.len(), "baseline cases")
     );
+}
+
+#[test]
+fn utf8_page_raises_invalid_tag() {
+    // oracle: extract(read("tests/resources/utf8.html"), options=Extractor(output_format=fmt,
+    //   fast=True)) is None for txt, markdown and html: define_newelem raises
+    //   ValueError("Invalid tag name 'http:'"), which bare_extraction catches
+    let Some(root) = common::upstream_root() else {
+        assert!(
+            !common::require_fixtures(),
+            "PARITY_REQUIRE_FIXTURES is set but the upstream checkout is missing"
+        );
+        eprintln!("extraction_cases: no upstream checkout, skipping utf8_page_raises_invalid_tag");
+        return;
+    };
+    let bytes = std::fs::read(root.join("tests/resources/utf8.html")).unwrap();
+    for format in [Format::Txt, Format::Markdown, Format::Html] {
+        let result = Options::new()
+            .format(format)
+            .build()
+            .extract(&Input::bytes(&bytes), &Call::default());
+        assert_eq!(
+            result,
+            Err(ExtractError::Rejected(Rejection::InvalidValue)),
+            "{format:?}"
+        );
+    }
 }

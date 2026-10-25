@@ -1037,6 +1037,30 @@ fn new_element_like_keeps_namespace() {
 }
 
 #[test]
+fn try_new_element_like_follows_lxml_tag_rule() {
+    // oracle: etree.Element(name) and etree.SubElement(etree.Element("x"), name) agree on every name:
+    //   "p", "x-y", "a.b", "_x", "Àx" and "{http://www.w3.org/2000/svg}title" are accepted;
+    //   "o:p", "http:" and 'a"b' raise ValueError("Invalid tag name ...")
+    let mut tree = parse("<html><body><svg><title>t</title></svg></body></html>");
+    let svg_title = find(&tree, "title");
+    let accepted = ["p", "x-y", "a.b", "_x", "\u{C0}x"];
+    for name in accepted {
+        let source = tree.new_element(name);
+        assert!(tree.try_new_element_like(source).is_ok(), "{name}");
+    }
+    let copy = tree.try_new_element_like(svg_title).unwrap();
+    assert_eq!(
+        (&*tree.node(copy).name, tree.node(copy).ns),
+        ("title", Ns::Svg)
+    );
+    let invalid = Err(ExtractError::Rejected(Rejection::InvalidValue));
+    for name in ["o:p", "http:", "a\"b"] {
+        let source = tree.new_element(name);
+        assert_eq!(tree.try_new_element_like(source), invalid, "{name}");
+    }
+}
+
+#[test]
 fn strip_tags_where_strips_foreign() {
     // oracle: p = etree.fromstring("<p>a<svg><title>t</title></svg>b</p>")
     //   etree.strip_tags(p, "svg", "title") -> p.text == "atb", len(p) == 0

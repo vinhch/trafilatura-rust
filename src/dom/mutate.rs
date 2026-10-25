@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
+use super::dump::is_valid_name;
 use super::{LocalName, Node, NodeId, Ns, Tree};
+use crate::error::{ExtractError, Rejection};
 
 impl Tree {
     /// A detached element in the HTML namespace, without attributes.
@@ -17,6 +19,16 @@ impl Tree {
         let source = self.node(id);
         let node = Node::new(source.name.clone(), source.ns, Vec::new());
         self.push(node)
+    }
+
+    /// `new_element_like` for a tag lxml creates without a parser: `Err(Rejected(InvalidValue))`
+    /// when the local name of `id` is not an XML Name or holds `:` (`ValueError: Invalid tag name`).
+    // upstream: lxml `_tagValidOrRaise`, reached by `Element(tag)` and `SubElement` under such a parent
+    pub fn try_new_element_like(&mut self, id: NodeId) -> Result<NodeId, ExtractError> {
+        if !is_valid_name(&self.node(id).name, false) {
+            return Err(ExtractError::Rejected(Rejection::InvalidValue));
+        }
+        Ok(self.new_element_like(id))
     }
 
     /// The first child element of `id`.

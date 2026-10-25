@@ -75,6 +75,12 @@ pub fn fixture_dir() -> Option<PathBuf> {
     dir.join("index.json").is_file().then_some(dir)
 }
 
+/// Whether `PARITY_REQUIRE_FIXTURES` is set and non-empty. CI sets it so a missing upstream
+/// checkout or fixture set fails a test instead of skipping it.
+pub fn require_fixtures() -> bool {
+    std::env::var_os("PARITY_REQUIRE_FIXTURES").is_some_and(|value| !value.is_empty())
+}
+
 /// The directory the tests write their reports to.
 pub fn report_dir() -> PathBuf {
     manifest_dir().join(".temp/parity")

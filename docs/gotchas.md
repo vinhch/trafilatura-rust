@@ -95,6 +95,12 @@ function.
   `(.//x)[1]` selects the first `x` in the document. A union in string context (`re:test(@id|@class,
   ...)`) reads only the first node in document order, which for two attributes is the one written
   first in the source.
+- lxml checks a new tag against the document of its parent. An HTML parser keeps `o:p`, and
+  `SubElement` under an HTML parent accepts it, but `Element(tag)` and `SubElement` under a
+  parser-less parent refuse a name that is not an XML Name or holds a colon (`ValueError`).
+  `define_newelem` builds under such a parent, so a Word `<o:p>` on the fallback branch of
+  `process_nested_elements` makes `bare_extraction` return `None`. `Tree::try_new_element_like`
+  carries the rule; the constant-tag sites keep `new_element_like`.
 
 ## Python regex and string semantics
 

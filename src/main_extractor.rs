@@ -190,7 +190,9 @@ fn define_newelem(
     let Some(processed) = processed else {
         return Ok(());
     };
-    let child = tree.new_element_like(processed);
+    // `orig` is made without a parser, so `SubElement` refuses a tag that is not an XML Name or
+    // holds a colon (lxml `_tagValidOrRaise`)
+    let child = tree.try_new_element_like(processed)?;
     tree.append(orig, child);
     let node = tree.node(processed);
     let (text, tail) = (node.text.clone(), node.tail.clone());

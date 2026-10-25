@@ -15,7 +15,7 @@ pub enum DumpMode {
 }
 
 // The XML 1.0 name productions, as in tools/parity/parity/html5tree.py.
-fn is_name_start(c: char) -> bool {
+pub(crate) fn is_name_start(c: char) -> bool {
     matches!(c,
         'A'..='Z' | 'a'..='z' | '_'
         | '\u{C0}'..='\u{D6}' | '\u{D8}'..='\u{F6}' | '\u{F8}'..='\u{2FF}'
@@ -24,13 +24,13 @@ fn is_name_start(c: char) -> bool {
         | '\u{F900}'..='\u{FDCF}' | '\u{FDF0}'..='\u{FFFD}' | '\u{10000}'..='\u{EFFFF}')
 }
 
-fn is_name_char(c: char) -> bool {
+pub(crate) fn is_name_char(c: char) -> bool {
     is_name_start(c)
         || matches!(c, '-' | '.' | '0'..='9' | '\u{B7}' | '\u{300}'..='\u{36F}' | '\u{203F}'..='\u{2040}')
 }
 
 /// Element names may contain `:` (libxml2 keeps `o:p`); attribute names may not.
-fn is_valid_name(name: &str, allow_colon: bool) -> bool {
+pub(crate) fn is_valid_name(name: &str, allow_colon: bool) -> bool {
     let colon_ok = |c: char| allow_colon && c == ':';
     let mut chars = name.chars();
     chars

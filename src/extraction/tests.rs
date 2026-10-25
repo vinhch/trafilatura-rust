@@ -372,6 +372,20 @@ fn escalate_swallows_rejection() {
 }
 
 #[test]
+fn escalate_swallows_invalid_value() {
+    // oracle: the cascade with `core._recall_retry` raising ValueError("Invalid tag name 'o:p'")
+    //   keeps the first-pass text: `except Exception` leaves r_text empty, so the floor fails
+    let options = cascade_options(false, false, true);
+    let result = run_escalate(
+        &options,
+        100,
+        |_, _, _, _| Err(ExtractError::Rejected(Rejection::InvalidValue)),
+        &Call::default(),
+    );
+    assert_eq!(result, Ok(None));
+}
+
+#[test]
 fn escalate_propagates_cancel() {
     let options = cascade_options(false, false, true);
     for error in [ExtractError::Cancelled, ExtractError::DeadlineExceeded] {

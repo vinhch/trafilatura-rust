@@ -622,7 +622,7 @@ fn md_inline(body: &str, kw: Kw) -> String {
 fn resource(name: &str) -> Option<Vec<u8>> {
     let Some(root) = common::upstream_root() else {
         assert!(
-            std::env::var_os("PARITY_REQUIRE_FIXTURES").is_none_or(|v| v.is_empty()),
+            !common::require_fixtures(),
             "PARITY_REQUIRE_FIXTURES is set but the upstream checkout is missing, so {name} cannot be read"
         );
         eprintln!("unit_tests: no upstream checkout, skipping the lines that read {name}");

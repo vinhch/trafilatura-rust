@@ -266,7 +266,7 @@ fn gate_skips_only_when_fixtures_are_not_required() {
 
 #[test]
 fn tree_dump_matches_html5_fixture() {
-    let require = std::env::var_os("PARITY_REQUIRE_FIXTURES").is_some_and(|v| !v.is_empty());
+    let require = common::require_fixtures();
     let found = common::fixture_dir().zip(common::upstream_root());
     let index = found
         .as_ref()
