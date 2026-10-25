@@ -20,9 +20,13 @@ mod deduplication;
 mod dom;
 mod error;
 #[allow(dead_code)]
+mod extraction;
+#[allow(dead_code)]
 mod html_processing;
 #[allow(dead_code)]
 mod main_extractor;
+#[allow(dead_code)]
+mod metadata;
 #[allow(dead_code)]
 mod pyhtml;
 #[allow(dead_code)]
@@ -76,8 +80,9 @@ pub mod __internals {
     pub use crate::pystr::{is_alpha, repr};
     pub use crate::pyunicodedata::normalize_nfc;
     pub use crate::settings::{
-        Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Extractor, Focus, Format, MANUALLY_CLEANED,
-        MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE, TAG_CATALOG,
+        Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Document, Extractor, Focus, Format,
+        MANUALLY_CLEANED, MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE,
+        TAG_CATALOG,
     };
     pub use crate::utils::{
         HtmlInput, decode_file, detect_encoding, load_html, normalize_unicode, safe_base_url,

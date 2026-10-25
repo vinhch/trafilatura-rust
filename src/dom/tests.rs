@@ -1317,3 +1317,37 @@ fn tostring_foreign_by_local_name() {
         "<svg>\n  <title>t</title>\n</svg>\n"
     );
 }
+
+#[test]
+fn copy_into_matches_copy() {
+    let mut tree =
+        fragment("<p id=\"x\" class=\"c\">a<b k=\"1\">b</b>c<i>d<u></u>e</i></p>tail<q></q>qt");
+    let root = tree.root();
+    let p = tree.first_child(root).unwrap();
+    let before = tree.tostring(root, false, true);
+    let size = tree.iter(p, &[]).count();
+
+    let mut dst = Tree::new(LocalName::from("body"), Ns::Html, vec![]);
+    let loose = dst.new_element("loose");
+    let len = dst.len();
+    let into = tree.copy_into(p, &mut dst);
+    assert_eq!(dst.len(), len + size);
+    assert_eq!(dst.node(into).parent(), None);
+    assert_eq!(dst.node(loose).parent(), None);
+
+    let in_place = tree.copy(p);
+    assert_eq!(
+        dst.tostring(into, false, true),
+        tree.tostring(in_place, false, true)
+    );
+    assert_eq!(
+        dst.tostring(into, false, true),
+        "<p id=\"x\" class=\"c\">a<b k=\"1\">b</b>c<i>d<u/>e</i></p>tail"
+    );
+    assert_eq!(dst.get(into, "id"), Some("x"));
+
+    // The source is unchanged, and the copy does not share nodes with it.
+    assert_eq!(tree.tostring(root, false, true), before);
+    dst.strip_tags(into, &["b"]);
+    assert_eq!(tree.tostring(root, false, true), before);
+}

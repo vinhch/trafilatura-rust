@@ -1,6 +1,6 @@
 //! The part of upstream `xml.py` that serves the plain-text and Markdown output: removing and merging
-//! elements, the empty-element pass, the element text and `xml_to_text`. The XML, TEI, JSON and CSV
-//! builders and the TEI checks are not ported.
+//! elements, the empty-element pass, the element text and `xml_to_text`, plus `meta_items`. The XML,
+//! TEI, JSON and CSV builders and the TEI checks are stubs until phase 6.
 
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::dom::{LiveIter, LocalName, NodeId, Ns, Tree};
@@ -8,7 +8,9 @@ use crate::error::ExtractError;
 use crate::html_processing::tick;
 use crate::pyhtml::unescape;
 use crate::pystr::{is_all_space, is_space, lstrip, rstrip, strip};
-use crate::settings::{INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE};
+use crate::settings::{
+    Document, Extractor, Field, INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE,
+};
 use crate::utils::{sanitize, text_chars_test};
 
 use self::markdown::{
@@ -1071,6 +1073,60 @@ pub fn xml_to_text(
     process_element(tree, root, &mut state, walk, false, false)?;
     let sanitized = sanitize(&state.out.text, true, false).unwrap_or_default();
     Ok(unescape(&sanitized)?.into_owned())
+}
+
+/// The metadata fields the XML and HTML outputs write, in output order.
+// upstream: xml.py::META_ATTRIBUTES
+pub const META_ATTRIBUTES: &[&str] = &[
+    "sitename",
+    "title",
+    "author",
+    "date",
+    "url",
+    "hostname",
+    "description",
+    "categories",
+    "tags",
+    "license",
+    "id",
+    "fingerprint",
+    "language",
+];
+
+/// The non-empty metadata fields of `doc` in `META_ATTRIBUTES` order, lists joined with `;`.
+// upstream: xml.py::meta_items
+pub fn meta_items(doc: &Document) -> Vec<(&'static str, String)> {
+    META_ATTRIBUTES
+        .iter()
+        .filter_map(|&name| {
+            let value = match doc.field(name)? {
+                Field::Text(text) => text.to_owned(),
+                Field::List(items) => items.join(";"),
+            };
+            Some((name, value))
+        })
+        .collect()
+}
+
+/// The XML or XML-TEI string of `doc`. Empty until phase 6.
+// upstream: xml.py::control_xml_output
+pub fn control_xml_output(_doc: &mut Document, _options: &Extractor) -> String {
+    // todo(phase 6): xml
+    String::new()
+}
+
+/// The CSV line of `doc`. Empty until phase 6.
+// upstream: xml.py::xmltocsv
+pub fn xml_to_csv(_doc: &Document, _include_formatting: bool) -> String {
+    // todo(phase 6): xml
+    String::new()
+}
+
+/// The JSON string of `doc`. Empty until phase 6.
+// upstream: xml.py::build_json_output
+pub fn build_json_output(_doc: &Document, _with_metadata: bool) -> String {
+    // todo(phase 6): xml
+    String::new()
 }
 
 mod markdown;

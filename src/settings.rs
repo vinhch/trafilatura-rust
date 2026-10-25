@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::cancel::Call;
-use crate::dom::{NodeId, Tree};
+use crate::dom::{LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
 use crate::pystr::ignore_case_i;
 use crate::xpaths::Selector;
@@ -229,6 +229,145 @@ impl Extractor {
             },
             author_blacklist,
             url_blacklist,
+        }
+    }
+}
+
+/// What an extraction returns: the metadata fields, the body and comments body as trees, and the
+/// texts. The body and the comments body are two `body` elements of one compact tree the document
+/// owns, copied out of the call's arena. Upstream's `from_dict` and `as_dict` are not ported: the
+/// fields are the dict.
+// upstream: settings.py::Document
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct Document {
+    /// Page title.
+    pub title: Option<String>,
+    /// Author.
+    pub author: Option<String>,
+    /// URL of the page.
+    pub url: Option<String>,
+    /// Host name of the URL.
+    pub hostname: Option<String>,
+    /// Description.
+    pub description: Option<String>,
+    /// Name of the site.
+    pub sitename: Option<String>,
+    /// Publication date, `YYYY-MM-DD`.
+    pub date: Option<String>,
+    /// Categories.
+    pub categories: Option<Vec<String>>,
+    /// Tags.
+    pub tags: Option<Vec<String>>,
+    /// Content fingerprint.
+    pub fingerprint: Option<String>,
+    /// Record id given by the caller.
+    pub id: Option<String>,
+    /// License.
+    pub license: Option<String>,
+    /// Comments as text, `bare_extraction` format `Python` only.
+    pub comments: Option<String>,
+    /// The main text as the extraction left it, before the conversion to the output format.
+    pub raw_text: Option<String>,
+    /// The main text, `bare_extraction` format `Python` only.
+    pub text: Option<String>,
+    /// Language of the page.
+    pub language: Option<String>,
+    /// Main image.
+    pub image: Option<String>,
+    /// Page type.
+    pub pagetype: Option<String>,
+    /// Date of the file.
+    pub filedate: Option<String>,
+    pub(crate) tree: Tree,
+    pub(crate) body: NodeId,
+    pub(crate) comments_body: NodeId,
+}
+
+/// The value of a [`Document`] field read by name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Field<'a> {
+    /// A string field.
+    Text(&'a str),
+    /// `categories` or `tags`.
+    List(&'a [String]),
+}
+
+impl Document {
+    /// An empty document: no metadata and an empty `body` for the text and for the comments
+    /// (upstream's defaults, two separate elements).
+    pub(crate) fn new() -> Self {
+        let mut tree = Tree::new(LocalName::from("body"), Ns::Html, Vec::new());
+        let body = tree.root();
+        let comments_body = tree.new_element("body");
+        Self {
+            title: None,
+            author: None,
+            url: None,
+            hostname: None,
+            description: None,
+            sitename: None,
+            date: None,
+            categories: None,
+            tags: None,
+            fingerprint: None,
+            id: None,
+            license: None,
+            comments: None,
+            raw_text: None,
+            text: None,
+            language: None,
+            image: None,
+            pagetype: None,
+            filedate: None,
+            tree,
+            body,
+            comments_body,
+        }
+    }
+
+    /// The tree that holds the body and the comments body.
+    #[cfg(feature = "__internals")]
+    pub fn body_tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    /// The `body` element of the main text in [`Document::body_tree`].
+    #[cfg(feature = "__internals")]
+    pub fn body(&self) -> NodeId {
+        self.body
+    }
+
+    /// The `body` element of the comments in [`Document::body_tree`].
+    #[cfg(feature = "__internals")]
+    pub fn comments_body(&self) -> NodeId {
+        self.comments_body
+    }
+
+    /// The metadata field `name` as upstream's `getattr(document, name, None)` followed by a truth
+    /// test reads it: `None` for an unset, empty or unknown field.
+    pub(crate) fn field(&self, name: &str) -> Option<Field<'_>> {
+        fn text(value: &Option<String>) -> Option<&str> {
+            value.as_deref().filter(|text| !text.is_empty())
+        }
+        fn list(value: &Option<Vec<String>>) -> Option<&[String]> {
+            value.as_deref().filter(|list| !list.is_empty())
+        }
+        match name {
+            "title" => text(&self.title).map(Field::Text),
+            "author" => text(&self.author).map(Field::Text),
+            "url" => text(&self.url).map(Field::Text),
+            "hostname" => text(&self.hostname).map(Field::Text),
+            "description" => text(&self.description).map(Field::Text),
+            "sitename" => text(&self.sitename).map(Field::Text),
+            "date" => text(&self.date).map(Field::Text),
+            "categories" => list(&self.categories).map(Field::List),
+            "tags" => list(&self.tags).map(Field::List),
+            "fingerprint" => text(&self.fingerprint).map(Field::Text),
+            "id" => text(&self.id).map(Field::Text),
+            "license" => text(&self.license).map(Field::Text),
+            "language" => text(&self.language).map(Field::Text),
+            _ => None,
         }
     }
 }

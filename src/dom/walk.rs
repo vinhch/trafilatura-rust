@@ -188,6 +188,30 @@ impl Tree {
         root
     }
 
+    /// `copy` into another tree: a deep copy of `id` and its subtree, tail included, as a detached
+    /// subtree of `dst`, which gets one contiguous block of new nodes in document order. `self` is
+    /// not changed. Returns the copy of `id`.
+    pub fn copy_into(&self, id: NodeId, dst: &mut Tree) -> NodeId {
+        dst.nodes.reserve(self.walk(id).count());
+        let root = dst.push(self.detached_copy(id));
+        let mut path = vec![root];
+        let mut current = self.node(id).first_child;
+        while let Some(node) = current {
+            let copied = dst.push(self.detached_copy(node));
+            if let Some(&parent) = path.last() {
+                dst.link_last(parent, copied);
+            }
+            current = match self.node(node).first_child {
+                Some(child) => {
+                    path.push(copied);
+                    Some(child)
+                }
+                None => self.next_outside(node, id, &mut path),
+            };
+        }
+        root
+    }
+
     /// The next node to copy after the leaf `node`, climbing out of finished parents and popping
     /// their copies off `path`; `None` once the subtree of `start` is done.
     fn next_outside(&self, node: NodeId, start: NodeId, path: &mut Vec<NodeId>) -> Option<NodeId> {
@@ -207,10 +231,16 @@ impl Tree {
 
     /// A detached node with the data of `id` and none of its links.
     fn copy_node(&mut self, id: NodeId) -> NodeId {
+        let node = self.detached_copy(id);
+        self.push(node)
+    }
+
+    /// A node with the data of `id` and none of its links, not stored anywhere yet.
+    fn detached_copy(&self, id: NodeId) -> Node {
         let source = self.node(id);
         let mut node = Node::new(source.name.clone(), source.ns, source.attrs.clone());
         node.text.clone_from(&source.text);
         node.tail.clone_from(&source.tail);
-        self.push(node)
+        node
     }
 }
