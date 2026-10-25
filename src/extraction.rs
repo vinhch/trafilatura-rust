@@ -1,14 +1,26 @@
-//! The extraction entry points of upstream `core.py`: the output step now, the cascade and the
-//! public functions in later tasks.
+//! The extraction entry points of upstream `core.py`: the output step and the extraction cascade;
+//! the public functions follow in later tasks.
 
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
+use regex::Regex;
+
+use crate::baseline::{baseline_tree, html2txt_tree};
 use crate::cancel::Call;
-use crate::error::ExtractError;
-use crate::html_processing::build_html_output;
+use crate::context::Ctx;
+use crate::dom::{NodeId, ParseLimits, Tree};
+use crate::error::{ExtractError, caught};
+use crate::html_processing::{
+    build_html_output, convert_tags, prune_unwanted_nodes, tick, tree_cleaning,
+};
+use crate::main_extractor::{elem_text, extract_comments, extract_content};
 use crate::pyjson::dumps_str;
-use crate::pystr::{self, is_alpha};
-use crate::settings::{Document, Extractor, Field, Format};
+use crate::pystr::{self, PY_SPACE_CLASS, is_alpha};
+use crate::settings::{Document, Extractor, Field, Focus, Format};
 use crate::utils::normalize_unicode;
 use crate::xml::{build_json_output, control_xml_output, meta_items, xml_to_csv, xml_to_text};
+use crate::xpaths::{RAW_TREE_PRUNE_XPATH, REMOVE_COMMENTS_AND_LISTS_XPATH, REMOVE_COMMENTS_XPATH};
 
 /// The output formats whose result is text.
 // upstream: core.py::TXT_FORMATS
@@ -124,6 +136,278 @@ pub fn determine_returnstring(
         }
     };
     Ok(normalize_unicode(&returnstring).into_owned())
+}
+
+/// Only an extraction shorter than this many characters is considered for the recall escalation.
+// upstream: core.py::ESCALATION_MAX_LENGTH
+pub const ESCALATION_MAX_LENGTH: usize = 3000;
+
+/// The escalation also needs the extraction to cover less than this share of the page text.
+// upstream: core.py::ESCALATION_PAGE_SHARE
+pub const ESCALATION_PAGE_SHARE: f64 = 0.2;
+
+/// The recall retry replaces the first pass when it is longer by more than this factor.
+// upstream: core.py::ESCALATION_ACCEPT_RATIO
+pub const ESCALATION_ACCEPT_RATIO: f64 = 1.5;
+
+// `\s` as Python's `re` reads it, which includes `\x1c`-`\x1f` (`regex`'s does not). A pattern is a
+// literal that compiles (`forum_pattern_compiles` forces it); `None` would make every page no
+// forum instead of panicking.
+// upstream: core.py::_DISCUSSION_FORUM_POSTING_RE
+static DISCUSSION_FORUM_POSTING_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    let s = format!("[{PY_SPACE_CLASS}]");
+    Regex::new(&format!(
+        r#""@type"{s}*:{s}*"DiscussionForumPosting"|"@type"{s}*:{s}*\[[^\]]*"DiscussionForumPosting""#
+    ))
+    .ok()
+});
+
+/// Whether a `ld+json` script below `root` declares a `DiscussionForumPosting`: a thread page whose
+/// posts sit in the containers the comment prune would remove.
+// upstream: core.py::_forum_thread_page
+fn forum_thread_page(tree: &Tree, root: NodeId, call: &Call<'_>) -> Result<bool, ExtractError> {
+    let Some(pattern) = DISCUSSION_FORUM_POSTING_RE.as_ref() else {
+        return Ok(false);
+    };
+    let mut visited = 0usize;
+    for script in tree.iterdescendants(root, &["script"]) {
+        tick(&mut visited, call)?;
+        if tree.get(script, "type") == Some("application/ld+json")
+            && tree
+                .node(script)
+                .text
+                .as_deref()
+                .is_some_and(|text| pattern.is_match(text))
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Cleans a copy of the raw tree below `raw_root` and converts its tags; returns the converted tree
+/// and a copy of the cleaned tree from before the conversion.
+// upstream: core.py::_prepare_tree
+fn prepare_tree(
+    tree: &mut Tree,
+    raw_root: NodeId,
+    ctx: &Ctx<'_>,
+    url: Option<&str>,
+) -> Result<(NodeId, NodeId), ExtractError> {
+    let copy = tree.copy(raw_root);
+    let cleaned = tree_cleaning(tree, copy, ctx)?;
+    let backup = tree.copy(cleaned);
+    convert_tags(tree, cleaned, ctx, url)?;
+    Ok((cleaned, backup))
+}
+
+/// Cascade stages 1 and 2: the main extractor, then the comparison with the external extractors.
+// upstream: core.py::_extract_and_compare
+fn extract_and_compare(
+    tree: &mut Tree,
+    cleaned: NodeId,
+    ctx: &Ctx<'_>,
+) -> Result<(NodeId, String), ExtractError> {
+    // deviation: D-1 (`if not options.fast`: compare_extraction, readability and jusText)
+    extract_content(tree, cleaned, ctx)
+}
+
+/// The stage 4 retry: stages 1 and 2 again on `esc_root`, with no comment capture, no baseline and
+/// no escalation.
+// upstream: core.py::_recall_retry
+fn recall_retry(
+    tree: &mut Tree,
+    esc_root: NodeId,
+    ctx: &Ctx<'_>,
+    url: Option<&str>,
+) -> Result<(NodeId, String), ExtractError> {
+    let (cleaned, _backup) = prepare_tree(tree, esc_root, ctx, url)?;
+    extract_and_compare(tree, cleaned, ctx)
+}
+
+/// Stage 4 from the escalation input to the acceptance rule: runs `retry` with the focus set to
+/// recall on the raw tree (a thread forum, or comments off) or on a copy pruned of the comment
+/// containers, and returns its result when it is at least `min_extracted_size` characters and more
+/// than `ESCALATION_ACCEPT_RATIO` times the current text. A rejection inside `retry` leaves the
+/// first pass standing (`None`); a cancellation propagates.
+// upstream: core.py::trafilatura_sequence (stage 4)
+#[allow(clippy::too_many_arguments)] // the stage's inputs, as upstream's locals
+fn escalate(
+    tree: &mut Tree,
+    raw_root: NodeId,
+    ctx: &Ctx<'_>,
+    url: Option<&str>,
+    is_forum: bool,
+    temp_comments: &str,
+    (_, current_text): (NodeId, String),
+    retry: impl FnOnce(
+        &mut Tree,
+        NodeId,
+        &Ctx<'_>,
+        Option<&str>,
+    ) -> Result<(NodeId, String), ExtractError>,
+) -> Result<Option<(NodeId, String)>, ExtractError> {
+    let call = ctx.call;
+    // a copy, so the caller's options keep their focus
+    let mut r_options = (*ctx.options).clone();
+    r_options.focus = Focus::Recall;
+    let r_ctx = Ctx {
+        options: Cow::Owned(r_options),
+        call,
+    };
+    let esc_root = if is_forum || !ctx.options.comments {
+        raw_root
+    } else {
+        let copy = tree.copy(raw_root);
+        let comment_nodes = if temp_comments.is_empty() {
+            REMOVE_COMMENTS_XPATH
+        } else {
+            REMOVE_COMMENTS_AND_LISTS_XPATH
+        };
+        prune_unwanted_nodes(tree, copy, comment_nodes, false, call)?;
+        copy
+    };
+    // upstream's `except Exception` leaves `r_text` empty, which fails the floor
+    let Some((r_body, r_text)) = caught(retry(tree, esc_root, &r_ctx, url))? else {
+        return Ok(None);
+    };
+    let len_text = current_text.chars().count();
+    let r_len = r_text.chars().count();
+    // deviation: D-1 (the jusText candidate, `ESCALATION_JUSTEXT_RATIO`, is never tried)
+    let accepted = r_len >= ctx.options.min_extracted_size
+        && r_len as f64 > ESCALATION_ACCEPT_RATIO * len_text as f64;
+    Ok(accepted.then_some((r_body, r_text)))
+}
+
+/// The thread-forum salvage: appends the captured posts whose text is not in the body to `postbody`
+/// and returns the recomputed text, `None` when no post was appended. Checks `call` for every
+/// child of the body and every post, as both scans are quadratic.
+// upstream: core.py::trafilatura_sequence (forum salvage)
+fn salvage(
+    tree: &mut Tree,
+    postbody: NodeId,
+    forum_posts: NodeId,
+    call: &Call<'_>,
+) -> Result<Option<String>, ExtractError> {
+    let mut texts = Vec::new();
+    for child in tree.children(postbody).collect::<Vec<_>>() {
+        call.check()?;
+        let text = elem_text(tree, child);
+        if !text.is_empty() {
+            texts.push(text);
+        }
+    }
+    let existing = texts.join("\n");
+    let mut salvaged = Vec::new();
+    for post in tree.children(forum_posts).collect::<Vec<_>>() {
+        call.check()?;
+        let text = elem_text(tree, post);
+        if !text.is_empty() && !existing.contains(&text) {
+            salvaged.push(post);
+        }
+    }
+    if salvaged.is_empty() {
+        return Ok(None);
+    }
+    for post in salvaged {
+        tree.append(postbody, post);
+    }
+    let pieces: Vec<&str> = tree.itertext_lxml(postbody).collect();
+    Ok(Some(pystr::strip(&pieces.join(" ")).to_owned()))
+}
+
+/// Prepares the raw tree below `root` (cleaning, tag conversion, comment handling), then runs the
+/// cascade of extractors, each stage engaging only when the previous one under-delivered: the main
+/// extractor, the baseline rescue on the raw tree, the recall escalation, and the forum-post
+/// salvage. Returns the body and the comments body with their texts. `root` is pruned in place; the
+/// stages work on copies.
+// upstream: core.py::trafilatura_sequence
+pub fn trafilatura_sequence(
+    tree: &mut Tree,
+    root: NodeId,
+    ctx: &Ctx<'_>,
+    url: Option<&str>,
+    limits: &ParseLimits,
+) -> Result<(NodeId, String, NodeId, String), ExtractError> {
+    let call = ctx.call;
+    let options = &ctx.options;
+    call.check()?;
+    let is_forum = forum_thread_page(tree, root, call)?;
+    // the raw-tree prune, so the baseline, html2txt and the retry inherit it
+    prune_unwanted_nodes(tree, root, RAW_TREE_PRUNE_XPATH, false, call)?;
+    if !options.comments && (options.focus == Focus::Precision || !is_forum) {
+        prune_unwanted_nodes(tree, root, REMOVE_COMMENTS_AND_LISTS_XPATH, false, call)?;
+    }
+    call.check()?;
+    let (mut cleaned, backup) = prepare_tree(tree, root, ctx, url)?;
+    call.check()?;
+
+    let (mut comments_body, mut temp_comments) = if options.comments {
+        extract_comments(tree, cleaned, ctx)?
+    } else {
+        (tree.new_element("body"), String::new())
+    };
+    let mut forum_posts = None;
+    if !temp_comments.is_empty() && is_forum {
+        // thread forum: the comments are the posts, so they go to the body (the backup predates the
+        // capture) and the capture waits for the salvage
+        forum_posts = Some(comments_body);
+        comments_body = tree.new_element("body");
+        temp_comments = String::new();
+        cleaned = tree.copy(backup);
+        convert_tags(tree, cleaned, ctx, url)?;
+    }
+    if options.focus == Focus::Precision && !is_forum {
+        // after the conversion the lists are `list`, which the raw-tree prune could not match
+        prune_unwanted_nodes(tree, cleaned, REMOVE_COMMENTS_XPATH, false, call)?;
+    }
+    call.check()?;
+
+    let (mut postbody, mut temp_text) = extract_and_compare(tree, cleaned, ctx)?;
+    call.check()?;
+
+    // 3. baseline rescue on the raw tree, accepted only when it adds text
+    if temp_text.chars().count() < options.min_extracted_size && options.focus != Focus::Precision {
+        let (b_body, b_text, b_len) = baseline_tree(tree, root, limits, call)?;
+        if b_len > temp_text.chars().count() {
+            (postbody, temp_text) = (b_body, b_text);
+            // the dump saw the whole page: the missing posts are boilerplate, not lost
+            forum_posts = None;
+        }
+        call.check()?;
+    }
+
+    // 4. recall escalation: a short extraction covering little of the page is retried in recall mode
+    let len_text = temp_text.chars().count();
+    if options.focus == Focus::Balanced && 0 < len_text && len_text < ESCALATION_MAX_LENGTH {
+        // the page measure is only taken when the two cheaper tests hold
+        let page_len = html2txt_tree(tree, root, true, call)?.chars().count();
+        if (len_text as f64) < ESCALATION_PAGE_SHARE * page_len as f64 {
+            let current = (postbody, temp_text.clone());
+            if let Some(retried) = escalate(
+                tree,
+                root,
+                ctx,
+                url,
+                is_forum,
+                &temp_comments,
+                current,
+                recall_retry,
+            )? {
+                (postbody, temp_text) = retried;
+                // an accepted candidate saw the full page: its exclusions are deliberate
+                forum_posts = None;
+            }
+        }
+        call.check()?;
+    }
+
+    if let Some(posts) = forum_posts
+        && let Some(text) = salvage(tree, postbody, posts, call)?
+    {
+        temp_text = text;
+    }
+    Ok((postbody, temp_text, comments_body, temp_comments))
 }
 
 #[cfg(test)]
