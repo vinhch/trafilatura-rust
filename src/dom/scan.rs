@@ -31,8 +31,10 @@ pub(super) enum Pause {
     /// Just past the `>` of a start tag named title, textarea, style, xmp, iframe, noembed,
     /// noframes, script or plaintext (ASCII-lowercased name), and past any U+FEFF that follows.
     RawTextTag(LocalName),
-    /// At the `<` of `<![CDATA[` (case-sensitive, as html5ever's `eat_exact`) in the Data state;
-    /// RCDATA, RAWTEXT, script data and PLAINTEXT never reach the markup declaration check.
+    /// Just past the `<!` of `<![CDATA[` (case-sensitive, as html5ever's `eat_exact`) in the Data
+    /// state. html5ever, fed up to there, is suspended in its markup declaration check with every
+    /// earlier token processed, so the tree builder's state is the one that check reads. RCDATA,
+    /// RAWTEXT, script data and PLAINTEXT never reach it.
     Cdata,
 }
 
@@ -180,7 +182,7 @@ const NAME_CAP: usize = 9;
 
 const BOM_UTF8: &[u8] = &[0xEF, 0xBB, 0xBF];
 
-const CDATA_OPEN: &[u8] = b"<![CDATA[";
+const CDATA_OPEN: &[u8] = b"![CDATA[";
 
 fn is_space(byte: u8) -> bool {
     matches!(byte, b'\t' | b'\n' | b'\r' | 0x0C | b' ')
@@ -270,16 +272,20 @@ impl TagScanner {
                     if i >= end {
                         break;
                     }
+                    self.state = State::TagOpen;
+                    i += 1;
+                    continue;
+                }
+                State::TagOpen => {
+                    // Pause with html5ever suspended in its markup declaration check, every earlier
+                    // token processed: it has not read the `[CDATA[` it asks the tree builder about.
                     if bytes
                         .get(i..)
                         .is_some_and(|rest| rest.starts_with(CDATA_OPEN))
                     {
                         self.state = State::AwaitCdata;
-                        return Ok((i, Pause::Cdata));
+                        return Ok((i + 1, Pause::Cdata));
                     }
-                    self.state = State::TagOpen;
-                    i += 1;
-                    continue;
                 }
                 State::MarkupDecl => {
                     let rest = bytes.get(i..).unwrap_or_default();
@@ -355,9 +361,9 @@ impl TagScanner {
             return;
         }
         if foreign {
-            self.skip_then(CDATA_OPEN.len(), State::Cdata);
+            self.skip_then(b"[CDATA[".len(), State::Cdata);
         } else {
-            self.skip_then(b"<!".len(), State::BogusComment);
+            self.state = State::BogusComment;
         }
     }
 

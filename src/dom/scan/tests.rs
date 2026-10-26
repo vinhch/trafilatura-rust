@@ -29,24 +29,33 @@ fn pauses_after_raw_text_start_tags() {
 }
 
 #[test]
-fn pauses_before_cdata() {
+fn pauses_after_the_bang_of_cdata() {
     let html = "ab<![CDATA[";
     let mut scanner = TagScanner::new();
     assert_eq!(
         scanner.scan(html, 0, html.len()).unwrap(),
-        (2, Pause::Cdata)
+        (4, Pause::Cdata)
     );
     scanner.resume_at_cdata(true);
     assert_eq!(
-        scanner.scan(html, 2, html.len()).unwrap(),
+        scanner.scan(html, 4, html.len()).unwrap(),
         (html.len(), Pause::End)
+    );
+
+    // A piece that ends between `<` and `!` pauses in the next one, still just past the `!`.
+    let mut scanner = TagScanner::new();
+    assert_eq!(scanner.scan(html, 0, 3).unwrap(), (3, Pause::End));
+    assert_eq!(
+        scanner.scan(html, 3, html.len()).unwrap(),
+        (4, Pause::Cdata)
     );
 
     let scan_after_cdata = |html: &str, foreign: bool| {
         let mut scanner = TagScanner::new();
-        assert_eq!(scanner.scan(html, 0, html.len()).unwrap().1, Pause::Cdata);
+        let (cut, pause) = scanner.scan(html, 0, html.len()).unwrap();
+        assert_eq!((cut, pause), (2, Pause::Cdata));
         scanner.resume_at_cdata(foreign);
-        scanner.scan(html, 0, html.len())
+        scanner.scan(html, cut, html.len())
     };
     let big = tag(MAX_TAG_ATTRIBUTES + 1);
     assert!(scan_after_cdata(&format!("<![CDATA[{big}]]>"), true).is_ok());

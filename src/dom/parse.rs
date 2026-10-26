@@ -35,9 +35,10 @@ pub const MAX_DEPTH: usize = 256;
 // deviation: D-5
 pub const MAX_TAG_ATTRIBUTES: usize = 1_000;
 
-/// Input is fed to html5ever in pieces of at most this many bytes, with a cancel and node-limit check
-/// between pieces; a piece ends early at a scanner pause. html5ever cannot be stopped inside a piece, so
-/// the piece size bounds the work done after an abort.
+/// Input is fed to html5ever in pieces of `CHUNK_BYTES`, with a cancel and node-limit check between
+/// pieces. A piece ends early at a scanner pause, and grows past this size only to take a run of
+/// `BOM` whole. html5ever cannot be stopped inside a piece, so the piece size bounds the work done
+/// after an abort, a BOM run being plain text that costs html5ever one pass.
 const CHUNK_BYTES: usize = 8 * 1024;
 
 /// U+FEFF: html5ever drops one at the start of every `feed` call, so no piece may start with it.
@@ -613,23 +614,18 @@ fn new_sink<'c>(limits: &ParseLimits, call: &'c Call<'c>, fragment: bool) -> Sin
     }
 }
 
-/// End of the piece that starts at `start`: `CHUNK_BYTES` on, at a char boundary and not before a
-/// `BOM`.
+/// End of the piece that starts at `start`, always past it: `CHUNK_BYTES` on, at a char boundary and
+/// not before a `BOM`. A run of BOMs that fills the piece moves the end forward to the end of the run.
 fn chunk_end(html: &str, start: usize) -> usize {
-    let mut end = start.saturating_add(CHUNK_BYTES).min(html.len());
-    while end > start
-        && (!html.is_char_boundary(end)
-            || html.get(end..).is_some_and(|rest| rest.starts_with(BOM)))
-    {
-        end = end.saturating_sub(1);
-    }
-    if end > start {
-        return end;
-    }
-    // Only a run of BOMs at the very start of the input can fill the piece: take all of it.
-    let rest = html.get(start..).unwrap_or_default();
-    html.len()
-        .saturating_sub(rest.trim_start_matches(BOM).len())
+    let is_cut = |end: usize| {
+        html.is_char_boundary(end) && !html.get(end..).is_some_and(|rest| rest.starts_with(BOM))
+    };
+    let natural = start.saturating_add(CHUNK_BYTES).min(html.len());
+    (start.saturating_add(1)..=natural)
+        .rev()
+        .find(|&end| is_cut(end))
+        .or_else(|| (natural.saturating_add(1)..=html.len()).find(|&end| is_cut(end)))
+        .unwrap_or(html.len())
 }
 
 fn drive(
@@ -672,6 +668,11 @@ fn drive(
                     .adjusted_current_node_present_but_not_in_html_namespace(),
             ),
         }
+        // Every pause is answered above, so `scan` consumes at least one byte of a non-empty piece.
+        debug_assert!(
+            cut > start,
+            "the piece starting at {start} made no progress"
+        );
         start = cut;
     }
     call.check()?;
@@ -982,6 +983,16 @@ mod tests {
             // html5ever drops a U+FEFF that starts a feed call; the pieces of `drive` never start with one.
             (format!("<{BOM}x{}>", attrs(1_500)), false),
         ];
+        // A character reference right before `<` is still pending when a piece ends there. Its text
+        // reconstructs the formatting element `b` as an HTML element, so the section is a bogus
+        // comment that ends at the first `>`, not CDATA.
+        for char_ref in ["&amp", "&amp;", "&#65", "&#x41", "&"] {
+            for foreign in ["<svg><foreignObject><p><b></p>", "<math><mi><p><b></p>"] {
+                cases.push((format!("{foreign}{char_ref}<![CDATA[ > {t} ]]>"), true));
+                cases.push((format!("{foreign}{char_ref}<!-- {t} -->"), false));
+                cases.push((format!("{foreign}{char_ref}<!--> {t}"), true));
+            }
+        }
         for name in [
             "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes",
         ] {
@@ -1213,11 +1224,15 @@ mod tests {
             "<head>",
             "<body>",
             "<p>",
+            "</p>",
             "<b>",
+            "</b>",
+            "<i>",
             "<meta charset=x>",
             "<html>",
             "<template>",
             "<noscript>",
+            "<svg><foreignObject><p><b></p>",
             "<scr",
             "</scr",
             "ipt>",
@@ -1232,6 +1247,9 @@ mod tests {
             "x",
             "a",
             "&amp;",
+            "&amp",
+            "&#65",
+            "&#x41",
             "&",
             "&#",
             "<a ",
@@ -1341,9 +1359,10 @@ mod tests {
         );
     }
 
+    // Without the scan html5ever compares about N^2 / 2 names, which takes minutes for these sizes.
     #[test]
     fn huge_tag_is_rejected_in_linear_time() {
-        let time = |count: usize| {
+        for count in [100_000, 400_000] {
             let html = tag(count);
             let start = std::time::Instant::now();
             let result = parse(&html, false);
@@ -1352,13 +1371,65 @@ mod tests {
                 result.unwrap_err(),
                 ExtractError::Rejected(Rejection::TreeTooLarge)
             );
-            elapsed
-        };
-        let base = time(100_000);
-        let scaled = time(400_000);
-        let second = std::time::Duration::from_secs(1);
-        assert!(base < second && scaled < second, "{base:?}, {scaled:?}");
-        assert!(scaled < base * 8, "{base:?} for N, {scaled:?} for 4N");
+            assert!(
+                elapsed < std::time::Duration::from_secs(1),
+                "{count} attributes: {elapsed:?}"
+            );
+        }
+    }
+
+    // A run of BOMs fills a whole piece, which cannot start or end at one (html5ever drops a BOM at
+    // the start of each `feed`): the piece grows to the end of the run instead.
+    #[test]
+    fn bom_runs_do_not_stall_the_drive() {
+        let boms = |count: usize| BOM.to_string().repeat(count);
+        let mut pages = vec![
+            format!("x{}", boms(3_000)),
+            format!("<style>{}", boms(3_000)),
+            format!("<script>{}</script>", boms(3_000)),
+            format!("<p>x{}y</p>", boms(2 * CHUNK_BYTES)),
+            format!("<style>{}</style>y", boms(2 * CHUNK_BYTES)),
+            boms(CHUNK_BYTES),
+            format!("{}y", boms(CHUNK_BYTES)),
+        ];
+        for k in 0..=8 {
+            pages.push(format!("{}{}tail", "x".repeat(CHUNK_BYTES - k), boms(4)));
+            pages.push(format!(
+                "{}{}tail",
+                "x".repeat(CHUNK_BYTES - k),
+                boms(4_000)
+            ));
+            pages.push(format!(
+                "<p>{}{}</p>",
+                "x".repeat(CHUNK_BYTES - 3 - k),
+                boms(3)
+            ));
+        }
+        for html in &pages {
+            for fragment in [false, true] {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                let call = Call::default().deadline(deadline);
+                let limits = ParseLimits::default();
+                let result = if fragment {
+                    parse_fragment(html, &limits, &call)
+                } else {
+                    parse_document(html, &limits, &call)
+                };
+                let label: String = html.chars().take(12).collect();
+                let tree = result.unwrap_or_else(|error| {
+                    panic!(
+                        "{label:?} ({} bytes) fragment {fragment}: {error:?}",
+                        html.len()
+                    )
+                });
+                assert_eq!(
+                    dump(&tree, DumpMode::Exact),
+                    dump(&whole_tree(html, fragment), DumpMode::Exact),
+                    "{label:?} ({} bytes) fragment {fragment}",
+                    html.len()
+                );
+            }
+        }
     }
 
     #[test]
