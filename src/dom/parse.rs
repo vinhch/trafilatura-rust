@@ -35,6 +35,30 @@ pub const MAX_DEPTH: usize = 256;
 // deviation: D-5
 pub const MAX_TAG_ATTRIBUTES: usize = 1_000;
 
+/// Attributes the whole parse may create per allowed node (`max_nodes`), reconstruction clones
+/// included. Real pages carry about 5 per element; an attack tag of 1,000 attributes cloned by every
+/// `<p>` is what the budget stops, long before the node limit.
+// deviation: D-5
+const ATTRIBUTES_PER_NODE: usize = 10;
+
+/// Compare work the whole parse may spend per allowed node (`max_nodes`), in the units of
+/// `Inner::charge`: 20,000,000 at the default, about 0.26 s of html5ever's formatting compares. Real
+/// pages stay in the hundreds.
+// deviation: D-5
+const COMPARE_WORK_PER_NODE: usize = 40;
+
+/// Units one pair of formatting entries costs html5ever beyond its attributes: two list clones and
+/// sorts of a few attributes take about 160 ns, and one compared attribute 13 ns.
+const PAIR_UNITS: usize = 12;
+
+/// Smallest piece fed while the compare budget runs low.
+const MIN_PIECE_BYTES: usize = 64;
+
+/// html5ever's parse error for an end tag whose formatting element is open but out of scope. The
+/// adoption agency clones the element's `Tag` first and leaves it in the active formatting list, so
+/// the same end tag can repeat the clone for as long as the input lasts.
+const NOT_IN_SCOPE: &str = "Formatting element not in scope";
+
 /// Input is fed to html5ever in pieces of `CHUNK_BYTES`, with a cancel and node-limit check between
 /// pieces. A piece ends early at a scanner pause, and grows past this size only to take a run of
 /// `BOM` whole. html5ever cannot be stopped inside a piece, so the piece size bounds the work done
@@ -53,7 +77,8 @@ pub struct ParseLimits {
     /// Element nesting depth at which parsing stops and the partial tree is kept.
     pub max_depth: usize,
     /// Element count above which parsing fails with `Rejection::TreeTooLarge`, html5ever's clones of
-    /// open formatting elements included; `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
+    /// open formatting elements included; so does a total of more than 10 attributes per allowed
+    /// element, clones included. `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
     /// Raw input length above which loading fails with `Rejection::InputTooLarge`, checked before
     /// decompression; `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
@@ -100,6 +125,14 @@ struct Inner {
     max_nodes: Option<usize>,
     /// Elements created so far, the unattached ones html5ever clones included.
     elements: usize,
+    /// Attributes handed to `create_element` so far, the clones included.
+    attributes: usize,
+    /// html5ever's attribute-compare work so far, in `charge` units.
+    compare_work: usize,
+    /// Largest single charge so far: the cost one more formatting tag may add.
+    peak_charge: usize,
+    /// Most attributes any formatting element created so far carries.
+    max_formatting_attributes: usize,
     /// Set at the depth cut or on abort: every later sink call changes nothing.
     stopped: bool,
     abort: Option<ExtractError>,
@@ -138,6 +171,29 @@ fn empty_name() -> QualName {
     QualName::new(None, ns!(), local_name!(""))
 }
 
+/// The elements html5ever keeps in its list of active formatting elements and compares on insertion
+/// (Noah's Ark clause).
+fn is_formatting(qual: &QualName) -> bool {
+    [
+        local_name!("a"),
+        local_name!("b"),
+        local_name!("big"),
+        local_name!("code"),
+        local_name!("em"),
+        local_name!("font"),
+        local_name!("i"),
+        local_name!("nobr"),
+        local_name!("s"),
+        local_name!("small"),
+        local_name!("strike"),
+        local_name!("strong"),
+        local_name!("tt"),
+        local_name!("u"),
+    ]
+    .contains(&qual.local)
+        && qual.ns == ns!(html)
+}
+
 fn ns_of(qual: &QualName) -> Ns {
     if qual.ns == ns!(svg) {
         Ns::Svg
@@ -155,6 +211,10 @@ impl Inner {
             max_depth: limits.max_depth,
             max_nodes: limits.max_nodes,
             elements: 0,
+            attributes: 0,
+            compare_work: 0,
+            peak_charge: 0,
+            max_formatting_attributes: 0,
             stopped: false,
             abort: None,
             short_values: HashSet::new(),
@@ -215,6 +275,46 @@ impl Inner {
     #[allow(clippy::indexing_slicing)]
     fn node_mut(&mut self, id: u32) -> &mut SinkNode {
         &mut self.nodes[id as usize]
+    }
+
+    /// Adds `units` of html5ever's formatting compare work (one unit = one attribute compared) and
+    /// aborts past `max_nodes * COMPARE_WORK_PER_NODE`.
+    fn charge(&mut self, units: usize) {
+        self.compare_work = self.compare_work.saturating_add(units);
+        self.peak_charge = self.peak_charge.max(units);
+        // deviation: D-5
+        if self.abort.is_none()
+            && self
+                .max_nodes
+                .is_some_and(|max| self.compare_work > max.saturating_mul(COMPARE_WORK_PER_NODE))
+        {
+            self.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
+            self.stopped = true;
+        }
+    }
+
+    /// Charges the compare html5ever ran before inserting formatting element `child` under
+    /// `parent`: against each same-name open formatting element, which are exactly its ancestors
+    /// (`docs/architecture.md`, Bounded). Entries before a marker, or already dropped from the list,
+    /// are charged too, so this never undercounts.
+    fn charge_formatting_compare(&mut self, parent: u32, child: u32) {
+        let (name, fresh) = {
+            let node = self.node(child);
+            (node.qual.local.clone(), node.attrs.len())
+        };
+        let mut units = 0usize;
+        let mut ancestor = Some(parent);
+        while let Some(id) = ancestor {
+            let node = self.node(id);
+            if node.kind == Kind::Element && node.qual.local == name && node.qual.ns == ns!(html) {
+                units = units
+                    .saturating_add(PAIR_UNITS)
+                    .saturating_add(fresh)
+                    .saturating_add(node.attrs.len());
+            }
+            ancestor = node.parent;
+        }
+        self.charge(units);
     }
 
     fn detach(&mut self, id: u32) {
@@ -293,6 +393,13 @@ impl Inner {
         if !self.fits(parent, child) {
             self.stopped = true;
             return;
+        }
+        let first_placement = self.node(child).parent.is_none();
+        if first_placement && is_formatting(&self.node(child).qual) {
+            self.charge_formatting_compare(parent, child);
+            if self.stopped {
+                return;
+            }
         }
         self.detach(child);
         let prev = match before {
@@ -389,6 +496,22 @@ impl Sink<'_> {
         self.inner.borrow_mut().abort.take()
     }
 
+    /// Bytes the next piece may have. html5ever cannot stop inside a piece, so a piece of tags that
+    /// each add `peak_charge` must not outrun what is left of the compare budget; 4 bytes per tag
+    /// is the shortest (`<b></b>` is 7 for two).
+    fn piece_limit(&self) -> usize {
+        let inner = self.inner.borrow();
+        let Some(max) = inner.max_nodes else {
+            return CHUNK_BYTES;
+        };
+        let remaining = max
+            .saturating_mul(COMPARE_WORK_PER_NODE)
+            .saturating_sub(inner.compare_work);
+        (remaining / inner.peak_charge.max(1))
+            .saturating_mul(4)
+            .clamp(MIN_PIECE_BYTES, CHUNK_BYTES)
+    }
+
     fn node_count(&self) -> usize {
         self.inner.borrow().nodes.len()
     }
@@ -440,7 +563,15 @@ impl TreeSink for Sink<'_> {
         Ok(tree)
     }
 
-    fn parse_error(&self, _msg: Cow<'static, str>) {}
+    // The adoption agency leaves the formatting element in the list on this error, and cloned its
+    // attributes first: the cost of one clone is at most the widest formatting element's.
+    fn parse_error(&self, msg: Cow<'static, str>) {
+        if msg == NOT_IN_SCOPE {
+            let mut inner = self.inner.borrow_mut();
+            let units = inner.max_formatting_attributes.saturating_add(PAIR_UNITS);
+            inner.charge(units);
+        }
+    }
 
     fn get_document(&self) -> u32 {
         0
@@ -458,8 +589,15 @@ impl TreeSink for Sink<'_> {
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> u32 {
         let mut inner = self.inner.borrow_mut();
         inner.elements = inner.elements.saturating_add(1);
+        inner.attributes = inner.attributes.saturating_add(attrs.len());
+        if is_formatting(&name) {
+            inner.max_formatting_attributes = inner.max_formatting_attributes.max(attrs.len());
+        }
         if inner.abort.is_none() {
-            if inner.max_nodes.is_some_and(|max| inner.elements > max) {
+            // deviation: D-5
+            if inner.max_nodes.is_some_and(|max| {
+                inner.elements > max || inner.attributes > max.saturating_mul(ATTRIBUTES_PER_NODE)
+            }) {
                 inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
                 inner.stopped = true;
             } else if inner.elements.is_multiple_of(CHECK_INTERVAL)
@@ -614,13 +752,13 @@ fn new_sink<'c>(limits: &ParseLimits, call: &'c Call<'c>, fragment: bool) -> Sin
     }
 }
 
-/// End of the piece that starts at `start`, always past it: `CHUNK_BYTES` on, at a char boundary and
+/// End of the piece that starts at `start`, always past it: `limit` bytes on, at a char boundary and
 /// not before a `BOM`. A run of BOMs that fills the piece moves the end forward to the end of the run.
-fn chunk_end(html: &str, start: usize) -> usize {
+fn chunk_end(html: &str, start: usize, limit: usize) -> usize {
     let is_cut = |end: usize| {
         html.is_char_boundary(end) && !html.get(end..).is_some_and(|rest| rest.starts_with(BOM))
     };
-    let natural = start.saturating_add(CHUNK_BYTES).min(html.len());
+    let natural = start.saturating_add(limit).min(html.len());
     (start.saturating_add(1)..=natural)
         .rev()
         .find(|&end| is_cut(end))
@@ -638,7 +776,7 @@ fn drive(
     let mut start = 0;
     while start < html.len() {
         call.check()?;
-        let end = chunk_end(html, start);
+        let end = chunk_end(html, start, parser.tokenizer.sink.sink.piece_limit());
         let (cut, pause) = scanner.scan(html, start, end)?;
         let count_before = parser.tokenizer.sink.sink.node_count();
         if let Some(piece) = html.get(start..cut).filter(|piece| !piece.is_empty()) {
@@ -881,6 +1019,150 @@ mod tests {
         sink.append(&first, NodeOrText::AppendNode(second));
         assert_eq!(*name.local_name(), local_name!("div"));
         assert_eq!(*name.ns(), ns!(html));
+    }
+
+    // `entries` distinct `<b>` of 1,000 attributes (999 shared, one unique so Noah's Ark keeps them
+    // all), then `<p>` makes html5ever clone every one: `entries` x 1,000 attributes per paragraph.
+    fn reconstruction_page(entries: usize, paragraphs: usize) -> String {
+        let mut html = String::from("<html><body><p>");
+        for i in 0..entries {
+            html.push_str(&format!("<b{} u{i}>", attrs(MAX_TAG_ATTRIBUTES - 1)));
+        }
+        html.push_str(&"<p>x".repeat(paragraphs));
+        html
+    }
+
+    // Fed whole, html5ever keeps working after the abort, so `paragraphs` is chosen to leave the
+    // element count below the node limit while the attributes pass the budget.
+    fn assert_clones_trip_the_attribute_budget(entries: usize, paragraphs: usize, max: usize) {
+        let call = Call::default();
+        let html = reconstruction_page(entries, paragraphs);
+        let parser = feed_whole(&html, &limited(max), &call);
+        let inner = parser.tokenizer.sink.sink.inner.borrow();
+        assert_eq!(
+            inner.abort,
+            Some(ExtractError::Rejected(Rejection::TreeTooLarge))
+        );
+        let kept: usize = inner.nodes.iter().map(|node| node.attrs.len()).sum();
+        assert!(kept <= max * ATTRIBUTES_PER_NODE, "{kept} attributes kept");
+        assert!(
+            inner.elements < max,
+            "the attributes, not the node limit, must trip: {} elements",
+            inner.elements
+        );
+    }
+
+    #[test]
+    fn attribute_budget_counts_clones_at_a_small_limit() {
+        assert_clones_trip_the_attribute_budget(5, 20, 2_000);
+    }
+
+    // 250 entries x 2,000 paragraphs is the reconstruction attack at the default limit.
+    #[test]
+    #[ignore = "slow"]
+    fn attribute_budget_counts_clones() {
+        assert_clones_trip_the_attribute_budget(250, 40, DEFAULT_MAX_NODES);
+        assert_eq!(
+            parse(&reconstruction_page(250, 2_000), false).unwrap_err(),
+            ExtractError::Rejected(Rejection::TreeTooLarge)
+        );
+    }
+
+    #[test]
+    fn a_page_within_the_attribute_budget_parses() {
+        let page = |count: usize, attributes: usize| {
+            format!(
+                "<html><body>{}",
+                format!("<p{}>", attrs(attributes)).repeat(count)
+            )
+        };
+        let html = page(DEFAULT_MAX_NODES / 2, 10);
+        assert!(parse(&html, false).is_ok());
+    }
+
+    fn html_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for path in entries.flatten().map(|entry| entry.path()) {
+            if path.is_dir() {
+                html_files(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "html") {
+                out.push(path);
+            }
+        }
+    }
+
+    // The corpus of `docs/parity-harness.md` (the upstream checkout, as `tests/common` finds it): the
+    // attributes created and the compare work charged per page stay a hundredth of their budgets.
+    // Skips without it.
+    #[test]
+    #[ignore = "slow"]
+    fn corpus_work_is_far_below_the_budgets() {
+        let root = std::env::var_os("TRAFILATURA_UPSTREAM")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../trafilatura")
+            });
+        let mut files = Vec::new();
+        for dir in ["eval", "cache", "resources"] {
+            html_files(&root.join("tests").join(dir), &mut files);
+        }
+        files.sort();
+        let mut most = (0, std::path::PathBuf::new());
+        let mut most_work = (0, std::path::PathBuf::new());
+        for file in &files {
+            let html = String::from_utf8_lossy(&std::fs::read(file).unwrap()).into_owned();
+            let call = Call::default();
+            let parser = feed_whole(&html, &limited(usize::MAX / ATTRIBUTES_PER_NODE), &call);
+            let inner = parser.tokenizer.sink.sink.inner.borrow();
+            if inner.attributes > most.0 {
+                most = (inner.attributes, file.clone());
+            }
+            if inner.compare_work > most_work.0 {
+                most_work = (inner.compare_work, file.clone());
+            }
+        }
+        println!(
+            "{} pages, most attributes {} in {:?}, most compare work {} in {:?}",
+            files.len(),
+            most.0,
+            most.1,
+            most_work.0,
+            most_work.1
+        );
+        let budget = DEFAULT_MAX_NODES * ATTRIBUTES_PER_NODE;
+        assert!(most.0 * 100 <= budget, "{} of {budget}", most.0);
+        let work_budget = DEFAULT_MAX_NODES * COMPARE_WORK_PER_NODE;
+        assert!(
+            most_work.0 * 100 <= work_budget,
+            "{} of {work_budget}",
+            most_work.0
+        );
+    }
+
+    // Budget of 2,000 nodes is 20,000 attributes: the total passes exactly at the budget.
+    #[test]
+    fn attribute_budget_is_exact() {
+        let limits = limited(2_000);
+        let page = |extra: usize| {
+            let mut html = String::from("<html><body>");
+            html.push_str(&format!("<p{}>", attrs(10)).repeat(1_000));
+            html.push_str(&format!("<p{}>", attrs(MAX_TAG_ATTRIBUTES)).repeat(10));
+            html.push_str(&format!("<p{}>", attrs(extra)));
+            html
+        };
+        let parse_with = |html: &str| parse_document(html, &limits, &Call::default());
+        assert!(parse_with(&page(0)).is_ok());
+        assert_eq!(
+            parse_with(&page(1)).unwrap_err(),
+            ExtractError::Rejected(Rejection::TreeTooLarge)
+        );
+        let unlimited = ParseLimits {
+            max_nodes: None,
+            ..limits
+        };
+        assert!(parse_document(&page(1), &unlimited, &Call::default()).is_ok());
     }
 
     fn limited(max: usize) -> ParseLimits {
@@ -1442,5 +1724,371 @@ mod tests {
             dump(&whole_tree(&html, false), DumpMode::Exact)
         );
         assert!(dump(&tree, DumpMode::Exact).0.contains(BOM));
+    }
+
+    /// `<{name} a0 .. a998 u{unique}>`: 1,000 attributes, so Noah's Ark keeps entries of one name apart
+    /// when `unique` differs.
+    fn heavy_tag(name: &str, unique: usize) -> String {
+        format!("<{name}{} u{unique}>", attrs(MAX_TAG_ATTRIBUTES - 1))
+    }
+
+    fn heavy_tags(name: &str, count: usize) -> String {
+        (0..count).map(|i| heavy_tag(name, i)).collect()
+    }
+
+    /// `prefix` followed by `unit` repeated up to `bytes`.
+    fn filled(prefix: &str, unit: &str, bytes: usize) -> String {
+        let count = bytes.saturating_sub(prefix.len()) / unit.len();
+        format!("{prefix}{}", unit.repeat(count))
+    }
+
+    /// Whether `html` fed whole to a parser with `max_nodes` ends in the compare-budget abort, and
+    /// its compare work.
+    fn compare_outcome(html: &str, max_nodes: usize) -> (Option<ExtractError>, usize) {
+        let call = Call::default();
+        let parser = feed_whole(html, &limited(max_nodes), &call);
+        let inner = parser.tokenizer.sink.sink.inner.borrow();
+        (inner.abort.clone(), inner.compare_work)
+    }
+
+    const TOO_LARGE: ExtractError = ExtractError::Rejected(Rejection::TreeTooLarge);
+
+    // The budget of 2,000 nodes is 80,000 units; the compare of one `<b></b>` against 10 entries of
+    // 1,000 attributes is about 20,000.
+    #[test]
+    fn compare_budget_rejects_the_heavy_entries_attack_at_a_small_limit() {
+        let attack = |prefix: &str, unit: &str| format!("<html><body>{prefix}{}", unit.repeat(200));
+        let heavy = heavy_tags("b", 10);
+        let pages = [
+            attack(&heavy, "<b></b>"),
+            attack(&format!("{heavy}<table>"), "<b></b>"),
+            attack(&format!("<p>{heavy}"), "</p><b></b><p>"),
+            attack(&format!("{}<table>", heavy_tag("b", 0)), "</b>"),
+        ];
+        for (index, html) in pages.iter().enumerate() {
+            let (abort, work) = compare_outcome(html, 2_000);
+            assert_eq!(abort, Some(TOO_LARGE), "page {index}");
+            assert!(work > 80_000, "{work}");
+            assert_eq!(
+                parse_document(html, &limited(2_000), &Call::default()).unwrap_err(),
+                TOO_LARGE
+            );
+        }
+    }
+
+    // `max_nodes: None` lifts the compare budget as it lifts the node limit.
+    #[test]
+    fn compare_budget_is_lifted_with_the_node_limit() {
+        let html = format!(
+            "<html><body>{}{}",
+            heavy_tags("b", 10),
+            "<b></b>".repeat(200)
+        );
+        let unlimited = ParseLimits {
+            max_nodes: None,
+            ..ParseLimits::default()
+        };
+        assert!(parse_document(&html, &unlimited, &Call::default()).is_ok());
+    }
+
+    // Attack pages at the size they were measured (release: 11 s each without the budget) and at the
+    // input cap: each ends rejected in under a second.
+    #[test]
+    #[ignore = "slow"]
+    fn attack_pages_are_rejected_in_under_a_second() {
+        let cap = DEFAULT_MAX_INPUT_BYTES;
+        let nested = |entries: usize| format!("<html><body>{}", heavy_tags("b", entries));
+        let light: String = (0..250).map(|i| format!("<b id=e{i}>")).collect();
+        // (label, prefix, repeated unit, count of units; 0 = up to the input cap)
+        let mut pages: Vec<(String, String, &str, usize)> = vec![
+            (
+                "50 heavy b, <b></b> x 2,000".into(),
+                nested(50),
+                "<b></b>",
+                2_000,
+            ),
+            (
+                "50 heavy b, <b></b> x 8,000".into(),
+                nested(50),
+                "<b></b>",
+                8_000,
+            ),
+            (
+                "200 heavy b, <b></b> x 2,000".into(),
+                nested(200),
+                "<b></b>",
+                2_000,
+            ),
+            (
+                "50 heavy b, <b></b> to the cap".into(),
+                nested(50),
+                "<b></b>",
+                0,
+            ),
+            (
+                "200 heavy b, <b></b> to the cap".into(),
+                nested(200),
+                "<b></b>",
+                0,
+            ),
+            (
+                "foster, 50 heavy b, to the cap".into(),
+                format!("{}<table>", nested(50)),
+                "<b></b>",
+                0,
+            ),
+            (
+                "misnested </p>, 50 heavy b, to the cap".into(),
+                format!("<html><body><p>{}", heavy_tags("b", 50)),
+                "</p><b></b><p>",
+                0,
+            ),
+            (
+                "250 light entries, <b id></b> to the cap".into(),
+                format!("<html><body>{light}"),
+                "<b id=x></b>",
+                0,
+            ),
+        ];
+        // End tags of an out-of-scope formatting element: a clone of its attributes each.
+        for (name, end) in [("b", "</b>"), ("a", "</a>"), ("nobr", "</nobr>")] {
+            for scope in ["<table>", "<svg><desc>"] {
+                pages.push((
+                    format!("{end} under {scope}, to the cap"),
+                    format!("<html><body>{}{scope}", heavy_tag(name, 0)),
+                    end,
+                    0,
+                ));
+            }
+        }
+        let limits = ParseLimits::default();
+        for (label, prefix, unit, count) in &pages {
+            let html = if *count == 0 {
+                filled(prefix, unit, cap)
+            } else {
+                format!("{prefix}{}", unit.repeat(*count))
+            };
+            let start = std::time::Instant::now();
+            let result = parse_document(&html, &limits, &Call::default());
+            let elapsed = start.elapsed();
+            println!("{label}: {} bytes, {elapsed:?}", html.len());
+            assert_eq!(result.unwrap_err(), TOO_LARGE, "{label}");
+            assert!(
+                elapsed < std::time::Duration::from_secs(1),
+                "{label} ({} bytes): {elapsed:?}",
+                html.len()
+            );
+        }
+    }
+
+    // The other exits of the adoption agency either remove the entry or are the plain cost of a tag:
+    // with a heavy open formatting element a page of end tags takes as long as without attributes.
+    #[test]
+    #[ignore = "slow"]
+    fn end_tags_that_drop_the_entry_cost_the_same_with_a_heavy_element() {
+        let bytes = 16 * 1024 * 1024;
+        let time = |html: &str| {
+            let start = std::time::Instant::now();
+            let limits = ParseLimits {
+                max_input_bytes: None,
+                ..ParseLimits::default()
+            };
+            parse_document(html, &limits, &Call::default()).unwrap();
+            start.elapsed()
+        };
+        for open in ["<div>", "<div><div>", "<p>x", "<button>", "<table><tr><td>"] {
+            let heavy = time(&filled(
+                &format!("<html><body>{}{open}", heavy_tag("b", 0)),
+                "</b>",
+                bytes,
+            ));
+            let light = time(&filled(&format!("<html><body><b>{open}"), "</b>", bytes));
+            assert!(
+                heavy < light * 2,
+                "{open}: heavy {heavy:?}, light {light:?}"
+            );
+        }
+    }
+
+    // The not-in-scope end tag is charged through html5ever's parse error: this fails if the message
+    // changes, which would silently uncharge the clone each such end tag makes.
+    #[test]
+    fn not_in_scope_parse_error_message_is_charged() {
+        let open = format!("<html><body>{}<table>", heavy_tag("b", 0));
+        let (_, without) = compare_outcome(&open, 500_000);
+        let (_, with) = compare_outcome(&format!("{open}</b>"), 500_000);
+        assert_eq!(with - without, MAX_TAG_ATTRIBUTES + PAIR_UNITS);
+        // A scoped end tag is an ordinary close.
+        let (_, closed) =
+            compare_outcome(&format!("<html><body>{}</b>", heavy_tag("b", 0)), 500_000);
+        let (_, open_only) =
+            compare_outcome(&format!("<html><body>{}", heavy_tag("b", 0)), 500_000);
+        assert_eq!(closed, open_only);
+    }
+
+    // A real page: 20,000 paragraphs, each with an unclosed `font`. Noah's Ark keeps three entries,
+    // so a paragraph costs a few pairs.
+    #[test]
+    fn unclosed_font_page_of_20000_paragraphs_parses() {
+        let paragraph = "<p><font color=\"#000000\" size=2 face=Arial>text of the paragraph\n</p>";
+        let html = format!("<html><body>{}", paragraph.repeat(20_000));
+        let tree = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap();
+        assert!(tree.len() > 80_000, "{} nodes", tree.len());
+        let (abort, work) = compare_outcome(&html, DEFAULT_MAX_NODES);
+        assert_eq!(abort, None);
+        assert!(
+            work * 5 < DEFAULT_MAX_NODES * COMPARE_WORK_PER_NODE,
+            "{work} units"
+        );
+    }
+
+    #[test]
+    fn piece_size_shrinks_as_the_compare_budget_runs_low() {
+        let call = Call::default();
+        let sink = new_sink(&limited(1_000), &call, false);
+        assert_eq!(sink.piece_limit(), CHUNK_BYTES);
+        {
+            let mut inner = sink.inner.borrow_mut();
+            inner.charge(1_000);
+        }
+        // 40,000 - 1,000 units left, 1,000 per tag, 4 bytes per tag
+        assert_eq!(sink.piece_limit(), 39 * 4);
+        sink.inner.borrow_mut().charge(30_000);
+        assert_eq!(sink.piece_limit(), MIN_PIECE_BYTES);
+        let unlimited = ParseLimits {
+            max_nodes: None,
+            ..ParseLimits::default()
+        };
+        assert_eq!(
+            new_sink(&unlimited, &call, false).piece_limit(),
+            CHUNK_BYTES
+        );
+    }
+
+    // The charge counts same-name open formatting elements as the ancestors of the new element.
+    // html5ever's list holds them as open elements (reconstruction runs first), and they are
+    // ancestors even across foster parenting and the adoption agency. The page is fed one tag at a
+    // time and, after every formatting start tag, each same-name formatting element html5ever still
+    // references (open stack and list, `trace_handles`) must be an ancestor of the new element. The
+    // pieces hold no marker (`td`, `th`, `caption`, `template`, `applet`, `object`, `marquee`), whose
+    // entries html5ever stops comparing at.
+    #[test]
+    fn same_name_formatting_elements_are_ancestors_of_the_new_one() {
+        struct Handles(RefCell<Vec<u32>>);
+        impl html5ever::interface::Tracer for Handles {
+            type Handle = u32;
+            fn trace_handle(&self, node: &u32) {
+                self.0.borrow_mut().push(*node);
+            }
+        }
+        let formatting = [
+            ("<b>", "b"),
+            ("<b x=1>", "b"),
+            ("<b x=2>", "b"),
+            ("<i>", "i"),
+            ("<a href=x>", "a"),
+            ("<a>", "a"),
+            ("<font color=r>", "font"),
+            ("<u>", "u"),
+            ("<nobr>", "nobr"),
+            ("<em>", "em"),
+        ];
+        let others = [
+            "</b>",
+            "</i>",
+            "</a>",
+            "</font>",
+            "</u>",
+            "</nobr>",
+            "</em>",
+            "<p>",
+            "</p>",
+            "<div>",
+            "</div>",
+            "<table>",
+            "</table>",
+            "<tbody>",
+            "<tr>",
+            "<span>",
+            "</span>",
+            "x",
+            "<br>",
+            "<li>",
+            "<ul>",
+            "</ul>",
+            "<h1>",
+            "</h1>",
+            "<form>",
+            "<button>",
+            "</button>",
+            "<svg>",
+            "</svg>",
+            "<select>",
+            "<option>",
+            "</select>",
+            "<pre>",
+            "<center>",
+        ];
+        let mut seed = 0x2545_F491_4F6C_DD1D_u64;
+        let mut next = |bound: usize| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            usize::try_from(seed % bound as u64).unwrap()
+        };
+        let mut checked = 0usize;
+        for round in 0..3_000 {
+            let call = Call::default();
+            let limits = ParseLimits {
+                max_nodes: None,
+                ..ParseLimits::default()
+            };
+            let mut parser =
+                html5ever::parse_document(new_sink(&limits, &call, false), parse_opts());
+            let mut fed = String::new();
+            for _ in 0..40 {
+                let (piece, name) = if next(2) == 0 {
+                    let (piece, name) = formatting[next(formatting.len())];
+                    (piece, Some(name))
+                } else {
+                    (others[next(others.len())], None)
+                };
+                fed.push_str(piece);
+                parser.process(StrTendril::from_slice(piece));
+                let Some(name) = name else { continue };
+                let handles = Handles(RefCell::new(Vec::new()));
+                parser.tokenizer.sink.trace_handles(&handles);
+                let inner = parser.tokenizer.sink.sink.inner.borrow();
+                let Some(new) = inner.nodes.len().checked_sub(1) else {
+                    continue;
+                };
+                let new = u32::try_from(new).unwrap();
+                let node = inner.node(new);
+                if node.kind != Kind::Element || &*node.qual.local != name {
+                    continue;
+                }
+                let mut ancestors = HashSet::new();
+                let mut up = node.parent;
+                while let Some(id) = up {
+                    ancestors.insert(id);
+                    up = inner.node(id).parent;
+                }
+                if ancestors.is_empty() {
+                    continue;
+                }
+                checked += 1;
+                for &handle in handles.0.borrow().iter() {
+                    let other = inner.node(handle);
+                    let same_name = other.kind == Kind::Element
+                        && other.qual.ns == ns!(html)
+                        && &*other.qual.local == name;
+                    assert!(
+                        handle == new || !same_name || ancestors.contains(&handle),
+                        "round {round}: {name} {handle} is not an ancestor of {new} after {fed:?}"
+                    );
+                }
+            }
+        }
+        assert!(checked > 20_000, "{checked} formatting tags checked");
     }
 }

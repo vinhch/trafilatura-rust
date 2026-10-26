@@ -92,7 +92,10 @@ upstream has no equivalent.
   caller may lift it with `None`; `max_nodes` (`ParseLimits::max_nodes`: elements created
   while parsing, html5ever's clones included) is on by default at `DEFAULT_MAX_NODES` (D-5), and a
   caller may lift it with `None`. Attributes per tag, and merged on `html` or `body`, are capped at
-  `MAX_TAG_ATTRIBUTES` (`dom/parse.rs`), always on (D-5). Table construction is bounded by the cells
+  `MAX_TAG_ATTRIBUTES` (`dom/parse.rs`), always on, while the attributes of a whole parse
+  (`ATTRIBUTES_PER_NODE` per allowed node, clones included) and html5ever's formatting compare work
+  (`COMPARE_WORK_PER_NODE` per allowed node) are budgeted from `max_nodes` and lifted with it (D-5).
+  Table construction is bounded by the cells
   it mints: it fails with `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in
   one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a
   512 KiB stack in a debug build, so a default thread stack is enough (a musl host that spawns its own
