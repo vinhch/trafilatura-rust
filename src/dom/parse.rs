@@ -6,13 +6,13 @@
 //! and folds them into the text/tail model of `Tree` in `finish`.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
 use html5ever::interface::tree_builder::{
-    ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink,
+    ElemName, ElementFlags, NodeOrText, QuirksMode, Tracer, TreeSink,
 };
 use html5ever::tendril::{StrTendril, TendrilSink};
 use html5ever::tokenizer::TokenSink;
@@ -41,28 +41,38 @@ pub const MAX_TAG_ATTRIBUTES: usize = 1_000;
 // deviation: D-5
 const ATTRIBUTES_PER_NODE: usize = 10;
 
-/// Compare work the whole parse may spend per allowed node (`max_nodes`), in the units of
-/// `Inner::charge`: 20,000,000 at the default, about 0.26 s of html5ever's formatting compares. Real
-/// pages stay in the hundreds.
+/// Work the whole parse may spend per allowed node (`max_nodes`) on html5ever's formatting
+/// elements, in the units of `Inner::charge` (one unit is 13 ns): 20,000,000 at the default, about
+/// 0.26 s of its attribute compares, sorted in the worst order, and clones. Real pages stay in the
+/// thousands.
 // deviation: D-5
 const COMPARE_WORK_PER_NODE: usize = 40;
 
-/// Units one pair of formatting entries costs html5ever beyond its attributes: two list clones and
-/// sorts of a few attributes take about 160 ns, and one compared attribute 13 ns.
+/// Units one pair of formatting entries costs html5ever beyond its attribute lists: the two list
+/// clones and the call, about 160 ns for lists of a few attributes.
 const PAIR_UNITS: usize = 12;
 
-/// Smallest piece fed while the compare budget runs low.
-const MIN_PIECE_BYTES: usize = 64;
+/// Units per attribute of a formatting element html5ever clones outside the compare: a
+/// reconstruction clone copies the attributes of the `Tag` twice and the sink hashes each value, 50
+/// to 120 ns per attribute measured (a clone of a page of 196 entries of 1,000 attributes with values
+/// of 0, 20 and 200 bytes); rounded up to 130 ns.
+const CLONE_UNITS_PER_ATTRIBUTE: usize = 10;
+
+/// Name bytes that cost one more unit per comparison of a sort: comparing names of a long common
+/// prefix takes 11 ns plus 0.067 ns per byte (300 and 1,000 byte names measured), against 13 ns a unit.
+const NAME_BYTES_PER_UNIT: usize = 128;
 
 /// html5ever's parse error for an end tag whose formatting element is open but out of scope. The
 /// adoption agency clones the element's `Tag` first and leaves it in the active formatting list, so
 /// the same end tag can repeat the clone for as long as the input lasts.
 const NOT_IN_SCOPE: &str = "Formatting element not in scope";
 
-/// Input is fed to html5ever in pieces of `CHUNK_BYTES`, with a cancel and node-limit check between
-/// pieces. A piece ends early at a scanner pause, and grows past this size only to take a run of
-/// `BOM` whole. html5ever cannot be stopped inside a piece, so the piece size bounds the work done
-/// after an abort, a BOM run being plain text that costs html5ever one pass.
+/// Input is fed to html5ever in pieces of at most `CHUNK_BYTES`, with a cancel and limit check between
+/// pieces. A piece ends early at a scanner pause, and before the tag that would take it past the tags
+/// the budget can still pay for (`Inner::tags_within_budget`, at least one); it grows past
+/// this size only to take a run of `BOM` whole. html5ever cannot be stopped inside a piece, so a
+/// piece bounds the work done after an abort: one pass over `CHUNK_BYTES` of text, or, once the budget
+/// runs low, the estimated cost of the tags it may still pay for.
 const CHUNK_BYTES: usize = 8 * 1024;
 
 /// U+FEFF: html5ever drops one at the start of every `feed` call, so no piece may start with it.
@@ -78,7 +88,8 @@ pub struct ParseLimits {
     pub max_depth: usize,
     /// Element count above which parsing fails with `Rejection::TreeTooLarge`, html5ever's clones of
     /// open formatting elements included; so does a total of more than 10 attributes per allowed
-    /// element, clones included. `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
+    /// element, clones included, or of more than `COMPARE_WORK_PER_NODE` units of html5ever's work on
+    /// formatting elements per allowed element. `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
     /// Raw input length above which loading fails with `Rejection::InputTooLarge`, checked before
     /// decompression; `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
@@ -110,6 +121,8 @@ struct SinkNode {
     kind: Kind,
     qual: QualName,
     attrs: Vec<(LocalName, Arc<str>)>,
+    /// `sort_units` of `attrs` for a formatting element, else 0.
+    sort_units: usize,
     text: String,
     mathml_integration_point: bool,
     parent: Option<u32>,
@@ -127,7 +140,7 @@ struct Inner {
     elements: usize,
     /// Attributes handed to `create_element` so far, the clones included.
     attributes: usize,
-    /// html5ever's attribute-compare work so far, in `charge` units.
+    /// html5ever's work on formatting elements so far (compares, sorts and clones), in `charge` units.
     compare_work: usize,
     /// Largest single charge so far: the cost one more formatting tag may add.
     peak_charge: usize,
@@ -194,6 +207,19 @@ fn is_formatting(qual: &QualName) -> bool {
         && qual.ns == ns!(html)
 }
 
+/// Units of the clone and sort `Tag::equiv_modulo_attr_order` makes of one attribute list: a pass
+/// per attribute and one comparison per attribute and level of a merge sort, each comparison costing
+/// a unit plus a unit per `NAME_BYTES_PER_UNIT` of name. The worst order (shuffled names) is charged
+/// whatever the order, since an in-order list is the attacker's to give up.
+fn sort_units(attrs: &[(LocalName, Arc<str>)]) -> usize {
+    let count = attrs.len();
+    let name_bytes: usize = attrs.iter().map(|(name, _)| name.len()).sum();
+    let levels = usize::try_from(usize::BITS - count.leading_zeros()).unwrap_or(usize::MAX);
+    count.saturating_add(
+        levels.saturating_mul(count.saturating_add(name_bytes / NAME_BYTES_PER_UNIT)),
+    )
+}
+
 fn ns_of(qual: &QualName) -> Ns {
     if qual.ns == ns!(svg) {
         Ns::Svg
@@ -235,6 +261,7 @@ impl Inner {
             kind,
             qual,
             attrs: Vec::new(),
+            sort_units: 0,
             text: String::new(),
             mathml_integration_point: false,
             parent: None,
@@ -277,7 +304,7 @@ impl Inner {
         &mut self.nodes[id as usize]
     }
 
-    /// Adds `units` of html5ever's formatting compare work (one unit = one attribute compared) and
+    /// Adds `units` of html5ever's work on formatting elements (one unit is 13 ns) and
     /// aborts past `max_nodes * COMPARE_WORK_PER_NODE`.
     fn charge(&mut self, units: usize) {
         self.compare_work = self.compare_work.saturating_add(units);
@@ -293,6 +320,22 @@ impl Inner {
         }
     }
 
+    /// Start tags the next piece may hold, at least one, or `None` without a limit. A tag costs
+    /// html5ever at most the largest charge so far, or the clones of every formatting element it
+    /// still references (`referenced_attributes` of them, counted by `trace_handles`) when a
+    /// paragraph reconstructs them all.
+    fn tags_within_budget(&self, referenced_attributes: usize) -> Option<usize> {
+        let max = self.max_nodes?;
+        let remaining = max
+            .saturating_mul(COMPARE_WORK_PER_NODE)
+            .saturating_sub(self.compare_work);
+        let per_tag = self
+            .peak_charge
+            .max(referenced_attributes.saturating_mul(CLONE_UNITS_PER_ATTRIBUTE))
+            .max(1);
+        Some((remaining / per_tag).max(1))
+    }
+
     /// Charges the compare html5ever ran before inserting formatting element `child` under
     /// `parent`: against each same-name open formatting element, which are exactly its ancestors
     /// (`docs/architecture.md`, Bounded). Entries before a marker, or already dropped from the list,
@@ -300,7 +343,7 @@ impl Inner {
     fn charge_formatting_compare(&mut self, parent: u32, child: u32) {
         let (name, fresh) = {
             let node = self.node(child);
-            (node.qual.local.clone(), node.attrs.len())
+            (node.qual.local.clone(), node.sort_units)
         };
         let mut units = 0usize;
         let mut ancestor = Some(parent);
@@ -310,7 +353,7 @@ impl Inner {
                 units = units
                     .saturating_add(PAIR_UNITS)
                     .saturating_add(fresh)
-                    .saturating_add(node.attrs.len());
+                    .saturating_add(node.sort_units);
             }
             ancestor = node.parent;
         }
@@ -496,22 +539,6 @@ impl Sink<'_> {
         self.inner.borrow_mut().abort.take()
     }
 
-    /// Bytes the next piece may have. html5ever cannot stop inside a piece, so a piece of tags that
-    /// each add `peak_charge` must not outrun what is left of the compare budget; 4 bytes per tag
-    /// is the shortest (`<b></b>` is 7 for two).
-    fn piece_limit(&self) -> usize {
-        let inner = self.inner.borrow();
-        let Some(max) = inner.max_nodes else {
-            return CHUNK_BYTES;
-        };
-        let remaining = max
-            .saturating_mul(COMPARE_WORK_PER_NODE)
-            .saturating_sub(inner.compare_work);
-        (remaining / inner.peak_charge.max(1))
-            .saturating_mul(4)
-            .clamp(MIN_PIECE_BYTES, CHUNK_BYTES)
-    }
-
     fn node_count(&self) -> usize {
         self.inner.borrow().nodes.len()
     }
@@ -590,8 +617,11 @@ impl TreeSink for Sink<'_> {
         let mut inner = self.inner.borrow_mut();
         inner.elements = inner.elements.saturating_add(1);
         inner.attributes = inner.attributes.saturating_add(attrs.len());
-        if is_formatting(&name) {
+        let formatting = is_formatting(&name);
+        if formatting {
             inner.max_formatting_attributes = inner.max_formatting_attributes.max(attrs.len());
+            // The sink cannot tell a reconstruction clone from the tag it copies, so both are charged.
+            inner.charge(attrs.len().saturating_mul(CLONE_UNITS_PER_ATTRIBUTE));
         }
         if inner.abort.is_none() {
             // deviation: D-5
@@ -617,9 +647,11 @@ impl TreeSink for Sink<'_> {
                 .map(|a| (a.name.local, inner.share(&a.value)))
                 .collect()
         };
+        let sort_units = if formatting { sort_units(&attrs) } else { 0 };
         let id = inner.new_node(Kind::Element, name);
         let node = inner.node_mut(id);
         node.attrs = attrs;
+        node.sort_units = sort_units;
         node.mathml_integration_point = flags.mathml_annotation_xml_integration_point;
         id
     }
@@ -752,6 +784,55 @@ fn new_sink<'c>(limits: &ParseLimits, call: &'c Call<'c>, fragment: bool) -> Sin
     }
 }
 
+/// Counts the attributes of the formatting elements html5ever references (open stack and list).
+struct ReferencedAttributes<'a> {
+    inner: &'a RefCell<Inner>,
+    count: Cell<usize>,
+}
+
+impl Tracer for ReferencedAttributes<'_> {
+    type Handle = u32;
+
+    fn trace_handle(&self, handle: &u32) {
+        let inner = self.inner.borrow();
+        let node = inner.node(*handle);
+        if node.kind == Kind::Element && is_formatting(&node.qual) {
+            self.count
+                .set(self.count.get().saturating_add(node.attrs.len()));
+        }
+    }
+}
+
+/// End of the next piece: up to `CHUNK_BYTES`, and before the `<` that follows the tags
+/// `tags_within_budget` allows.
+fn piece_end(html: &str, start: usize, parser: &Parser<Sink<'_>>) -> usize {
+    let sink = &parser.tokenizer.sink.sink;
+    let referenced = ReferencedAttributes {
+        inner: &sink.inner,
+        count: Cell::new(0),
+    };
+    parser.tokenizer.sink.trace_handles(&referenced);
+    let allowed = sink
+        .inner
+        .borrow()
+        .tags_within_budget(referenced.count.get());
+    let mut limit = CHUNK_BYTES;
+    if let Some(tags) = allowed {
+        let window = start.saturating_add(CHUNK_BYTES).min(html.len());
+        let cut = html
+            .as_bytes()
+            .get(start..window)
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+            .filter(|&(_, &byte)| byte == b'<')
+            .nth(tags)
+            .map(|(offset, _)| offset);
+        limit = cut.unwrap_or(limit).max(1);
+    }
+    chunk_end(html, start, limit)
+}
+
 /// End of the piece that starts at `start`, always past it: `limit` bytes on, at a char boundary and
 /// not before a `BOM`. A run of BOMs that fills the piece moves the end forward to the end of the run.
 fn chunk_end(html: &str, start: usize, limit: usize) -> usize {
@@ -776,7 +857,7 @@ fn drive(
     let mut start = 0;
     while start < html.len() {
         call.check()?;
-        let end = chunk_end(html, start, parser.tokenizer.sink.sink.piece_limit());
+        let end = piece_end(html, start, &parser);
         let (cut, pause) = scanner.scan(html, start, end)?;
         let count_before = parser.tokenizer.sink.sink.node_count();
         if let Some(piece) = html.get(start..cut).filter(|piece| !piece.is_empty()) {
@@ -1881,6 +1962,123 @@ mod tests {
         }
     }
 
+    /// `<name n0 .. n{count-2} unique>` with the names `{prefix}{i}` in a pseudo-random order and
+    /// `value` on each (none when empty): the order that makes `Tag::equiv_modulo_attr_order`'s sorts
+    /// do their full work, where an in-order tag costs one pass.
+    fn shuffled_tag(
+        name: &str,
+        count: usize,
+        prefix: &str,
+        value: &str,
+        unique: &str,
+        seed: &mut u64,
+    ) -> String {
+        let mut names: Vec<String> = (0..count - 1).map(|i| format!("{prefix}{i}")).collect();
+        names.push(unique.to_string());
+        for i in (1..names.len()).rev() {
+            *seed ^= *seed << 13;
+            *seed ^= *seed >> 7;
+            *seed ^= *seed << 17;
+            let j = usize::try_from(*seed % (i as u64 + 1)).unwrap();
+            names.swap(i, j);
+        }
+        let mut tag = format!("<{name}");
+        for attribute in names {
+            if value.is_empty() {
+                tag.push_str(&format!(" {attribute}"));
+            } else {
+                tag.push_str(&format!(" {attribute}=\"{value}\""));
+            }
+        }
+        tag.push('>');
+        tag
+    }
+
+    fn assert_rejected_in_under_a_second(label: &str, html: &str) {
+        let start = std::time::Instant::now();
+        let result = parse_document(html, &ParseLimits::default(), &Call::default());
+        let elapsed = start.elapsed();
+        println!("{label}: {} bytes, {elapsed:?}", html.len());
+        assert_eq!(result.unwrap_err(), TOO_LARGE, "{label}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "{label} ({} bytes): {elapsed:?}",
+            html.len()
+        );
+    }
+
+    // The compare sorts both attribute lists, so shuffled names cost about ten times an in-order
+    // list (116 ns against 13 ns per attribute at 1,000) and names with a long common prefix more:
+    // 50 heavy `b` then probes of 1,000 attributes each followed by `</b>`.
+    #[test]
+    #[ignore = "slow"]
+    fn shuffled_name_attack_pages_are_rejected_in_under_a_second() {
+        let long_prefix = "averyveryverylongcommonprefixofnamesxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+        let kilobyte_prefix = "q".repeat(1_000);
+        // (prefix, heavy entries, probes), each page up to about 63 MB
+        for (prefix, entries, probes) in [
+            ("a", 50, 2_000),
+            (long_prefix, 50, 700),
+            (kilobyte_prefix.as_str(), 30, 20),
+        ] {
+            let mut seed = 0x9E37_79B9_7F4A_7C15_u64;
+            let mut html = String::from("<html><body>");
+            for entry in 0..entries {
+                html.push_str(&shuffled_tag(
+                    "b",
+                    1_000,
+                    prefix,
+                    "",
+                    &format!("u{entry}"),
+                    &mut seed,
+                ));
+            }
+            for probe in 0..probes {
+                html.push_str(&shuffled_tag(
+                    "b",
+                    1_000,
+                    prefix,
+                    "",
+                    &format!("p{probe}"),
+                    &mut seed,
+                ));
+                html.push_str("</b>");
+            }
+            let label = format!("shuffled names, prefix of {} bytes", prefix.len());
+            assert_rejected_in_under_a_second(&label, &html);
+        }
+    }
+
+    // Reconstruction clones cost html5ever a clone of the attributes each (50 to 120 ns per attribute,
+    // more with long values): 14 formatting names of 14 entries of 1,000 attributes, then `<p>x`.
+    #[test]
+    #[ignore = "slow"]
+    fn reconstruction_attack_pages_are_rejected_in_under_a_second() {
+        let names = [
+            "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong",
+            "tt", "u",
+        ];
+        for value in [String::new(), "v".repeat(20), "v".repeat(200)] {
+            let mut seed = 0x2545_F491_4F6C_DD1D_u64;
+            let mut html = String::from("<html><body><p>");
+            for name in names {
+                for entry in 0..14 {
+                    html.push_str(&shuffled_tag(
+                        name,
+                        1_000,
+                        "a",
+                        &value,
+                        &format!("u{entry}"),
+                        &mut seed,
+                    ));
+                }
+            }
+            html.push_str(&"<p>x".repeat(2_000));
+            let label = format!("14 x 14 entries, values of {} bytes", value.len());
+            assert_rejected_in_under_a_second(&label, &html);
+        }
+    }
+
     // The other exits of the adoption agency either remove the entry or are the plain cost of a tag:
     // with a heavy open formatting element a page of end tags takes as long as without attributes.
     #[test]
@@ -1927,7 +2125,7 @@ mod tests {
     }
 
     // A real page: 20,000 paragraphs, each with an unclosed `font`. Noah's Ark keeps three entries,
-    // so a paragraph costs a few pairs.
+    // so a paragraph costs a few pairs and three clones: 300 units, 30 percent of the budget in all.
     #[test]
     fn unclosed_font_page_of_20000_paragraphs_parses() {
         let paragraph = "<p><font color=\"#000000\" size=2 face=Arial>text of the paragraph\n</p>";
@@ -1937,32 +2135,52 @@ mod tests {
         let (abort, work) = compare_outcome(&html, DEFAULT_MAX_NODES);
         assert_eq!(abort, None);
         assert!(
-            work * 5 < DEFAULT_MAX_NODES * COMPARE_WORK_PER_NODE,
+            work * 2 < DEFAULT_MAX_NODES * COMPARE_WORK_PER_NODE,
             "{work} units"
         );
     }
 
     #[test]
-    fn piece_size_shrinks_as_the_compare_budget_runs_low() {
+    fn tags_per_piece_shrink_as_the_compare_budget_runs_low() {
         let call = Call::default();
         let sink = new_sink(&limited(1_000), &call, false);
-        assert_eq!(sink.piece_limit(), CHUNK_BYTES);
-        {
-            let mut inner = sink.inner.borrow_mut();
-            inner.charge(1_000);
-        }
-        // 40,000 - 1,000 units left, 1,000 per tag, 4 bytes per tag
-        assert_eq!(sink.piece_limit(), 39 * 4);
+        assert_eq!(sink.inner.borrow().tags_within_budget(0), Some(40_000));
+        sink.inner.borrow_mut().charge(1_000);
+        // 40,000 - 1,000 units left, 1,000 per tag
+        assert_eq!(sink.inner.borrow().tags_within_budget(0), Some(39));
+        // 50 attributes referenced cost 500 units a tag when a paragraph reconstructs them; the
+        // peak charge of 1,000 still dominates
+        assert_eq!(sink.inner.borrow().tags_within_budget(50), Some(39));
+        assert_eq!(sink.inner.borrow().tags_within_budget(300), Some(13));
+        // a larger peak charge leaves one tag, never none
         sink.inner.borrow_mut().charge(30_000);
-        assert_eq!(sink.piece_limit(), MIN_PIECE_BYTES);
+        assert_eq!(sink.inner.borrow().tags_within_budget(0), Some(1));
         let unlimited = ParseLimits {
             max_nodes: None,
             ..ParseLimits::default()
         };
-        assert_eq!(
-            new_sink(&unlimited, &call, false).piece_limit(),
-            CHUNK_BYTES
-        );
+        let sink = new_sink(&unlimited, &call, false);
+        assert_eq!(sink.inner.borrow().tags_within_budget(10_000), None);
+    }
+
+    #[test]
+    fn a_piece_ends_before_the_tag_the_budget_cannot_pay_for() {
+        let call = Call::default();
+        let html = "<p>x</p><b a=1>y</b><i>z</i>".repeat(10);
+        let hot = |peak: usize| {
+            let parser =
+                html5ever::parse_document(new_sink(&limited(1_000), &call, false), parse_opts());
+            parser.tokenizer.sink.sink.inner.borrow_mut().charge(peak);
+            parser
+        };
+        let cold = hot(0);
+        assert_eq!(piece_end(&html, 0, &cold), html.len().min(CHUNK_BYTES));
+        // 40,000 - 20,000 left at a peak of 20,000: one tag, so the piece stops before the second `<`
+        let warm = hot(20_000);
+        assert_eq!(piece_end(&html, 0, &warm), "<p>x".len());
+        // a text-only page is not cut
+        let text = "x".repeat(CHUNK_BYTES * 2);
+        assert_eq!(piece_end(&text, 0, &warm), CHUNK_BYTES);
     }
 
     // The charge counts same-name open formatting elements as the ancestors of the new element.
