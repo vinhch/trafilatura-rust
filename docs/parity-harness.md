@@ -125,8 +125,8 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
   alone, and an upstream extraction number is followup F-24. Heap is comparable only on the Rust side:
   tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
   the Rust targets takes about five minutes, and the `large_page` page peaks at about 1.4 GB of heap.
-- Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, F-21)
-  and each target runs them once, without warm-up, writing
+- Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
+  ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing
   `.temp/measure/<version>-rust-<kind>-synthetic.json` beside the corpus file. `large_page` has 1.1M
   `<p>` elements and a 10x10 table, above the default parse limit (`max_nodes` raised to 2,000,000).
   `node_limit` has 499,000 `<p>` elements and `node_limit_over` 501,000, both with default options:

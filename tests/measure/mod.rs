@@ -113,7 +113,7 @@ fn wide_table(rows: usize) -> String {
 }
 
 /// An `<ol>` of `items` items inside an `<article>`: a bare `<ol>` in the body comes out as plain
-/// lines, so the numbering of `xml::list_marker` (F-21) would never run.
+/// lines, so the numbering of `xml::list_marker` would never run.
 fn ordered_list(items: usize) -> String {
     let mut out = String::from("<article><ol>");
     for n in 0..items {
@@ -123,7 +123,7 @@ fn ordered_list(items: usize) -> String {
     out
 }
 
-/// Pages for the limits and growth paths no corpus page reaches (D-5, D-9, F-21).
+/// Pages for the limits and growth paths no corpus page reaches (D-5, D-9, Phase 8).
 /// `large_page` is above the default parse limit and raises it. `node_limit` is just under
 /// `DEFAULT_MAX_NODES` and `node_limit_over` just over it. `cell_budget` is exactly `MAX_OUTPUT_NODES`
 /// (1,000,000) cells and `cell_budget_over` one row more.
