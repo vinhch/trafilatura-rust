@@ -2329,153 +2329,25 @@ mod tests {
     ];
 
     // The element names of the HTML Standard, obsolete ones included, plus the legacy `image` and
-    // `isindex` html5ever's tree builder special-cases. The test fails on a name added to the list.
+    // `isindex` html5ever's tree builder special-cases. The test covers the names listed here only:
+    // a name missing from this table is not checked.
+    #[rustfmt::skip]
     const HTML_ELEMENT_NAMES: &[&str] = &[
-        "a",
-        "abbr",
-        "acronym",
-        "address",
-        "applet",
-        "area",
-        "article",
-        "aside",
-        "audio",
-        "b",
-        "base",
-        "basefont",
-        "bdi",
-        "bdo",
-        "bgsound",
-        "big",
-        "blink",
-        "blockquote",
-        "body",
-        "br",
-        "button",
-        "canvas",
-        "caption",
-        "center",
-        "cite",
-        "code",
-        "col",
-        "colgroup",
-        "command",
-        "data",
-        "datalist",
-        "dd",
-        "del",
-        "details",
-        "dfn",
-        "dialog",
-        "dir",
-        "div",
-        "dl",
-        "dt",
-        "em",
-        "embed",
-        "fieldset",
-        "figcaption",
-        "figure",
-        "font",
-        "footer",
-        "form",
-        "frame",
-        "frameset",
-        "h1",
-        "h2",
-        "h3",
-        "h4",
-        "h5",
-        "h6",
-        "head",
-        "header",
-        "hgroup",
-        "hr",
-        "html",
-        "i",
-        "iframe",
-        "image",
-        "img",
-        "input",
-        "ins",
-        "isindex",
-        "kbd",
-        "keygen",
-        "label",
-        "legend",
-        "li",
-        "link",
-        "listing",
-        "main",
-        "map",
-        "mark",
-        "marquee",
-        "math",
-        "menu",
-        "menuitem",
-        "meta",
-        "meter",
-        "multicol",
-        "nav",
-        "nextid",
-        "nobr",
-        "noembed",
-        "noframes",
-        "noscript",
-        "object",
-        "ol",
-        "optgroup",
-        "option",
-        "output",
-        "p",
-        "param",
-        "picture",
-        "plaintext",
-        "pre",
-        "progress",
-        "q",
-        "rb",
-        "rp",
-        "rt",
-        "rtc",
-        "ruby",
-        "s",
-        "samp",
-        "script",
-        "search",
-        "section",
-        "select",
-        "slot",
-        "small",
-        "source",
-        "spacer",
-        "span",
-        "strike",
-        "strong",
-        "style",
-        "sub",
-        "summary",
-        "sup",
-        "svg",
-        "table",
-        "tbody",
-        "td",
-        "template",
-        "textarea",
-        "tfoot",
-        "th",
-        "thead",
-        "time",
-        "title",
-        "tr",
-        "track",
-        "tt",
-        "u",
-        "ul",
-        "var",
-        "video",
-        "wbr",
-        "xmp",
+        "a", "abbr", "acronym", "address", "applet", "area", "article", "aside", "audio", "b",
+        "base", "basefont", "bdi", "bdo", "bgsound", "big", "blink", "blockquote", "body", "br",
+        "button", "canvas", "caption", "center", "cite", "code", "col", "colgroup", "command",
+        "data", "datalist", "dd", "del", "details", "dfn", "dialog", "dir", "div", "dl", "dt", "em",
+        "embed", "fencedframe", "fieldset", "figcaption", "figure", "font", "footer", "form",
+        "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr",
+        "html", "i", "iframe", "image", "img", "input", "ins", "isindex", "kbd", "keygen", "label",
+        "legend", "li", "link", "listing", "main", "map", "mark", "marquee", "math", "menu",
+        "menuitem", "meta", "meter", "multicol", "nav", "nextid", "nobr", "noembed", "noframes",
+        "noscript", "object", "ol", "optgroup", "option", "output", "p", "param", "picture",
+        "plaintext", "pre", "progress", "q", "rb", "rp", "rt", "rtc", "ruby", "s", "samp", "script",
+        "search", "section", "select", "selectedcontent", "slot", "small", "source", "spacer",
+        "span", "strike", "strong", "style", "sub", "summary", "sup", "svg", "table", "tbody", "td",
+        "template", "textarea", "tfoot", "th", "thead", "time", "title", "tr", "track", "tt", "u",
+        "ul", "var", "video", "wbr", "xmp",
     ];
 
     #[test]
@@ -2519,6 +2391,50 @@ mod tests {
                 assert!(plain > base, "{name}: {plain} with the tag, {base} without");
             }
         }
+    }
+
+    // A formatting start tag whose own element the depth cut leaves unplaced is charged nothing. The
+    // page: a heavy `b`, a `b` that `</p>` leaves only in the active formatting list, `MAX_DEPTH - 4`
+    // nested `div`s, then `<b>`. Reconstruction clones the listed `b` under the last `div`, at
+    // `MAX_DEPTH`, and the tag's own `b` has no room. The clone sits under the heavy `b`, so charging
+    // it in the tag's place would cost as much again and could reject a page that is only too deep.
+    #[test]
+    fn unplaced_formatting_element_is_charged_nothing() {
+        let prefix = format!(
+            "<html><body>{}<p><b></p>{}",
+            heavy_tag("b", 0),
+            "<div>".repeat(MAX_DEPTH - 4)
+        );
+        let html = format!("{prefix}<b>");
+        let (_, before) = compare_outcome(&prefix, 500_000);
+        // The budget covers the prefix and is below the prefix plus a second charge of the same size.
+        let max_nodes = before.div_ceil(COMPARE_WORK_PER_NODE);
+        assert!(before > 2 * PAIR_UNITS && max_nodes * COMPARE_WORK_PER_NODE < 2 * before);
+
+        let call = Call::default();
+        let driver = Driver::new(new_sink(&limited(max_nodes), &call, false), false);
+        driver.process(&html);
+        {
+            let inner = driver.sink().inner.borrow();
+            let b = local_name!("b");
+            let unplaced = |node: &&SinkNode| {
+                node.kind == Kind::Element && node.qual.local == b && node.parent.is_none()
+            };
+            assert!(inner.stopped, "the depth cut stops the parse");
+            assert_eq!(inner.nodes.iter().filter(unplaced).count(), 1);
+            assert_eq!(inner.abort, None);
+            assert_eq!(inner.compare_work, before);
+            let deepest = (0..inner.nodes.len())
+                .filter_map(|index| u32::try_from(index).ok())
+                .filter(|&id| {
+                    inner.node(id).kind == Kind::Element && inner.node(id).parent.is_some()
+                })
+                .map(|id| inner.depth(id))
+                .max();
+            assert_eq!(deepest, Some(MAX_DEPTH));
+        }
+
+        assert!(parse_document(&html, &limited(max_nodes), &call).is_ok());
     }
 
     // A real page: 20,000 paragraphs, each with an unclosed `font`. Noah's Ark keeps three entries,
