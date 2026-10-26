@@ -16,7 +16,7 @@ use html5ever::interface::tree_builder::{
 };
 use html5ever::tendril::StrTendril;
 use html5ever::tokenizer::{
-    BufferQueue, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+    BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
 use html5ever::tree_builder::{TreeBuilder, TreeBuilderOpts, create_element};
 use html5ever::{
@@ -47,8 +47,8 @@ const ATTRIBUTES_PER_NODE: usize = 10;
 
 /// Work the whole parse may spend per allowed node (`max_nodes`) on html5ever's formatting
 /// elements, in the units of `Inner::charge` (one unit is 13 ns): 20,000,000 at the default, about
-/// 0.26 s of its attribute compares, sorted in the worst order, and clones. Real pages stay in the
-/// thousands.
+/// 0.26 s of its attribute compares, sorted in the worst order, and clones. The corpus of
+/// `docs/parity-harness.md` stays at least a hundred times below it (`docs/deviations.md`, D-5).
 // deviation: D-5
 const COMPARE_WORK_PER_NODE: usize = 40;
 
@@ -90,9 +90,10 @@ pub struct ParseLimits {
     /// Element nesting depth at which parsing stops and the partial tree is kept.
     pub max_depth: usize,
     /// Element count above which parsing fails with `Rejection::TreeTooLarge`, html5ever's clones of
-    /// open formatting elements included; so does a total of more than 10 attributes per allowed
-    /// element, clones included, or of more than `COMPARE_WORK_PER_NODE` units of html5ever's work on
-    /// formatting elements per allowed element. `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
+    /// open formatting elements included; so does a total of more than `ATTRIBUTES_PER_NODE`
+    /// attributes per allowed element, clones included, or of more than `COMPARE_WORK_PER_NODE` units
+    /// of html5ever's work on formatting elements per allowed element. `None` = no limit. Defaults to
+    /// `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
     /// Raw input length above which loading fails with `Rejection::InputTooLarge`, checked before
     /// decompression; `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
@@ -420,13 +421,6 @@ impl Inner {
             self.stopped = true;
             return;
         }
-        let first_placement = self.node(child).parent.is_none();
-        if first_placement && is_formatting(&self.node(child).qual) {
-            self.charge_formatting_compare(parent, child);
-            if self.stopped {
-                return;
-            }
-        }
         self.detach(child);
         let prev = match before {
             Some(sibling) => self.node(sibling).prev,
@@ -524,6 +518,23 @@ impl Sink<'_> {
 
     fn node_count(&self) -> usize {
         self.inner.borrow().nodes.len()
+    }
+
+    /// Charges the Noah's Ark compare of a formatting start tag html5ever has just processed: the
+    /// compare belongs to the element the tag itself creates, the newest HTML element named `name`
+    /// since arena index `since` (reconstruction clones come first and run no compare). Nothing is
+    /// charged when that element was not placed.
+    fn charge_compare_since(&self, since: usize, name: &LocalName) {
+        let mut inner = self.inner.borrow_mut();
+        let newest = (since..inner.nodes.len()).rev().find_map(|index| {
+            let id = u32::try_from(index).ok()?;
+            let node = inner.node(id);
+            (node.kind == Kind::Element && node.qual.ns == ns!(html) && node.qual.local == *name)
+                .then_some((id, node.parent?))
+        });
+        if let Some((id, parent)) = newest {
+            inner.charge_formatting_compare(parent, id);
+        }
     }
 
     /// Whether an HTML element named `name` was created at or after arena index `since`. After a piece
@@ -778,11 +789,26 @@ impl TokenSink for Gate<'_> {
     type Handle = u32;
 
     fn process_token(&self, token: Token, line: u64) -> TokenSinkResult<u32> {
-        if self.builder.sink.stopped() {
-            TokenSinkResult::Continue
-        } else {
-            self.builder.process_token(token, line)
+        let sink = &self.builder.sink;
+        if sink.stopped() {
+            return TokenSinkResult::Continue;
         }
+        // html5ever runs its Noah's Ark compare once per formatting start tag, in
+        // `create_formatting_element_for`, so the charge is made per such tag.
+        let formatting = match &token {
+            Token::TagToken(tag)
+                if tag.kind == TagKind::StartTag
+                    && is_formatting(&QualName::new(None, ns!(html), tag.name.clone())) =>
+            {
+                Some((sink.node_count(), tag.name.clone()))
+            }
+            _ => None,
+        };
+        let result = self.builder.process_token(token, line);
+        if let Some((since, name)) = formatting {
+            sink.charge_compare_since(since, &name);
+        }
+        result
     }
 
     fn end(&self) {
@@ -1189,8 +1215,8 @@ mod tests {
     }
 
     // The corpus of `docs/parity-harness.md` (the upstream checkout, as `tests/common` finds it): the
-    // attributes created and the compare work charged per page stay a hundredth of their budgets.
-    // Skips without it.
+    // attributes created and the work charged per page, through the gate, stay a hundredth of their
+    // budgets. Skips without it.
     #[test]
     #[ignore = "slow"]
     fn corpus_work_is_far_below_the_budgets() {
@@ -1209,8 +1235,12 @@ mod tests {
         for file in &files {
             let html = String::from_utf8_lossy(&std::fs::read(file).unwrap()).into_owned();
             let call = Call::default();
-            let parser = feed_whole(&html, &limited(usize::MAX / ATTRIBUTES_PER_NODE), &call);
-            let inner = parser.tokenizer.sink.sink.inner.borrow();
+            let driver = Driver::new(
+                new_sink(&limited(usize::MAX / ATTRIBUTES_PER_NODE), &call, false),
+                false,
+            );
+            driver.process(&html);
+            let inner = driver.sink().inner.borrow();
             if inner.attributes > most.0 {
                 most = (inner.attributes, file.clone());
             }
@@ -1738,7 +1768,7 @@ mod tests {
 
     // Without the scan html5ever compares about N^2 / 2 names, which takes minutes for these sizes.
     #[test]
-    fn huge_tag_is_rejected_in_linear_time() {
+    fn huge_tag_is_rejected_within_a_second() {
         for count in [100_000, 400_000] {
             let html = tag(count);
             let start = std::time::Instant::now();
@@ -1837,12 +1867,12 @@ mod tests {
         format!("{prefix}{}", unit.repeat(count))
     }
 
-    /// Whether `html` fed whole to a parser with `max_nodes` ends in the compare-budget abort, and
-    /// its compare work.
+    /// The abort and the compare work of `html` fed in one piece through the gate with `max_nodes`.
     fn compare_outcome(html: &str, max_nodes: usize) -> (Option<ExtractError>, usize) {
         let call = Call::default();
-        let parser = feed_whole(html, &limited(max_nodes), &call);
-        let inner = parser.tokenizer.sink.sink.inner.borrow();
+        let driver = Driver::new(new_sink(&limited(max_nodes), &call, false), false);
+        driver.process(html);
+        let inner = driver.sink().inner.borrow();
         (inner.abort.clone(), inner.compare_work)
     }
 
@@ -2222,8 +2252,50 @@ mod tests {
         assert_eq!(closed, open_only);
     }
 
+    // The 14 names html5ever 0.40.1 keeps in its list of active formatting elements (`rules.rs`).
+    const FORMATTING_NAMES: [&str; 14] = [
+        "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt",
+        "u",
+    ];
+
+    #[test]
+    fn is_formatting_is_html5evers_list() {
+        let html = |name: &str| QualName::new(None, ns!(html), LocalName::from(name));
+        for name in FORMATTING_NAMES {
+            assert!(is_formatting(&html(name)), "{name}");
+        }
+        for name in ["span", "p", "div", "strike2", "bb", ""] {
+            assert!(!is_formatting(&html(name)), "{name}");
+        }
+        let svg_a = QualName::new(None, ns!(svg), local_name!("a"));
+        assert!(!is_formatting(&svg_a));
+    }
+
+    // The compare is charged per formatting start tag, by name: a name missing from `is_formatting`
+    // would go uncharged. `a` and `nobr` start tags make html5ever close an open element of the same
+    // name first, so an `applet` marker keeps the heavy one open for them.
+    #[test]
+    fn every_formatting_start_tag_is_charged_a_compare() {
+        for name in FORMATTING_NAMES {
+            let open = format!("<html><body>{}", heavy_tag(name, 0));
+            let (_, base) = compare_outcome(&open, 500_000);
+            let (_, plain) = compare_outcome(&format!("{open}<{name}>"), 500_000);
+            let (_, marked) = compare_outcome(&format!("{open}<applet><{name}>"), 500_000);
+            let (_, applet) = compare_outcome(&format!("{open}<applet>"), 500_000);
+            assert!(
+                marked > applet,
+                "{name}: {marked} with the tag, {applet} without"
+            );
+            if name == "a" || name == "nobr" {
+                assert_eq!(plain, base, "{name} closes the open one first");
+            } else {
+                assert!(plain > base, "{name}: {plain} with the tag, {base} without");
+            }
+        }
+    }
+
     // A real page: 20,000 paragraphs, each with an unclosed `font`. Noah's Ark keeps three entries,
-    // so a paragraph costs a few pairs and three clones: 300 units, 30 percent of the budget in all.
+    // so a paragraph costs 210 units, 21 percent of the budget in all.
     #[test]
     fn unclosed_font_page_of_20000_paragraphs_parses() {
         let paragraph = "<p><font color=\"#000000\" size=2 face=Arial>text of the paragraph\n</p>";
@@ -2236,6 +2308,30 @@ mod tests {
             work * 2 < DEFAULT_MAX_NODES * COMPARE_WORK_PER_NODE,
             "{work} units"
         );
+    }
+
+    /// `count` paragraphs, each with an unclosed `<font color=cN size=2>`, the colors cycling.
+    fn font_paragraphs(count: usize, colors: usize) -> String {
+        let body: String = (0..count)
+            .map(|i| format!("<p><font color=c{} size=2>t</p>", i % colors))
+            .collect();
+        format!("<html><body>{body}")
+    }
+
+    // Reconstruction and adoption-agency clones run no Noah's Ark compare, so they are not charged
+    // as one: pages of unclosed formatting elements that differ in an attribute stay parseable.
+    #[test]
+    fn unclosed_font_pages_with_varying_attributes_parse() {
+        for (count, colors) in [(200, 200), (2_000, 10), (500, 20)] {
+            let html = font_paragraphs(count, colors);
+            let tree = parse(&html, false)
+                .unwrap_or_else(|error| panic!("{count} paragraphs, {colors} colors: {error:?}"));
+            assert_eq!(
+                dump(&tree, DumpMode::Exact),
+                dump(&whole_tree(&html, false), DumpMode::Exact),
+                "{count} paragraphs, {colors} colors"
+            );
+        }
     }
 
     // html5ever cannot stop inside a piece, so the gate drops the tokens after the abort: fed whole,
