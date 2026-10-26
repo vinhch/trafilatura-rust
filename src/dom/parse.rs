@@ -117,7 +117,7 @@ enum Kind {
     Document,
     Element,
     Text,
-    /// Comment, processing instruction: has a handle but is never attached.
+    /// Comment, processing instruction: one shared handle, never attached.
     Dropped,
 }
 
@@ -162,6 +162,10 @@ struct Inner {
     /// Attribute names of each `add_attrs_if_missing` target (only `html` and `body` reach it), so
     /// a merge looks a name up instead of scanning the element's attributes.
     merged: HashMap<u32, HashSet<LocalName>>,
+    /// The one handle every comment and processing instruction shares: never attached, never
+    /// counted, never changed, so memory does not grow with their number. Handles for which
+    /// html5ever calls `same_node` are elements, so two comments comparing equal never matters.
+    dropped: u32,
 }
 
 /// An element name cloned out of the arena (atom clones), so html5ever may hold it across sink
@@ -247,8 +251,12 @@ impl Inner {
             short_values: HashSet::new(),
             values: HashMap::new(),
             merged: HashMap::new(),
+            dropped: 0,
         };
         inner.new_node(Kind::Document, empty_name());
+        // Allocated here, not on first use: a full arena would answer `new_node` with the
+        // document handle, which `place` would then attach.
+        inner.dropped = inner.new_node(Kind::Dropped, empty_name());
         inner
     }
 
@@ -651,15 +659,11 @@ impl TreeSink for Sink<'_> {
     }
 
     fn create_comment(&self, _text: StrTendril) -> u32 {
-        self.inner
-            .borrow_mut()
-            .new_node(Kind::Dropped, empty_name())
+        self.inner.borrow().dropped
     }
 
     fn create_pi(&self, _target: StrTendril, _data: StrTendril) -> u32 {
-        self.inner
-            .borrow_mut()
-            .new_node(Kind::Dropped, empty_name())
+        self.inner.borrow().dropped
     }
 
     fn append(&self, parent: &u32, child: NodeOrText<u32>) {
@@ -1002,6 +1006,73 @@ mod tests {
         let mut parser = html5ever::parse_document(new_sink(limits, call, false), parse_opts());
         parser.process(StrTendril::from_slice(html));
         parser
+    }
+
+    #[test]
+    fn comments_and_processing_instructions_do_not_grow_the_arena() {
+        let page = |comment: &str| {
+            format!(
+                "<html><body><p>a{}b</p></body></html>",
+                comment.repeat(100_000)
+            )
+        };
+        let call = Call::default();
+        let count = |html: &str| {
+            feed_whole(html, &ParseLimits::default(), &call)
+                .tokenizer
+                .sink
+                .sink
+                .node_count()
+        };
+        let bare = count(&page(""));
+        for comment in ["<!---->", "<!>", "<?pi>"] {
+            let with_comments = count(&page(comment));
+            assert!(
+                with_comments <= bare + 1,
+                "{comment}: {with_comments} nodes against {bare} without comments"
+            );
+        }
+    }
+
+    #[test]
+    fn comments_in_every_insertion_mode_parse_as_html5ever_does() {
+        let pages = [
+            "@<!DOCTYPE html>@<html>@<head>@<title>t@</title>@</head>@<body>@<p>x@y</p>@</body>@</html>@",
+            "@<p>a@b",
+            "<table>@<tr>@<td>a@b</td>@</tr>@</table>@",
+            "<table>x@y</table>",
+            "<table>@x@<tr>@",
+            "<body>a</body>@b",
+            "</body>@</html>@",
+            "<template>@<tr>@<td>x@</td></tr>@</template>",
+            "<svg>@<g>@<title>@t</title></g>@<![CDATA[x]]>@</svg>@",
+            "<math>@<mi>@x</mi>@<annotation-xml encoding=text/html>@<p>@</annotation-xml></math>",
+            "<select>@<option>a@b</option>@</select>@",
+            "<frameset>@<frame>@</frameset>@",
+            "<noscript>@</noscript>@",
+            "<textarea>@</textarea>@",
+            "<b><p>@</b>@x",
+            "<a>1@<div>2@</a>3@",
+            "<p><b>x@</p>@<p>y",
+            "<caption>@<colgroup>@<col>@",
+            "<ul><li>@<ul><li>@</ul></ul>@",
+            "<script>@</script>@<style>@</style>@",
+        ];
+        let comments = ["<!---->", "<!>", "<?pi x>", "<!--c-->", "<!--c--!>"];
+        for page in pages {
+            for comment in comments {
+                let html = page.replace('@', comment);
+                for fragment in [false, true] {
+                    let tree = parse(&html, fragment).unwrap();
+                    let whole = whole_tree(&html, fragment);
+                    assert_eq!(
+                        dump(&tree, DumpMode::Exact),
+                        dump(&whole, DumpMode::Exact),
+                        "{html:?} fragment {fragment}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
