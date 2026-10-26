@@ -94,7 +94,7 @@ upstream has no equivalent.
   caller may lift it with `None`. Attributes per tag, and merged on `html` or `body`, are capped at
   `MAX_TAG_ATTRIBUTES` (`dom/parse.rs`), always on, while the attributes of a whole parse
   (`ATTRIBUTES_PER_NODE` per allowed node, clones included) and html5ever's work on formatting
-  elements, compares and clones (`COMPARE_WORK_PER_NODE` per allowed node) are budgeted from `max_nodes` and lifted with it (D-5).
+  elements, compares and clones (`COMPARE_WORK_PER_NODE` per allowed node) are budgeted from `max_nodes` and lifted with it (D-5); the parse stops at the first token after a budget is crossed.
   Table construction is bounded by the cells
   it mints: it fails with `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in
   one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a

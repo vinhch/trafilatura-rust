@@ -6,18 +6,22 @@
 //! and folds them into the text/tail model of `Tree` in `finish`.
 
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
 use html5ever::interface::tree_builder::{
-    ElemName, ElementFlags, NodeOrText, QuirksMode, Tracer, TreeSink,
+    ElemName, ElementFlags, NodeOrText, QuirksMode, TreeSink,
 };
-use html5ever::tendril::{StrTendril, TendrilSink};
-use html5ever::tokenizer::TokenSink;
-use html5ever::tree_builder::TreeBuilderOpts;
-use html5ever::{Attribute, LocalName, Namespace, ParseOpts, Parser, QualName, local_name, ns};
+use html5ever::tendril::StrTendril;
+use html5ever::tokenizer::{
+    BufferQueue, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+};
+use html5ever::tree_builder::{TreeBuilder, TreeBuilderOpts, create_element};
+use html5ever::{
+    Attribute, LocalName, Namespace, ParseOpts, QualName, TokenizerResult, local_name, ns,
+};
 
 use super::scan::{Pause, TagScanner};
 use super::{Ns, Tree};
@@ -67,12 +71,11 @@ const NAME_BYTES_PER_UNIT: usize = 128;
 /// the same end tag can repeat the clone for as long as the input lasts.
 const NOT_IN_SCOPE: &str = "Formatting element not in scope";
 
-/// Input is fed to html5ever in pieces of at most `CHUNK_BYTES`, with a cancel and limit check between
-/// pieces. A piece ends early at a scanner pause, and before the tag that would take it past the tags
-/// the budget can still pay for (`Inner::tags_within_budget`, at least one); it grows past
-/// this size only to take a run of `BOM` whole. html5ever cannot be stopped inside a piece, so a
-/// piece bounds the work done after an abort: one pass over `CHUNK_BYTES` of text, or, once the budget
-/// runs low, the estimated cost of the tags it may still pay for.
+/// Input is fed to html5ever in pieces of `CHUNK_BYTES`, with a cancel and limit check between
+/// pieces. A piece ends early at a scanner pause and runs longer only to take a run of `BOM` whole.
+/// html5ever cannot be stopped inside a piece, but `Gate` drops every token once the sink has
+/// stopped, so the work after an abort is one token's, and a piece costs html5ever the same
+/// per byte whatever the budget.
 const CHUNK_BYTES: usize = 8 * 1024;
 
 /// U+FEFF: html5ever drops one at the start of every `feed` call, so no piece may start with it.
@@ -142,8 +145,6 @@ struct Inner {
     attributes: usize,
     /// html5ever's work on formatting elements so far (compares, sorts and clones), in `charge` units.
     compare_work: usize,
-    /// Largest single charge so far: the cost one more formatting tag may add.
-    peak_charge: usize,
     /// Most attributes any formatting element created so far carries.
     max_formatting_attributes: usize,
     /// Set at the depth cut or on abort: every later sink call changes nothing.
@@ -239,7 +240,6 @@ impl Inner {
             elements: 0,
             attributes: 0,
             compare_work: 0,
-            peak_charge: 0,
             max_formatting_attributes: 0,
             stopped: false,
             abort: None,
@@ -308,7 +308,6 @@ impl Inner {
     /// aborts past `max_nodes * COMPARE_WORK_PER_NODE`.
     fn charge(&mut self, units: usize) {
         self.compare_work = self.compare_work.saturating_add(units);
-        self.peak_charge = self.peak_charge.max(units);
         // deviation: D-5
         if self.abort.is_none()
             && self
@@ -318,22 +317,6 @@ impl Inner {
             self.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
             self.stopped = true;
         }
-    }
-
-    /// Start tags the next piece may hold, at least one, or `None` without a limit. A tag costs
-    /// html5ever at most the largest charge so far, or the clones of every formatting element it
-    /// still references (`referenced_attributes` of them, counted by `trace_handles`) when a
-    /// paragraph reconstructs them all.
-    fn tags_within_budget(&self, referenced_attributes: usize) -> Option<usize> {
-        let max = self.max_nodes?;
-        let remaining = max
-            .saturating_mul(COMPARE_WORK_PER_NODE)
-            .saturating_sub(self.compare_work);
-        let per_tag = self
-            .peak_charge
-            .max(referenced_attributes.saturating_mul(CLONE_UNITS_PER_ATTRIBUTE))
-            .max(1);
-        Some((remaining / per_tag).max(1))
     }
 
     /// Charges the compare html5ever ran before inserting formatting element `child` under
@@ -784,62 +767,97 @@ fn new_sink<'c>(limits: &ParseLimits, call: &'c Call<'c>, fragment: bool) -> Sin
     }
 }
 
-/// Counts the attributes of the formatting elements html5ever references (open stack and list).
-struct ReferencedAttributes<'a> {
-    inner: &'a RefCell<Inner>,
-    count: Cell<usize>,
+/// html5ever's tree builder behind a gate: once the sink has stopped (limit, cancel, depth cut) every
+/// later token is dropped, so html5ever's work after an abort is the token it was in, not the rest
+/// of the piece.
+struct Gate<'c> {
+    builder: TreeBuilder<u32, Sink<'c>>,
 }
 
-impl Tracer for ReferencedAttributes<'_> {
+impl TokenSink for Gate<'_> {
     type Handle = u32;
 
-    fn trace_handle(&self, handle: &u32) {
-        let inner = self.inner.borrow();
-        let node = inner.node(*handle);
-        if node.kind == Kind::Element && is_formatting(&node.qual) {
-            self.count
-                .set(self.count.get().saturating_add(node.attrs.len()));
+    fn process_token(&self, token: Token, line: u64) -> TokenSinkResult<u32> {
+        if self.builder.sink.stopped() {
+            TokenSinkResult::Continue
+        } else {
+            self.builder.process_token(token, line)
         }
     }
-}
 
-/// End of the next piece: up to `CHUNK_BYTES`, and before the `<` that follows the tags
-/// `tags_within_budget` allows.
-fn piece_end(html: &str, start: usize, parser: &Parser<Sink<'_>>) -> usize {
-    let sink = &parser.tokenizer.sink.sink;
-    let referenced = ReferencedAttributes {
-        inner: &sink.inner,
-        count: Cell::new(0),
-    };
-    parser.tokenizer.sink.trace_handles(&referenced);
-    let allowed = sink
-        .inner
-        .borrow()
-        .tags_within_budget(referenced.count.get());
-    let mut limit = CHUNK_BYTES;
-    if let Some(tags) = allowed {
-        let window = start.saturating_add(CHUNK_BYTES).min(html.len());
-        let cut = html
-            .as_bytes()
-            .get(start..window)
-            .unwrap_or_default()
-            .iter()
-            .enumerate()
-            .filter(|&(_, &byte)| byte == b'<')
-            .nth(tags)
-            .map(|(offset, _)| offset);
-        limit = cut.unwrap_or(limit).max(1);
+    fn end(&self) {
+        if !self.builder.sink.stopped() {
+            self.builder.end();
+        }
     }
-    chunk_end(html, start, limit)
+
+    fn adjusted_current_node_present_but_not_in_html_namespace(&self) -> bool {
+        self.builder
+            .adjusted_current_node_present_but_not_in_html_namespace()
+    }
 }
 
-/// End of the piece that starts at `start`, always past it: `limit` bytes on, at a char boundary and
+/// What `html5ever::Parser` is, with the gate between tokenizer and tree builder.
+struct Driver<'c> {
+    tokenizer: Tokenizer<Gate<'c>>,
+    input: BufferQueue,
+}
+
+impl<'c> Driver<'c> {
+    fn new(sink: Sink<'c>, fragment: bool) -> Self {
+        let opts = parse_opts();
+        let (builder, initial_state) = if fragment {
+            // The context element is `div`.
+            let context = create_element(
+                &sink,
+                QualName::new(None, ns!(html), local_name!("div")),
+                Vec::new(),
+            );
+            let builder = TreeBuilder::new_for_fragment(sink, context, None, opts.tree_builder);
+            let state = builder.tokenizer_state_for_context_elem(false);
+            (builder, Some(state))
+        } else {
+            (TreeBuilder::new(sink, opts.tree_builder), None)
+        };
+        Self {
+            tokenizer: Tokenizer::new(
+                Gate { builder },
+                TokenizerOpts {
+                    initial_state,
+                    ..opts.tokenizer
+                },
+            ),
+            input: BufferQueue::default(),
+        }
+    }
+
+    fn sink(&self) -> &Sink<'c> {
+        &self.tokenizer.sink.builder.sink
+    }
+
+    fn feed_all(&self) {
+        while !matches!(self.tokenizer.feed(&self.input), TokenizerResult::Done) {}
+    }
+
+    fn process(&self, piece: &str) {
+        self.input.push_back(StrTendril::from_slice(piece));
+        self.feed_all();
+    }
+
+    fn finish(self) -> Result<Tree, ExtractError> {
+        self.feed_all();
+        self.tokenizer.end();
+        self.tokenizer.sink.builder.sink.finish()
+    }
+}
+
+/// End of the piece that starts at `start`, always past it: `CHUNK_BYTES` on, at a char boundary and
 /// not before a `BOM`. A run of BOMs that fills the piece moves the end forward to the end of the run.
-fn chunk_end(html: &str, start: usize, limit: usize) -> usize {
+fn chunk_end(html: &str, start: usize) -> usize {
     let is_cut = |end: usize| {
         html.is_char_boundary(end) && !html.get(end..).is_some_and(|rest| rest.starts_with(BOM))
     };
-    let natural = start.saturating_add(limit).min(html.len());
+    let natural = start.saturating_add(CHUNK_BYTES).min(html.len());
     (start.saturating_add(1)..=natural)
         .rev()
         .find(|&end| is_cut(end))
@@ -848,7 +866,7 @@ fn chunk_end(html: &str, start: usize, limit: usize) -> usize {
 }
 
 fn drive(
-    mut parser: Parser<Sink<'_>>,
+    parser: Driver<'_>,
     html: &str,
     limits: &ParseLimits,
     call: &Call<'_>,
@@ -857,12 +875,12 @@ fn drive(
     let mut start = 0;
     while start < html.len() {
         call.check()?;
-        let end = piece_end(html, start, &parser);
+        let end = chunk_end(html, start);
         let (cut, pause) = scanner.scan(html, start, end)?;
-        let count_before = parser.tokenizer.sink.sink.node_count();
+        let count_before = parser.sink().node_count();
         if let Some(piece) = html.get(start..cut).filter(|piece| !piece.is_empty()) {
-            parser.process(StrTendril::from_slice(piece));
-            let sink = &parser.tokenizer.sink.sink;
+            parser.process(piece);
+            let sink = parser.sink();
             if let Some(error) = sink.take_abort() {
                 return Err(error);
             }
@@ -873,11 +891,7 @@ fn drive(
         match pause {
             Pause::End => {}
             Pause::RawTextTag(name) => {
-                let switched = parser
-                    .tokenizer
-                    .sink
-                    .sink
-                    .html_element_since(count_before, &name);
+                let switched = parser.sink().html_element_since(count_before, &name);
                 scanner.resume_after_tag(switched);
             }
             Pause::Cdata => scanner.resume_at_cdata(
@@ -912,8 +926,12 @@ pub fn parse_document(
     call: &Call<'_>,
 ) -> Result<Tree, ExtractError> {
     call.check()?;
-    let parser = html5ever::parse_document(new_sink(limits, call, false), parse_opts());
-    drive(parser, html, limits, call)
+    drive(
+        Driver::new(new_sink(limits, call, false), false),
+        html,
+        limits,
+        call,
+    )
 }
 
 /// Parses a fragment in the context of a `div`; the root is that `div`, holding the result.
@@ -923,15 +941,12 @@ pub fn parse_fragment(
     call: &Call<'_>,
 ) -> Result<Tree, ExtractError> {
     call.check()?;
-    let context = QualName::new(None, ns!(html), local_name!("div"));
-    let parser = html5ever::parse_fragment(
-        new_sink(limits, call, true),
-        parse_opts(),
-        context,
-        Vec::new(),
-        false,
-    );
-    drive(parser, html, limits, call)
+    drive(
+        Driver::new(new_sink(limits, call, true), true),
+        html,
+        limits,
+        call,
+    )
 }
 
 #[cfg(test)]
@@ -939,9 +954,8 @@ mod tests {
     use std::cell::Cell;
     use std::collections::HashSet;
 
-    use html5ever::TokenizerResult;
-    use html5ever::tokenizer::{BufferQueue, Token, TokenSinkResult, Tokenizer, TokenizerOpts};
-    use html5ever::tree_builder::{TreeBuilder, create_element};
+    use html5ever::Parser;
+    use html5ever::tendril::TendrilSink;
 
     use super::super::{DumpMode, dump};
     use super::*;
@@ -2079,6 +2093,90 @@ mod tests {
         }
     }
 
+    // Tags that cost html5ever nothing after a deep stack of heavy formatting elements: the budget
+    // may be nearly spent (N = 40 to 42 heavy entries come close) yet every later tag is free, so
+    // nothing may make each of them expensive. Each page takes at most 1.5 times as long as the same
+    // tail behind N entries without attributes, whether it ends rejected or parsed. A `</x>` walks
+    // the open elements to find its match, so its cost grows with the depth (2.0 s alone, 4.9 s at 20
+    // entries, 7.0 s at 40: html5ever's own cost, attributes or not); a comment does not, and takes
+    // what it takes alone (1.9 s for 64 MiB).
+    #[test]
+    #[ignore = "slow"]
+    fn free_tags_behind_heavy_entries_cost_what_they_cost_alone() {
+        let cap = DEFAULT_MAX_INPUT_BYTES;
+        let time = |html: &str, limits: &ParseLimits| {
+            let start = std::time::Instant::now();
+            let result = parse_document(html, limits, &Call::default());
+            (start.elapsed(), result.is_ok())
+        };
+        let default = ParseLimits::default();
+        let mut failures = Vec::new();
+        for tail in ["</x>", "<!---->"] {
+            let tail_only = tail.repeat(cap / tail.len());
+            let alone = time(&format!("<html><body>{tail_only}"), &default).0;
+            for entries in [1, 20, 40, 42, 43, 50] {
+                let mut seed = 0x9E37_79B9_7F4A_7C15_u64;
+                let heavy: String = (0..entries)
+                    .map(|entry| {
+                        let unique = format!("u{entry}");
+                        shuffled_tag("b", MAX_TAG_ATTRIBUTES, "a", "", &unique, &mut seed)
+                    })
+                    .collect();
+                let light: String = (0..entries).map(|entry| format!("<b u{entry}>")).collect();
+                let (light_time, _) = time(&format!("<html><body>{light}{tail_only}"), &default);
+                let (elapsed, parsed) = time(&format!("<html><body>{heavy}{tail_only}"), &default);
+                println!(
+                    "{entries} heavy b, {tail} to the cap: {elapsed:?} (light entries {light_time:?}, alone {alone:?}), parsed {parsed}"
+                );
+                if elapsed >= light_time * 3 / 2 {
+                    failures.push(format!(
+                        "{entries} heavy b, {tail}: {elapsed:?} against {light_time:?} with light entries"
+                    ));
+                }
+                if tail == "<!---->" && elapsed >= alone * 3 / 2 {
+                    failures.push(format!(
+                        "{entries} heavy b, {tail}: {elapsed:?} against {alone:?} alone"
+                    ));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    // The same deep stacks with the budgets lifted: what a heavy entry adds is nothing beyond what
+    // the depth costs html5ever.
+    #[test]
+    #[ignore = "slow"]
+    fn deep_stacks_cost_the_same_with_attributes_and_the_budgets_lifted() {
+        let tail = "</x>".repeat(DEFAULT_MAX_INPUT_BYTES / 4);
+        let unlimited = ParseLimits {
+            max_nodes: None,
+            max_input_bytes: None,
+            ..ParseLimits::default()
+        };
+        let time = |html: &str| {
+            let start = std::time::Instant::now();
+            parse_document(html, &unlimited, &Call::default()).unwrap();
+            start.elapsed()
+        };
+        for entries in [43, 50, 250] {
+            let mut seed = 0x2545_F491_4F6C_DD1D_u64;
+            let heavy: String = (0..entries)
+                .map(|entry| {
+                    let unique = format!("u{entry}");
+                    shuffled_tag("b", MAX_TAG_ATTRIBUTES, "a", "", &unique, &mut seed)
+                })
+                .collect();
+            let light: String = (0..entries).map(|entry| format!("<b u{entry}>")).collect();
+            let light_time = time(&format!("<html><body>{light}{tail}"));
+            let heavy_time = time(&format!("<html><body>{heavy}{tail}"));
+            println!(
+                "{entries} entries, </x> to the cap: heavy {heavy_time:?}, light {light_time:?}"
+            );
+            assert!(heavy_time < light_time * 3 / 2, "{entries} entries");
+        }
+    }
+
     // The other exits of the adoption agency either remove the entry or are the plain cost of a tag:
     // with a heavy open formatting element a page of end tags takes as long as without attributes.
     #[test]
@@ -2140,47 +2238,20 @@ mod tests {
         );
     }
 
+    // html5ever cannot stop inside a piece, so the gate drops the tokens after the abort: fed whole,
+    // 1,000 paragraphs create the 20 elements the limit allows, one more, and no more.
     #[test]
-    fn tags_per_piece_shrink_as_the_compare_budget_runs_low() {
+    fn tokens_after_the_abort_do_not_reach_the_tree_builder() {
         let call = Call::default();
-        let sink = new_sink(&limited(1_000), &call, false);
-        assert_eq!(sink.inner.borrow().tags_within_budget(0), Some(40_000));
-        sink.inner.borrow_mut().charge(1_000);
-        // 40,000 - 1,000 units left, 1,000 per tag
-        assert_eq!(sink.inner.borrow().tags_within_budget(0), Some(39));
-        // 50 attributes referenced cost 500 units a tag when a paragraph reconstructs them; the
-        // peak charge of 1,000 still dominates
-        assert_eq!(sink.inner.borrow().tags_within_budget(50), Some(39));
-        assert_eq!(sink.inner.borrow().tags_within_budget(300), Some(13));
-        // a larger peak charge leaves one tag, never none
-        sink.inner.borrow_mut().charge(30_000);
-        assert_eq!(sink.inner.borrow().tags_within_budget(0), Some(1));
-        let unlimited = ParseLimits {
-            max_nodes: None,
-            ..ParseLimits::default()
-        };
-        let sink = new_sink(&unlimited, &call, false);
-        assert_eq!(sink.inner.borrow().tags_within_budget(10_000), None);
-    }
-
-    #[test]
-    fn a_piece_ends_before_the_tag_the_budget_cannot_pay_for() {
-        let call = Call::default();
-        let html = "<p>x</p><b a=1>y</b><i>z</i>".repeat(10);
-        let hot = |peak: usize| {
-            let parser =
-                html5ever::parse_document(new_sink(&limited(1_000), &call, false), parse_opts());
-            parser.tokenizer.sink.sink.inner.borrow_mut().charge(peak);
-            parser
-        };
-        let cold = hot(0);
-        assert_eq!(piece_end(&html, 0, &cold), html.len().min(CHUNK_BYTES));
-        // 40,000 - 20,000 left at a peak of 20,000: one tag, so the piece stops before the second `<`
-        let warm = hot(20_000);
-        assert_eq!(piece_end(&html, 0, &warm), "<p>x".len());
-        // a text-only page is not cut
-        let text = "x".repeat(CHUNK_BYTES * 2);
-        assert_eq!(piece_end(&text, 0, &warm), CHUNK_BYTES);
+        let html = format!("<html><body>{}", "<p>x".repeat(1_000));
+        for fragment in [false, true] {
+            let driver = Driver::new(new_sink(&limited(20), &call, fragment), fragment);
+            driver.process(&html);
+            let inner = driver.sink().inner.borrow();
+            assert_eq!(inner.abort, Some(TOO_LARGE), "fragment {fragment}");
+            assert!(inner.stopped);
+            assert_eq!(inner.elements, 21, "fragment {fragment}");
+        }
     }
 
     // The charge counts same-name open formatting elements as the ancestors of the new element.
