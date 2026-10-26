@@ -91,10 +91,12 @@ upstream has no equivalent.
   `load_html` before decompression) is on by default at `DEFAULT_MAX_INPUT_BYTES`, 64 MiB (D-11), and a
   caller may lift it with `None`; `max_nodes` (`ParseLimits::max_nodes`: elements created
   while parsing, html5ever's clones included) is on by default at `DEFAULT_MAX_NODES` (D-5), and a
-  caller may lift it with `None`. Table construction is bounded by the cells it mints: it fails with
-  `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in one tree (D-9). Recursion
-  only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a 512 KiB stack in a debug
-  build, so a default thread stack is enough (a musl host that spawns its own threads sets 512 KiB).
+  caller may lift it with `None`. Attributes per tag, and merged on `html` or `body`, are capped at
+  `MAX_TAG_ATTRIBUTES` (`dom/parse.rs`), always on (D-5). Table construction is bounded by the cells
+  it mints: it fails with `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in
+  one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a
+  512 KiB stack in a debug build, so a default thread stack is enough (a musl host that spawns its own
+  threads sets 512 KiB).
 - No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`); here it is an
   option (`Call`, planned) whose default is computed on each `extract` call, never when the extractor
   is built, and parity fixtures pin it.

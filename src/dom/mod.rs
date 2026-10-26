@@ -7,6 +7,7 @@
 mod dump;
 mod mutate;
 mod parse;
+mod scan;
 mod serialize;
 mod walk;
 
