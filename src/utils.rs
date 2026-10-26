@@ -246,9 +246,10 @@ const BINARY_MAGICS: [&[u8]; 8] = [
     b"\x28\xb5\x2f\xfd",
 ];
 
-/// Whether `content` is a binary file that upstream would also reject: it starts with the magic
-/// number of a known binary kind and has no `html` (any case) in its first 200 bytes, which is
-/// where upstream's `is_dubious_html` looks (50 characters).
+/// Whether `content` starts with the magic number of a known binary kind and has no `html` (any
+/// case) in its first 200 bytes, which is where upstream's `is_dubious_html` looks (50
+/// characters). For a real binary file upstream returns `None` too; text with such a prefix and a
+/// parse of 2 or more children (`GIF89a<p>a</p><p>b</p>`) gets a tree there but is rejected here.
 // deviation: D-12 (upstream decodes and parses the file in full before it returns `None`)
 fn is_binary(content: &[u8]) -> bool {
     let is_webp = content.starts_with(b"RIFF") && content.get(8..12) == Some(b"WEBP".as_slice());
@@ -336,13 +337,14 @@ fn leading_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<&str> {
 }
 
 /// Decodes, repairs and parses `input`; rejects with `Rejection::EmptyTree` what upstream
-/// returns `None` for. `max_size` only caps the decompression of byte input (upstream's
-/// `max_size`); a decoded string is never cut.
+/// returns `None` for, and byte input with a binary magic prefix (below). `max_size` only caps
+/// the decompression of byte input (upstream's `max_size`); a decoded string is never cut.
 ///
 /// Expects a full document: a single-block fragment without `html` near its start is rejected,
 /// as upstream does. Input over `limits.max_input_bytes` is rejected first with
-/// `Rejection::InputTooLarge`; byte input that is a binary file (zip, PDF, image, undecompressed
-/// gzip or zstd) gives `EmptyTree` without being decoded or parsed.
+/// `Rejection::InputTooLarge`; byte input that starts with the magic number of a binary file (zip,
+/// PDF, image, undecompressed gzip or zstd) and has no `html` near its start gives `EmptyTree`
+/// without being decoded or parsed, even when upstream would parse it (D-12).
 // upstream: utils.py::load_html
 pub fn load_html(
     input: HtmlInput<'_>,

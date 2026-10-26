@@ -286,27 +286,30 @@ fn binary_sample(magic: &[u8]) -> Vec<u8> {
     out
 }
 
-// gzip header with the FNAME flag and the name `index.html`
-fn gzip_named_sample() -> Vec<u8> {
+// gzip header with the FNAME flag and the file name `name`
+fn gzip_named_sample(name: &[u8]) -> Vec<u8> {
     let mut magic = vec![0x1f, 0x8b, 0x08, 0x08, 1, 2, 3, 4, 0x00, 0x03];
-    magic.extend(b"index.html\0");
+    magic.extend(name);
+    magic.push(0);
     binary_sample(&magic)
 }
 
-// zip local file header whose name field is `index.html`
-fn zip_named_sample() -> Vec<u8> {
+// zip local file header whose name field is `name`
+fn zip_named_sample(name: &[u8]) -> Vec<u8> {
     let mut magic = b"PK\x03\x04\x14\x00".to_vec();
     magic.extend([0; 20]);
     magic.extend([10, 0, 0, 0]);
-    magic.extend(b"index.html");
+    magic.extend(name);
     binary_sample(&magic)
 }
 
-const BINARY_MAGICS: [&[u8]; 11] = [
+const BINARY_MAGICS: [&[u8]; 13] = [
+    b"%PDF-",
     b"PK\x03\x04",
     b"%PDF-1.4\n",
     b"%PDF-1.7\n",
     b"\x89PNG\r\n\x1a\n",
+    b"\xff\xd8\xff\xdb",
     b"\xff\xd8\xff\xe0",
     b"\xff\xd8\xff\xe1",
     b"GIF87a",
@@ -359,19 +362,31 @@ fn binary_samples_give_upstream_none() {
 
 #[test]
 fn binary_with_an_html_name_is_parsed() {
-    // oracle: a header naming `index.html` puts `html` in upstream's first 50 characters, so
-    // load_html returns a tree for both samples
-    for sample in [gzip_named_sample(), zip_named_sample()] {
-        assert!(matches!(
-            load_html(
-                HtmlInput::Bytes(&sample),
-                SIZE,
-                &no_parse(),
-                &Call::default()
-            ),
-            Err(ExtractError::Rejected(Rejection::TreeTooLarge))
-        ));
+    // oracle: a header naming `index.html` puts `html` in upstream's first 50 characters (it
+    // lowercases them), so load_html returns a tree for each sample, `INDEX.HTML` included
+    for name in [&b"index.html"[..], b"INDEX.HTML"] {
+        for sample in [gzip_named_sample(name), zip_named_sample(name)] {
+            assert!(matches!(
+                load_html(
+                    HtmlInput::Bytes(&sample),
+                    SIZE,
+                    &no_parse(),
+                    &Call::default()
+                ),
+                Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+            ));
+        }
     }
+}
+
+#[test]
+fn text_with_a_binary_magic_prefix_is_rejected() {
+    // oracle: upstream load_html returns a tree of 2 children for this input, which has no `html`
+    // in its first 50 characters; the shortcut rejects it
+    assert!(matches!(
+        load_bytes(b"GIF89a<p>a</p><p>b</p>"),
+        Err(ExtractError::Rejected(Rejection::EmptyTree))
+    ));
 }
 
 #[test]
