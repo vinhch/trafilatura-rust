@@ -235,11 +235,12 @@ fn decode_bytes(content: Cow<'_, [u8]>) -> Cow<'_, str> {
 
 /// Magic numbers of the file kinds `is_binary` rejects: zip, PDF, PNG, JPEG, GIF, gzip and zstd;
 /// WebP is a RIFF container checked apart.
-const BINARY_MAGICS: [&[u8]; 7] = [
+const BINARY_MAGICS: [&[u8]; 8] = [
     b"PK\x03\x04",
-    b"%PDF-1.4\n",
+    b"%PDF-",
     b"\x89PNG\r\n\x1a\n",
-    b"\xff\xd8\xff\xe0",
+    b"\xff\xd8\xff",
+    b"GIF87a",
     b"GIF89a",
     b"\x1f\x8b\x08",
     b"\x28\xb5\x2f\xfd",

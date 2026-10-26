@@ -302,11 +302,14 @@ fn zip_named_sample() -> Vec<u8> {
     binary_sample(&magic)
 }
 
-const BINARY_MAGICS: [&[u8]; 8] = [
+const BINARY_MAGICS: [&[u8]; 11] = [
     b"PK\x03\x04",
     b"%PDF-1.4\n",
+    b"%PDF-1.7\n",
     b"\x89PNG\r\n\x1a\n",
     b"\xff\xd8\xff\xe0",
+    b"\xff\xd8\xff\xe1",
+    b"GIF87a",
     b"GIF89a",
     b"RIFF\x00\x00\x00\x00WEBPVP8 ",
     b"\x1f\x8b\x08",
