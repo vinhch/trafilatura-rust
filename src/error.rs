@@ -35,7 +35,7 @@ pub enum Rejection {
     Duplicate,
     /// The detected language does not match the target language.
     WrongLanguage,
-    /// The input exceeds the size limit.
+    /// The raw input exceeds `max_input_bytes`, or a JSON node count or offset does not fit 32 bits.
     InputTooLarge,
     /// A value upstream raises on: either a `ValueError` or `TypeError` upstream catches (a tag name
     /// lxml refuses to create; it returns no result) or a raise that escapes `extract` (a span or

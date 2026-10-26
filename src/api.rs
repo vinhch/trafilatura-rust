@@ -13,7 +13,7 @@ use crate::context::Ctx;
 use crate::dom::ParseLimits;
 use crate::error::ExtractError;
 use crate::extraction::{self, Source};
-use crate::settings::{self, Config, DEFAULT_MAX_NODES, Document, Focus};
+use crate::settings::{self, Config, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES, Document, Focus};
 use crate::utils::HtmlInput;
 
 /// Output format of an extraction.
@@ -58,6 +58,7 @@ pub struct Options {
     target_language: Option<String>,
     config: Config,
     max_nodes: Option<usize>,
+    max_input_bytes: Option<usize>,
 }
 
 impl Default for Options {
@@ -70,7 +71,8 @@ impl Options {
     /// Upstream's defaults: no format (unset means [`Format::Txt`] for [`Extractor::extract`] and
     /// [`Format::Python`] for [`Extractor::bare_extraction`]), [`Focus::Balanced`], comments and
     /// tables on, formatting unset (on for Markdown), links and images off, no target language,
-    /// `Config::default()` and `max_nodes` at `DEFAULT_MAX_NODES` (500,000).
+    /// `Config::default()`, `max_nodes` at `DEFAULT_MAX_NODES` (500,000) and
+    /// `max_input_bytes` at `DEFAULT_MAX_INPUT_BYTES` (64 MiB).
     pub fn new() -> Self {
         Self {
             format: None,
@@ -83,6 +85,7 @@ impl Options {
             target_language: None,
             config: Config::default(),
             max_nodes: Some(DEFAULT_MAX_NODES),
+            max_input_bytes: Some(DEFAULT_MAX_INPUT_BYTES),
         }
     }
 
@@ -148,6 +151,13 @@ impl Options {
         self
     }
 
+    /// Sets the raw input length, in bytes, above which a page is rejected with
+    /// `Rejection::InputTooLarge` before decompression, decoding or parsing; `None` lifts the limit.
+    pub fn max_input_bytes(mut self, max_input_bytes: Option<usize>) -> Self {
+        self.max_input_bytes = max_input_bytes;
+        self
+    }
+
     /// Resolves the options once for each format the [`Extractor`] may run: with no format set,
     /// [`Format::Txt`] for `extract` and [`Format::Python`] for `bare_extraction`.
     pub fn build(&self) -> Extractor {
@@ -175,6 +185,7 @@ impl Options {
             document: resolve(self.format.unwrap_or(Format::Python)),
             limits: ParseLimits {
                 max_nodes: self.max_nodes,
+                max_input_bytes: self.max_input_bytes,
                 ..ParseLimits::default()
             },
         }

@@ -87,8 +87,9 @@ upstream has no equivalent.
   (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
   means no limit). Nesting depth stops at 256 as libxml2 does (`MAX_DEPTH` in `dom/parse.rs`): parsing
   ends at the cut and the partial tree is kept. That is upstream behavior, always on. Limits the port
-  adds are options: `max_input_bytes` (planned) is off by default, and a caller that turns it on
-  accepts rejections upstream would not make; `max_nodes` (`ParseLimits::max_nodes`: elements created
+  adds are options: `max_input_bytes` (`ParseLimits::max_input_bytes`: raw input length, checked first in
+  `load_html` before decompression) is on by default at `DEFAULT_MAX_INPUT_BYTES`, 64 MiB (D-11), and a
+  caller may lift it with `None`; `max_nodes` (`ParseLimits::max_nodes`: elements created
   while parsing, html5ever's clones included) is on by default at `DEFAULT_MAX_NODES` (D-5), and a
   caller may lift it with `None`. Table construction is bounded by the cells it mints: it fails with
   `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in one tree (D-9). Recursion
@@ -138,6 +139,7 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus` 
 | `tables` | `true` | |
 | `target_language` | none | Two-letter code; with the language classifier a stub (OI-4) only the `html` `lang` check rejects. |
 | `config` | `Config::default()` | |
+| `max_input_bytes` | `Some(DEFAULT_MAX_INPUT_BYTES)` | `ParseLimits::max_input_bytes` (D-11): raw input length above which `Rejection::InputTooLarge` is returned, before decompression; `None` lifts the limit. The free `html2txt` always uses the default. |
 | `max_nodes` | `Some(DEFAULT_MAX_NODES)` | `ParseLimits::max_nodes` (D-5); `None` lifts the limit. `ParseLimits::max_depth` is not exposed. |
 
 `Err(Rejected(_))` stands for upstream's `None` and for a raise that escapes upstream's entry point.

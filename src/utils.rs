@@ -312,6 +312,14 @@ pub fn load_html(
     limits: &ParseLimits,
     call: &Call<'_>,
 ) -> Result<Tree, ExtractError> {
+    // deviation: D-11
+    let input_len = match input {
+        HtmlInput::Bytes(bytes) => bytes.len(),
+        HtmlInput::Str(text) => text.len(),
+    };
+    if limits.max_input_bytes.is_some_and(|max| input_len > max) {
+        return Err(ExtractError::Rejected(Rejection::InputTooLarge));
+    }
     let html = match input {
         HtmlInput::Bytes(bytes) => decode_file(bytes, max_size),
         HtmlInput::Str(text) => Cow::Borrowed(text),

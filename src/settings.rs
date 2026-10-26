@@ -25,6 +25,10 @@ pub const MIN_FILE_SIZE: usize = 10;
 /// included. Added by this crate, not an upstream constant (deviation D-5).
 pub const DEFAULT_MAX_NODES: usize = 500_000;
 
+/// Raw input length, in bytes, above which loading fails with `Rejection::InputTooLarge`. Added by this
+/// crate, not an upstream constant (deviation D-11).
+pub const DEFAULT_MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+
 /// The extraction keys of `settings.cfg`; its `Default` is the cfg file. Reading a cfg file is
 /// upstream API (`use_config`) that this crate does not offer, so a caller overrides fields instead.
 // upstream: settings.cfg

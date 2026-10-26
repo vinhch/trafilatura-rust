@@ -93,9 +93,9 @@ These hold for the whole crate; `docs/architecture.md` (Runtime contract) has th
   every loop over nodes, about every `CHECK_INTERVAL` nodes; a ported function that checks it returns
   `Result`; a check never changes a branch.
 - Bounded: `MAX_FILE_SIZE` and `MAX_TREE_SIZE` as upstream applies them, nesting depth 256, and the
-  added `max_nodes` limit (D-5). Recursion only where `MAX_DEPTH` bounds its depth, with a test that
-  proves it fits a 512 KiB stack in a debug build, so a default thread stack is enough (a musl host
-  that spawns its own threads sets 512 KiB).
+  added `max_nodes` (D-5) and the input cap `max_input_bytes` (D-11). Recursion only where `MAX_DEPTH`
+  bounds its depth, with a test that proves it fits a 512 KiB stack in a debug build, so a default
+  thread stack is enough (a musl host that spawns its own threads sets 512 KiB).
 - No hidden clock: `max_date` becomes a per-call option (planned), never read from the clock when the
   extractor is built.
 - Panic-free on any input. `unwrap`, `expect` and `panic` fail clippy outside tests; `string_slice`

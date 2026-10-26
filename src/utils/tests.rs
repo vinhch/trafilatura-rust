@@ -1,7 +1,7 @@
 use super::*;
 use encoding_rs::{WINDOWS_1251, WINDOWS_1252};
 
-use crate::settings::MAX_FILE_SIZE;
+use crate::settings::{DEFAULT_MAX_INPUT_BYTES, MAX_FILE_SIZE};
 
 const SIZE: usize = MAX_FILE_SIZE;
 
@@ -21,6 +21,43 @@ fn load_bytes(bytes: &[u8]) -> Result<Tree, ExtractError> {
         &ParseLimits::default(),
         &Call::default(),
     )
+}
+
+fn capped(max: usize) -> ParseLimits {
+    ParseLimits {
+        max_input_bytes: Some(max),
+        ..ParseLimits::default()
+    }
+}
+
+#[test]
+fn load_html_rejects_input_over_the_input_cap() {
+    // deviation: D-11
+    let page = "<html><body><p>a</p><p>b</p></body></html>";
+    let len = page.len();
+    let call = Call::default();
+    assert!(load_html(HtmlInput::Str(page), SIZE, &capped(len), &call).is_ok());
+    assert!(load_html(HtmlInput::Bytes(page.as_bytes()), SIZE, &capped(len), &call).is_ok());
+    for input in [HtmlInput::Str(page), HtmlInput::Bytes(page.as_bytes())] {
+        assert!(matches!(
+            load_html(input, SIZE, &capped(len - 1), &call),
+            Err(ExtractError::Rejected(Rejection::InputTooLarge))
+        ));
+    }
+    let unlimited = ParseLimits {
+        max_input_bytes: None,
+        ..ParseLimits::default()
+    };
+    assert!(load_html(HtmlInput::Str(page), SIZE, &unlimited, &call).is_ok());
+}
+
+#[test]
+fn default_input_cap_is_64_mib() {
+    assert_eq!(DEFAULT_MAX_INPUT_BYTES, 64 * 1024 * 1024);
+    assert_eq!(
+        ParseLimits::default().max_input_bytes,
+        Some(DEFAULT_MAX_INPUT_BYTES)
+    );
 }
 
 fn repaired(html: &str) -> String {
@@ -265,6 +302,24 @@ mod decompress {
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(data).unwrap();
         encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn input_cap_reads_the_raw_length_not_the_decompressed_one() {
+        // gzip of a page larger than the cap, itself smaller than the cap
+        let page = format!("<html><body>{}</body></html>", "<p>word</p>".repeat(2_000));
+        let compressed = gzip(page.as_bytes());
+        assert!(compressed.len() < page.len());
+        let limits = capped(compressed.len());
+        assert!(
+            load_html(
+                HtmlInput::Bytes(&compressed),
+                SIZE,
+                &limits,
+                &Call::default()
+            )
+            .is_ok()
+        );
     }
 
     fn zlib(data: &[u8]) -> Vec<u8> {

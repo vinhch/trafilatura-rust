@@ -21,7 +21,7 @@ use html5ever::{Attribute, LocalName, Namespace, ParseOpts, Parser, QualName, lo
 use super::{Ns, Tree};
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::error::{ExtractError, Rejection};
-use crate::settings::DEFAULT_MAX_NODES;
+use crate::settings::{DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES};
 
 /// libxml2's nesting limit (`docs/architecture.md`, Runtime contract): parsing ends at the cut.
 pub const MAX_DEPTH: usize = 256;
@@ -42,6 +42,9 @@ pub struct ParseLimits {
     /// Element count above which parsing fails with `Rejection::TreeTooLarge`, html5ever's clones of
     /// open formatting elements included; `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
+    /// Raw input length above which loading fails with `Rejection::InputTooLarge`, checked before
+    /// decompression; `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
+    pub max_input_bytes: Option<usize>,
 }
 
 impl Default for ParseLimits {
@@ -50,6 +53,8 @@ impl Default for ParseLimits {
             max_depth: MAX_DEPTH,
             // deviation: D-5
             max_nodes: Some(DEFAULT_MAX_NODES),
+            // deviation: D-11
+            max_input_bytes: Some(DEFAULT_MAX_INPUT_BYTES),
         }
     }
 }

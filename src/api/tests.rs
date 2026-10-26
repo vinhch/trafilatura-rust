@@ -5,7 +5,7 @@ use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;
 use crate::error::Rejection;
-use crate::settings::{self, DEFAULT_MAX_NODES};
+use crate::settings::{self, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES};
 use crate::utils::HtmlInput;
 
 const PAGE: &str = concat!(
@@ -260,6 +260,32 @@ fn max_nodes_option_reaches_parse() {
 }
 
 #[test]
+fn max_input_bytes_option_reaches_load() {
+    let page = format!(
+        "<html><body>{}</body></html>",
+        "<p>some text in a paragraph</p>".repeat(20)
+    );
+    let limited = Options::new().max_input_bytes(Some(10)).build();
+    assert_eq!(
+        limited.extract(&Input::text(&page), &Call::default()),
+        rejected(Rejection::InputTooLarge)
+    );
+    assert_eq!(
+        limited
+            .bare_extraction(&Input::text(&page), &Call::default())
+            .unwrap_err(),
+        ExtractError::Rejected(Rejection::InputTooLarge)
+    );
+    let unlimited = Options::new().max_input_bytes(None).build();
+    assert_eq!(
+        unlimited.extract(&Input::text(&page), &Call::default()),
+        Options::new()
+            .build()
+            .extract(&Input::text(&page), &Call::default())
+    );
+}
+
+#[test]
 fn options_reach_the_extractor() {
     let options = Options::new()
         .focus(Focus::Precision)
@@ -291,6 +317,10 @@ fn options_reach_the_extractor() {
     assert!(defaults.text.comments);
     assert!(!defaults.text.links && !defaults.text.images && defaults.text.tables);
     assert_eq!(defaults.limits.max_nodes, Some(DEFAULT_MAX_NODES));
+    assert_eq!(
+        defaults.limits.max_input_bytes,
+        Some(DEFAULT_MAX_INPUT_BYTES)
+    );
     assert_eq!(defaults.limits.max_depth, ParseLimits::default().max_depth);
 
     let recall = Options::new().focus(Focus::Recall).build();
