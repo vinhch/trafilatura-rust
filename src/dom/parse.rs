@@ -26,6 +26,13 @@ use crate::settings::{DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES};
 /// libxml2's nesting limit (`docs/architecture.md`, Runtime contract): parsing ends at the cut.
 pub const MAX_DEPTH: usize = 256;
 
+/// Attributes one tag, or one `html` or `body` element merged from repeated tags, may carry; above
+/// it parsing fails with `Rejection::TreeTooLarge`. It bounds html5ever's duplicate check, which is
+/// quadratic in the attributes of one tag: a page at the input cap made of tags of this many
+/// attributes stays in the order of an ordinary parse. Real pages stay far below 100.
+// deviation: D-5
+pub const MAX_TAG_ATTRIBUTES: usize = 1_000;
+
 /// Input is fed to html5ever in chunks of this many bytes, with a cancel and node-limit check between
 /// chunks. html5ever cannot be stopped inside a chunk, so the chunk size bounds the work done after an
 /// abort.
@@ -98,6 +105,9 @@ struct Inner {
     /// element, so one value would otherwise be copied once per clone. The address is only a
     /// hint: a hit is used after comparing content, so a reused address cannot return a wrong value.
     values: HashMap<(usize, usize), Arc<str>>,
+    /// Attribute names of each `add_attrs_if_missing` target (only `html` and `body` reach it), so
+    /// a merge looks a name up instead of scanning the element's attributes.
+    merged: HashMap<u32, HashSet<LocalName>>,
 }
 
 /// An element name cloned out of the arena (atom clones), so html5ever may hold it across sink
@@ -143,6 +153,7 @@ impl Inner {
             abort: None,
             short_values: HashSet::new(),
             values: HashMap::new(),
+            merged: HashMap::new(),
         };
         inner.new_node(Kind::Document, empty_name());
         inner
@@ -512,11 +523,28 @@ impl TreeSink for Sink<'_> {
         if inner.stopped {
             return;
         }
-        let node = inner.node_mut(*target);
+        let Inner { nodes, merged, .. } = &mut *inner;
+        let Some(node) = nodes.get_mut(*target as usize) else {
+            return;
+        };
+        let names = merged
+            .entry(*target)
+            .or_insert_with(|| node.attrs.iter().map(|(name, _)| name.clone()).collect());
+        let mut exceeded = false;
         for attr in attrs {
-            if !node.attrs.iter().any(|(name, _)| *name == attr.name.local) {
-                node.attrs.push((attr.name.local, Arc::from(&*attr.value)));
+            if !names.insert(attr.name.local.clone()) {
+                continue;
             }
+            // deviation: D-5
+            if node.attrs.len() >= MAX_TAG_ATTRIBUTES {
+                exceeded = true;
+                break;
+            }
+            node.attrs.push((attr.name.local, Arc::from(&*attr.value)));
+        }
+        if exceeded {
+            inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
+            inner.stopped = true;
         }
     }
 
@@ -705,6 +733,68 @@ mod tests {
         let with_attrs = inner.nodes.iter().filter(|n| !n.attrs.is_empty()).count();
         assert!(with_attrs <= 5_000, "{with_attrs} nodes kept attributes");
         assert!(inner.elements > 50_000, "the input must outgrow the limit");
+    }
+
+    fn attr_pairs(tree: &Tree, id: super::super::NodeId) -> Vec<(String, String)> {
+        tree.node(id)
+            .attrs
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_string()))
+            .collect()
+    }
+
+    fn pair(name: &str, value: &str) -> (String, String) {
+        (name.to_string(), value.to_string())
+    }
+
+    #[test]
+    fn repeated_html_and_body_tags_add_missing_attributes() {
+        let html = "<html x=1><body a=1><html x=2 y=3><body a=2 b=3>";
+        let tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
+        let root = tree.root();
+        let body = tree
+            .children(root)
+            .find(|&id| &*tree.node(id).name == "body")
+            .unwrap();
+        assert_eq!(attr_pairs(&tree, root), [pair("x", "1"), pair("y", "3")]);
+        assert_eq!(attr_pairs(&tree, body), [pair("a", "1"), pair("b", "3")]);
+    }
+
+    #[test]
+    fn merged_attributes_are_capped() {
+        let tags = |n: usize| (0..n).map(|i| format!("<body a{i}=1>")).collect::<String>();
+        let parse = |n: usize| parse_document(&tags(n), &ParseLimits::default(), &Call::default());
+        let tree = parse(MAX_TAG_ATTRIBUTES).unwrap();
+        let body = tree
+            .children(tree.root())
+            .find(|&id| &*tree.node(id).name == "body")
+            .unwrap();
+        assert_eq!(tree.node(body).attrs.len(), MAX_TAG_ATTRIBUTES);
+        assert_eq!(
+            parse(MAX_TAG_ATTRIBUTES + 1).unwrap_err(),
+            ExtractError::Rejected(Rejection::TreeTooLarge)
+        );
+    }
+
+    // Repeated names are skipped, so the body stays small and the merge must not rescan it.
+    #[test]
+    #[ignore = "slow"]
+    fn body_attribute_merge_is_linear() {
+        let time = |count: usize| {
+            let html: String = (0..count)
+                .map(|i| format!("<body a{}=1>", i % 1_000))
+                .collect();
+            let start = std::time::Instant::now();
+            let limits = ParseLimits {
+                max_input_bytes: None,
+                ..ParseLimits::default()
+            };
+            parse_document(&html, &limits, &Call::default()).unwrap();
+            start.elapsed()
+        };
+        let base = time(1_000_000);
+        let scaled = time(4_000_000);
+        assert!(scaled < base * 8, "{base:?} for N, {scaled:?} for 4N");
     }
 
     // html5ever holds a name from `elem_name` across later sink calls that mutate the arena.
