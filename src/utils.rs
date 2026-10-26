@@ -202,14 +202,23 @@ fn is_mostly_utf8(content: &[u8]) -> bool {
 /// encodings, then UTF-8 with U+FFFD for what is invalid. Borrows when no copy is needed.
 // upstream: utils.py::decode_file
 pub fn decode_file(content: &[u8], max_size: usize) -> Cow<'_, str> {
+    decode_bytes(decompress(content, max_size))
+}
+
+/// The decompression step of `decode_file`.
+fn decompress(content: &[u8], max_size: usize) -> Cow<'_, [u8]> {
     // deviation: D-4 (without the `decompress` feature the bytes are used as they are)
     #[cfg(feature = "decompress")]
-    let content = handle_compressed_file(content, max_size);
+    return handle_compressed_file(content, max_size);
     #[cfg(not(feature = "decompress"))]
-    let content = {
+    {
         let _ = max_size;
         Cow::Borrowed(content)
-    };
+    }
+}
+
+/// The decoding step of `decode_file`, after decompression.
+fn decode_bytes(content: Cow<'_, [u8]>) -> Cow<'_, str> {
     // Fast path: valid UTF-8, a BOM kept as U+FEFF.
     let content = match content {
         Cow::Borrowed(bytes) => match std::str::from_utf8(bytes) {
@@ -222,6 +231,32 @@ pub fn decode_file(content: &[u8], max_size: usize) -> Cow<'_, str> {
         },
     };
     decode_with(&content, &detect_encoding(&content))
+}
+
+/// Magic numbers of the file kinds `is_binary` rejects: zip, PDF, PNG, JPEG, GIF, gzip and zstd;
+/// WebP is a RIFF container checked apart.
+const BINARY_MAGICS: [&[u8]; 7] = [
+    b"PK\x03\x04",
+    b"%PDF-1.4\n",
+    b"\x89PNG\r\n\x1a\n",
+    b"\xff\xd8\xff\xe0",
+    b"GIF89a",
+    b"\x1f\x8b\x08",
+    b"\x28\xb5\x2f\xfd",
+];
+
+/// Whether `content` is a binary file that upstream would also reject: it starts with the magic
+/// number of a known binary kind and has no `html` (any case) in its first 200 bytes, which is
+/// where upstream's `is_dubious_html` looks (50 characters).
+// deviation: D-12 (upstream decodes and parses the file in full before it returns `None`)
+fn is_binary(content: &[u8]) -> bool {
+    let is_webp = content.starts_with(b"RIFF") && content.get(8..12) == Some(b"WEBP".as_slice());
+    (is_webp || BINARY_MAGICS.iter().any(|magic| content.starts_with(magic)))
+        && !content
+            .get(..200)
+            .unwrap_or(content)
+            .windows(4)
+            .any(|window| window.eq_ignore_ascii_case(b"html"))
 }
 
 /// Decodes `content` with the first of `encodings` that does it without loss, else as UTF-8 with
@@ -304,7 +339,9 @@ fn leading_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<&str> {
 /// `max_size`); a decoded string is never cut.
 ///
 /// Expects a full document: a single-block fragment without `html` near its start is rejected,
-/// as upstream does.
+/// as upstream does. Input over `limits.max_input_bytes` is rejected first with
+/// `Rejection::InputTooLarge`; byte input that is a binary file (zip, PDF, image, undecompressed
+/// gzip or zstd) gives `EmptyTree` without being decoded or parsed.
 // upstream: utils.py::load_html
 pub fn load_html(
     input: HtmlInput<'_>,
@@ -321,7 +358,13 @@ pub fn load_html(
         return Err(ExtractError::Rejected(Rejection::InputTooLarge));
     }
     let html = match input {
-        HtmlInput::Bytes(bytes) => decode_file(bytes, max_size),
+        HtmlInput::Bytes(bytes) => {
+            let bytes = decompress(bytes, max_size);
+            if is_binary(&bytes) {
+                return Err(ExtractError::Rejected(Rejection::EmptyTree));
+            }
+            decode_bytes(bytes)
+        }
         HtmlInput::Str(text) => Cow::Borrowed(text),
     };
     let beginning = html.chars().take(50).collect::<String>().to_lowercase();
