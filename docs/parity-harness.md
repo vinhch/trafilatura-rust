@@ -81,7 +81,7 @@ Every page gets a class. Only `port-bug` fails the test.
 
 The report also counts `parser`: pages whose `lxml` and `html5` fixtures differ (D-2). It is a count,
 not a class. A class excludes the whole page from the `port-bug` check; classifying each differing
-line is followup F-12. The report is `.temp/parity/report.md`.
+line is part of Phase 9. The report is `.temp/parity/report.md`.
 
 ## Output check
 
@@ -122,7 +122,7 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
   (TXT, which repeats both) with the keys `loaded`, `median_ns`, `extract_ok`, `extract_median_ns`,
   `extract_alloc_bytes`, `extract_alloc_count` and `extract_peak_bytes`, and also the synthetic pages
   below. The Python side covers decode plus parse only: the comparison with upstream is `load_html`
-  alone, and an upstream extraction number is followup F-24. Heap is comparable only on the Rust side:
+  alone, and an upstream extraction number is part of Phase 9. Heap is comparable only on the Rust side:
   tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
   the Rust targets takes about five minutes, and the `large_page` page peaks at about 1.4 GB of heap.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the

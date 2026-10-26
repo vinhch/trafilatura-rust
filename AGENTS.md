@@ -57,11 +57,11 @@ not when it looks similar or scores well on a benchmark.
   Python would raise (`ZeroDivisionError`, `IndexError`) or where Rust would overflow use checked
   forms.
 - Fast mode only, for now. The port covers upstream's `fast=True` path; `fast=False` is not ported
-  yet (deviation D-1, followup F-6). Until F-6 lands, this crate leaves the readability and jusText
+  yet (deviation D-1, Phase 11). Until Phase 11 lands, this crate leaves the readability and jusText
   fallback to the caller, who gets a typed rejection and can run a fallback of their own.
   - `Options` has no `fast` field while only fast mode exists.
   - At each upstream `if not options.fast` (or `if options.fast`), port the fast branch only and mark
-    the spot `// deviation: D-1`, so F-6 finds every place the slow branch goes.
+    the spot `// deviation: D-1`, so Phase 11 finds every place the slow branch goes.
   - An expression that reads `options.fast` as a value (`keep_teasers=options.fast` in
     `main_extractor.py`, the `fast` argument `core.py` passes to `extract_metadata`) takes `true`.
   - An upstream test that runs with the default `fast=False` is ported with the fast-mode result.

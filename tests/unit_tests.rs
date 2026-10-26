@@ -20,7 +20,7 @@
 //! - `test_deprecations` (Python-only parameters), `test_incompatible_options` (a `Focus` makes the
 //!   combination unrepresentable, and the crate does not log), `test_settings_element_lists`
 //!   (mutates `MANUALLY_CLEANED` in place; the crate's lists are constants, D-8).
-//! - The slow path (D-1, F-6): `test_sanitize_tree_*`, `test_readability_*`, `test_external`,
+//! - The slow path (D-1, Phase 11): `test_sanitize_tree_*`, `test_readability_*`, `test_external`,
 //!   `test_is_probably_readerable`, `test_prefer_readability_rejects_raw_json`,
 //!   `test_compare_extraction_justext_*`, `test_recall_escalation_justext`.
 //! - Metadata and `Document` (Phase 4): `test_extract_with_metadata`, `test_python_output`,
