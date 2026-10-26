@@ -538,9 +538,9 @@ impl Sink<'_> {
             let id = u32::try_from(index).ok()?;
             let node = inner.node(id);
             (node.kind == Kind::Element && node.qual.ns == ns!(html) && node.qual.local == *name)
-                .then_some((id, node.parent?))
+                .then_some((id, node.parent))
         });
-        if let Some((id, parent)) = newest {
+        if let Some((id, Some(parent))) = newest {
             inner.charge_formatting_compare(parent, id);
         }
     }
@@ -2198,9 +2198,8 @@ mod tests {
     // may be nearly spent (N = 40 to 42 heavy entries come close) yet every later tag is free, so
     // nothing may make each of them expensive. Each page takes at most 1.5 times as long as the same
     // tail behind N entries without attributes, whether it ends rejected or parsed. A `</x>` walks
-    // the open elements to find its match, so its cost grows with the depth (2.0 s alone, 4.9 s at 20
-    // entries, 7.0 s at 40: html5ever's own cost, attributes or not); a comment does not, and takes
-    // what it takes alone (1.9 s for 64 MiB).
+    // the open elements to find its match, so its cost grows with the depth (html5ever's own cost,
+    // attributes or not; the figures are in D-5); a comment does not, and takes what it takes alone.
     #[test]
     #[ignore = "slow"]
     fn free_tags_behind_heavy_entries_cost_what_they_cost_alone() {
@@ -2329,13 +2328,170 @@ mod tests {
         "u",
     ];
 
+    // The element names of the HTML Standard, obsolete ones included, plus the legacy `image` and
+    // `isindex` html5ever's tree builder special-cases. The test fails on a name added to the list.
+    const HTML_ELEMENT_NAMES: &[&str] = &[
+        "a",
+        "abbr",
+        "acronym",
+        "address",
+        "applet",
+        "area",
+        "article",
+        "aside",
+        "audio",
+        "b",
+        "base",
+        "basefont",
+        "bdi",
+        "bdo",
+        "bgsound",
+        "big",
+        "blink",
+        "blockquote",
+        "body",
+        "br",
+        "button",
+        "canvas",
+        "caption",
+        "center",
+        "cite",
+        "code",
+        "col",
+        "colgroup",
+        "command",
+        "data",
+        "datalist",
+        "dd",
+        "del",
+        "details",
+        "dfn",
+        "dialog",
+        "dir",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "embed",
+        "fieldset",
+        "figcaption",
+        "figure",
+        "font",
+        "footer",
+        "form",
+        "frame",
+        "frameset",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "head",
+        "header",
+        "hgroup",
+        "hr",
+        "html",
+        "i",
+        "iframe",
+        "image",
+        "img",
+        "input",
+        "ins",
+        "isindex",
+        "kbd",
+        "keygen",
+        "label",
+        "legend",
+        "li",
+        "link",
+        "listing",
+        "main",
+        "map",
+        "mark",
+        "marquee",
+        "math",
+        "menu",
+        "menuitem",
+        "meta",
+        "meter",
+        "multicol",
+        "nav",
+        "nextid",
+        "nobr",
+        "noembed",
+        "noframes",
+        "noscript",
+        "object",
+        "ol",
+        "optgroup",
+        "option",
+        "output",
+        "p",
+        "param",
+        "picture",
+        "plaintext",
+        "pre",
+        "progress",
+        "q",
+        "rb",
+        "rp",
+        "rt",
+        "rtc",
+        "ruby",
+        "s",
+        "samp",
+        "script",
+        "search",
+        "section",
+        "select",
+        "slot",
+        "small",
+        "source",
+        "spacer",
+        "span",
+        "strike",
+        "strong",
+        "style",
+        "sub",
+        "summary",
+        "sup",
+        "svg",
+        "table",
+        "tbody",
+        "td",
+        "template",
+        "textarea",
+        "tfoot",
+        "th",
+        "thead",
+        "time",
+        "title",
+        "tr",
+        "track",
+        "tt",
+        "u",
+        "ul",
+        "var",
+        "video",
+        "wbr",
+        "xmp",
+    ];
+
     #[test]
-    fn is_formatting_is_html5evers_list() {
+    fn is_formatting_is_exactly_html5evers_list() {
         let html = |name: &str| QualName::new(None, ns!(html), LocalName::from(name));
         for name in FORMATTING_NAMES {
             assert!(is_formatting(&html(name)), "{name}");
         }
-        for name in ["span", "p", "div", "strike2", "bb", ""] {
+        for name in HTML_ELEMENT_NAMES {
+            assert_eq!(
+                is_formatting(&html(name)),
+                FORMATTING_NAMES.contains(name),
+                "{name}"
+            );
+        }
+        for name in ["strike2", "bb", ""] {
             assert!(!is_formatting(&html(name)), "{name}");
         }
         let svg_a = QualName::new(None, ns!(svg), local_name!("a"));
