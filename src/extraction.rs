@@ -427,8 +427,9 @@ pub enum Source<'a> {
     Input(HtmlInput<'a>),
     /// An element of a caller's tree. Its subtree is copied into the call's own arena, so the
     /// caller's tree stays as it is; the copy never records dropped script text, so a tree parsed
-    /// with `ParseLimits::drop_script_text` on is extracted as is, without the rerun. The subtree must be at most `MAX_DEPTH` deep, as the parser
-    /// guarantees, or the caller must provide the stack the recursive output walks need.
+    /// with `ParseLimits::drop_script_text` on is extracted as is, without the rerun. The subtree
+    /// must be at most `MAX_DEPTH` deep, as the parser guarantees, or the caller must provide the
+    /// stack the recursive output walks need.
     Tree(&'a Tree, NodeId),
 }
 

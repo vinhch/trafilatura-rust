@@ -124,7 +124,7 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
   below. The Python side covers decode plus parse only: the comparison with upstream is `load_html`
   alone, and an upstream extraction number is part of Phase 9. Heap is comparable only on the Rust side:
   tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
-  the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 2.2 GB of heap.
+  the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
   ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing
   `.temp/measure/<version>-rust-<kind>-synthetic.json` beside the corpus file. `large_page` has 1.1M

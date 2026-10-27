@@ -184,6 +184,7 @@ would is a deviation and needs the user's approval before it lands.
   outlives a call unless the caller owns it, everything freed when the call returns.
 - Borrow the caller's input bytes; decode to a new buffer only when the input is not already UTF-8.
 - The library never sets a global allocator; that choice belongs to the binary or binding.
-- `Extractor` parses with the text of `style` and non-JSON `script` elements dropped
-  (`ParseLimits::drop_script_text`); the parity tree dump, `html2txt` and fragment parses keep it.
+- `Extractor` parses with the text of `style` and `script` elements dropped, except JSON-LD and
+  `settings+json` scripts (`ParseLimits::drop_script_text`); the parity tree dump, `html2txt` and
+  fragment parses keep that text.
   When such an element survives `tree_cleaning`, `bare_extraction` runs again on a full parse.

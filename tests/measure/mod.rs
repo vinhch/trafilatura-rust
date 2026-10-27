@@ -217,8 +217,7 @@ pub fn synthetic() -> Vec<Synthetic> {
     let inline_script = |bytes: usize| {
         filled(
             "<script>",
-            "var a = [1, 2, 3];
-",
+            "var a = [1, 2, 3];\n",
             &format!("</script>{}", short_paragraph()),
             bytes,
         )
@@ -231,15 +230,7 @@ pub fn synthetic() -> Vec<Synthetic> {
             bytes,
         )
     };
-    let csv_pre = |bytes: usize| {
-        filled(
-            "<pre>",
-            "1,alpha,2.5,beta
-",
-            "</pre>",
-            bytes,
-        )
-    };
+    let csv_pre = |bytes: usize| filled("<pre>", "1,alpha,2.5,beta\n", "</pre>", bytes);
     for (name, body, options) in [
         ("inline_script_20m", inline_script(20 * MIB), Options::new()),
         ("inline_script_50m", inline_script(50 * MIB), Options::new()),

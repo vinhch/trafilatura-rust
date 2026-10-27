@@ -6,7 +6,7 @@
 # the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
 # prints a Markdown table. Needs the fixtures (scripts/fixtures.sh): their index.json
 # lists the pages. Run it by hand; the numbers depend on the machine. The Rust targets take about 5 minutes
-# and need about 2.2 GB of heap for the synthetic pages.
+# and need about 1 GB of heap for the synthetic pages.
 set -euo pipefail
 
 readonly script_name="measure.sh"
