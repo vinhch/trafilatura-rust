@@ -434,3 +434,36 @@ fn recall_revert_reruns_with_script_text() {
         ))
     );
 }
+
+#[test]
+fn forum_thread_keeps_replies_in_place() {
+    let op = "The opening post explains the problem in plain sentences so that every reader can follow it. ".repeat(2);
+    let cl =
+        "A closing paragraph from the original poster sums up what the thread decided in the end. "
+            .repeat(2);
+    let r1 = "First reply agrees with the opening post and adds one more detail.";
+    let r2 = "Second reply disagrees politely and suggests another approach instead.";
+    let page = |head: &str| {
+        format!(
+            "<html><head>{head}</head><body><article><p>{op}</p><div class=\"comments\"><p>{r1}</p><p>{r2}</p></div><p>{cl}</p></article></body></html>"
+        )
+    };
+    let extract = |page: &str| {
+        Options::new()
+            .comments(true)
+            .build()
+            .extract(&Input::text(page), &Call::default())
+    };
+    // oracle: extract(page, include_comments=True, fast=True)
+    let forum = page(
+        r#"<script type="application/ld+json">{"@context":"https://schema.org","@type":"DiscussionForumPosting","headline":"h"}</script>"#,
+    );
+    assert_eq!(
+        extract(&forum),
+        Ok(format!("{}\n{r1}\n{r2}\n{}", op.trim_end(), cl.trim_end()))
+    );
+    assert_eq!(
+        extract(&page("")),
+        Ok(format!("{}\n{}\n{r1}\n{r2}", op.trim_end(), cl.trim_end()))
+    );
+}

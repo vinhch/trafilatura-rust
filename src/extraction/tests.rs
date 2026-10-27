@@ -1411,3 +1411,27 @@ fn deep_caller_tree_on_small_stack() {
     // oracle: core.extract(tree, options=Extractor(output_format="txt", ...)) == d.text
     assert_eq!(outcome.2.as_deref(), Some(expected_text.as_str()));
 }
+
+#[test]
+fn prepare_tree_copies_backup_only_when_asked() {
+    const PAGE: &str = "<html><body><article><p>Main text of the article</p><script>var a = 1;</script></article></body></html>";
+    let options = cascade_options(false, false, false);
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    let prepare = |keep_backup: bool| {
+        let mut tree = load(PAGE);
+        let root = tree.root();
+        let (cleaned, backup) = prepare_tree(&mut tree, root, &ctx, None, keep_backup).unwrap();
+        let dump = crate::dom::dump_from(&tree, cleaned, crate::dom::DumpMode::Exact).0;
+        (tree.len(), backup.is_some(), dump)
+    };
+    let (kept_len, kept, kept_dump) = prepare(true);
+    let (dropped_len, dropped, dropped_dump) = prepare(false);
+    assert!(kept);
+    assert!(!dropped);
+    assert!(kept_len > dropped_len);
+    assert_eq!(kept_dump, dropped_dump);
+}

@@ -188,17 +188,18 @@ fn forum_thread_page(tree: &Tree, root: NodeId, call: &Call<'_>) -> Result<bool,
 }
 
 /// Cleans a copy of the raw tree below `raw_root` and converts its tags; returns the converted tree
-/// and a copy of the cleaned tree from before the conversion.
+/// and, only when `keep_backup`, a copy of the cleaned tree from before the conversion.
 // upstream: core.py::_prepare_tree
 fn prepare_tree(
     tree: &mut Tree,
     raw_root: NodeId,
     ctx: &Ctx<'_>,
     url: Option<&str>,
-) -> Result<(NodeId, NodeId), ExtractError> {
+    keep_backup: bool,
+) -> Result<(NodeId, Option<NodeId>), ExtractError> {
     let copy = tree.copy(raw_root);
     let cleaned = tree_cleaning(tree, copy, ctx)?;
-    let backup = tree.copy(cleaned);
+    let backup = keep_backup.then(|| tree.copy(cleaned));
     convert_tags(tree, cleaned, ctx, url)?;
     Ok((cleaned, backup))
 }
@@ -223,7 +224,8 @@ fn recall_retry(
     ctx: &Ctx<'_>,
     url: Option<&str>,
 ) -> Result<(NodeId, String), ExtractError> {
-    let (cleaned, _backup) = prepare_tree(tree, esc_root, ctx, url)?;
+    // deviation: D-1 (slow mode's compare_extraction also reads the backup)
+    let (cleaned, _) = prepare_tree(tree, esc_root, ctx, url, false)?;
     extract_and_compare(tree, cleaned, ctx)
 }
 
@@ -341,7 +343,9 @@ pub fn trafilatura_sequence(
         prune_unwanted_nodes(tree, root, REMOVE_COMMENTS_AND_LISTS_XPATH, false, call)?;
     }
     call.check()?;
-    let (mut cleaned, backup) = prepare_tree(tree, root, ctx, url)?;
+    // only the forum branch below reads the backup, and `temp_comments` is empty without comments
+    // deviation: D-1 (slow mode's compare_extraction also reads the backup)
+    let (mut cleaned, backup) = prepare_tree(tree, root, ctx, url, options.comments && is_forum)?;
     call.check()?;
 
     let (mut comments_body, mut temp_comments) = if options.comments {
@@ -350,7 +354,10 @@ pub fn trafilatura_sequence(
         (tree.new_element("body"), String::new())
     };
     let mut forum_posts = None;
-    if !temp_comments.is_empty() && is_forum {
+    if !temp_comments.is_empty()
+        && is_forum
+        && let Some(backup) = backup
+    {
         // thread forum: the comments are the posts, so they go to the body (the backup predates the
         // capture) and the capture waits for the salvage
         forum_posts = Some(comments_body);
