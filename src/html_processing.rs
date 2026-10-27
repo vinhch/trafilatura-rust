@@ -245,6 +245,12 @@ pub fn tree_cleaning_with(
         root = copy;
     }
 
+    // the readers from here on would see a script or style without its text; `bare_extraction`
+    // then runs again on a full parse, so the output stays upstream's
+    if tree.holds_dropped_text(root, call)? {
+        tree.needs_script_text = true;
+    }
+
     if clean_forms {
         handle_forms(tree, root, call)?;
     }

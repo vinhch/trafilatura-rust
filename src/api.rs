@@ -186,6 +186,7 @@ impl Options {
             limits: ParseLimits {
                 max_nodes: self.max_nodes,
                 max_input_bytes: self.max_input_bytes,
+                drop_script_text: true,
                 ..ParseLimits::default()
             },
         }
@@ -247,6 +248,14 @@ pub struct Extractor {
 }
 
 impl Extractor {
+    /// The same extractor with the text of `style` and `script` elements kept in the parse.
+    #[cfg(any(test, feature = "__internals"))]
+    #[doc(hidden)]
+    pub fn with_script_text(mut self) -> Self {
+        self.limits.drop_script_text = false;
+        self
+    }
+
     /// Extracts the main text of `input` as a string in the format of the options ([`Format::Txt`]
     /// when unset). `Err(Rejected(_))` stands for upstream's `None` and for an exception that
     /// escapes `extract`: [`Format::Python`] fails with `Rejection::InvalidValue` after a

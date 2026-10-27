@@ -101,6 +101,9 @@ pub struct Tree {
     /// The parse dropped the text of at least one unread `style` or `script`
     /// (`ParseLimits::drop_script_text`).
     pub(crate) dropped_script_text: bool,
+    /// A dropped-text element survived `tree_cleaning`, so the readers after it would see its
+    /// missing text and the extraction must run again on a full parse.
+    pub(crate) needs_script_text: bool,
 }
 
 impl Tree {
@@ -110,6 +113,7 @@ impl Tree {
             nodes: vec![Node::new(name, ns, attrs)],
             table_cells: 0,
             dropped_script_text: false,
+            needs_script_text: false,
         }
     }
 

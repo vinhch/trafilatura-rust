@@ -1117,3 +1117,43 @@ fn build_html_output_stops_when_cancelled() {
         Err(ExtractError::Cancelled)
     );
 }
+
+#[test]
+fn tree_cleaning_marks_surviving_dropped_text() {
+    let page = format!(
+        "<html><head><title>t</title></head><body><form><aside><p>Short aside paragraph here.</p></aside><div>{}</div></form><script>{}</script></body></html>",
+        "Form body sentence with several words in it. ".repeat(8),
+        "var a = 1;".repeat(200),
+    );
+    let parse = |drop_script_text| {
+        let limits = ParseLimits {
+            drop_script_text,
+            ..ParseLimits::default()
+        };
+        parse_document(&page, &limits, &Call::default()).unwrap()
+    };
+    let cleaned = |drop_script_text, recall| {
+        let mut tree = parse(drop_script_text);
+        let root = tree.root();
+        let options = Extractor::new(
+            Config::default(),
+            Format::Python,
+            false,
+            recall,
+            None,
+            false,
+            false,
+            Default::default(),
+            Default::default(),
+        );
+        let ctx = Ctx {
+            options: Cow::Owned(options),
+            call: &Call::default(),
+        };
+        tree_cleaning(&mut tree, root, &ctx).unwrap();
+        tree.needs_script_text
+    };
+    assert!(cleaned(true, true));
+    assert!(!cleaned(true, false));
+    assert!(!cleaned(false, true));
+}

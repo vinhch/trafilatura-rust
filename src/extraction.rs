@@ -419,7 +419,8 @@ pub enum Source<'a> {
     /// An HTML page, as bytes or text.
     Input(HtmlInput<'a>),
     /// An element of a caller's tree. Its subtree is copied into the call's own arena, so the
-    /// caller's tree stays as it is. The subtree must be at most `MAX_DEPTH` deep, as the parser
+    /// caller's tree stays as it is; the copy never records dropped script text, so a tree parsed
+    /// with `ParseLimits::drop_script_text` on is extracted as is, without the rerun. The subtree must be at most `MAX_DEPTH` deep, as the parser
     /// guarantees, or the caller must provide the stack the recursive output walks need.
     Tree(&'a Tree, NodeId),
 }
@@ -520,8 +521,23 @@ pub fn bare_extraction(
         .as_deref()
         .filter(|url| !url.is_empty())
         .or(document.url.as_deref().filter(|url| !url.is_empty()));
-    let (postbody, temp_text, comments_body, temp_comments) =
-        trafilatura_sequence(&mut tree, root, ctx, url, limits)?;
+    let sequence = trafilatura_sequence(&mut tree, root, ctx, url, limits);
+    if tree.needs_script_text && matches!(sequence, Ok(_) | Err(ExtractError::Rejected(_))) {
+        // a dropped script or style text reached the text readers: extract again from a full parse,
+        // with this run's arena freed first
+        drop(sequence);
+        drop(document);
+        drop(tree);
+        return bare_extraction(
+            source,
+            ctx,
+            &ParseLimits {
+                drop_script_text: false,
+                ..*limits
+            },
+        );
+    }
+    let (postbody, temp_text, comments_body, temp_comments) = sequence?;
     call.check()?;
 
     check_tree_size(&mut tree, postbody, options.max_tree_size)?;

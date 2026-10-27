@@ -391,3 +391,46 @@ fn default_options_accept_a_page_just_under_the_node_limit() {
             .is_ok()
     );
 }
+
+#[test]
+fn build_drops_script_text() {
+    assert!(Options::new().build().limits.drop_script_text);
+    assert!(
+        !Options::new()
+            .build()
+            .with_script_text()
+            .limits
+            .drop_script_text
+    );
+}
+
+/// The recall revert keeps `script` in the tree, and `handle_forms` compares form text with it.
+fn script_after_form_page() -> String {
+    format!(
+        "<html><head><title>t</title></head><body><form><aside><p>Short aside paragraph here.</p></aside><div>{}</div></form><div>{}</div><script>{}</script></body></html>",
+        "Form body sentence with several words in it. ".repeat(8),
+        "Outside text that is part of the page as well. ".repeat(3),
+        "var a = 1;".repeat(200),
+    )
+}
+
+#[test]
+fn recall_revert_reruns_with_script_text() {
+    let page = script_after_form_page();
+    // oracle: extract(page, favor_recall=True, fast=True)
+    assert_eq!(
+        Options::new()
+            .focus(Focus::Recall)
+            .build()
+            .extract(&Input::text(&page), &Call::default()),
+        Ok(format!(
+            "{}\n{}",
+            "Form body sentence with several words in it. "
+                .repeat(8)
+                .trim_end(),
+            "Outside text that is part of the page as well. "
+                .repeat(3)
+                .trim_end()
+        ))
+    );
+}

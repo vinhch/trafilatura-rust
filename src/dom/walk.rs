@@ -1,7 +1,10 @@
 //! Tree walks in lxml's order and `copy`. Every walk follows the parent and sibling links with
 //! explicit state, so the stack never grows with the depth of the tree.
 
+use super::parse::is_unread_text_element;
 use super::{Node, NodeId, Ns, Tree};
+use crate::cancel::{CHECK_INTERVAL, Call};
+use crate::error::ExtractError;
 
 /// A live `tree.iter(tags)`: it reads the tree on each step, so the caller may edit the tree
 /// between steps. As in lxml, the successor of a node is computed before the node is returned, so
@@ -115,6 +118,27 @@ impl Tree {
     ) -> impl Iterator<Item = NodeId> + 'a {
         std::iter::successors(self.node(id).parent, |&up| self.node(up).parent)
             .filter(move |&node| self.matches(node, tags))
+    }
+
+    /// Whether a parse that dropped script and style text left an element of `root`'s subtree
+    /// whose text it would have dropped: `false` for a tree that dropped none. It matches by
+    /// element name and `type`, not by whether text was dropped, so an empty `<script src>` that
+    /// survives counts too, which costs a rerun and changes no output. Checks `call` about every
+    /// `CHECK_INTERVAL` nodes.
+    pub fn holds_dropped_text(&self, root: NodeId, call: &Call<'_>) -> Result<bool, ExtractError> {
+        if !self.dropped_script_text {
+            return Ok(false);
+        }
+        for (index, id) in self.walk(root).enumerate() {
+            if index.is_multiple_of(CHECK_INTERVAL) {
+                call.check()?;
+            }
+            let node = self.node(id);
+            if is_unread_text_element(&node.name, node.ns, &node.attrs) {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// The text of `id` and its descendants in document order: own text, then each descendant's

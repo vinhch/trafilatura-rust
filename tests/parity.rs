@@ -19,7 +19,7 @@ use serde_json::Value;
 use trafilatura_rust::__internals::{
     DumpMode, HtmlInput, MAX_FILE_SIZE, ParseLimits, dump, load_html,
 };
-use trafilatura_rust::{Call, ExtractError, Format, Input, Options, Rejection};
+use trafilatura_rust::{Call, ExtractError, Focus, Format, Input, Options, Rejection};
 
 /// Elements whose tree differs because html5lib (the fixture parser) predates a WHATWG change that
 /// html5ever has: the 2025 "customizable select" parsing, where `select` and `option` keep phrasing
@@ -620,5 +620,42 @@ fn outputs_match_html5_fixture() {
         "{} port-bug outputs (see {}): {port_bugs:?}",
         port_bugs.len(),
         path.display()
+    );
+}
+
+/// Dropping the text of unread scripts and styles must not change any output: each corpus page
+/// extracts the same with and without it under every focus and comments setting.
+#[test]
+#[ignore = "slow"]
+fn script_text_drop_keeps_output() {
+    let Some((_, upstream, index)) = load_corpus() else {
+        return;
+    };
+    let mut differing = Vec::new();
+    for entry in index["pages"].as_array().unwrap() {
+        let id = entry["id"].as_str().unwrap();
+        let bytes = std::fs::read(upstream.join(entry["source"].as_str().unwrap())).unwrap();
+        for focus in [Focus::Precision, Focus::Balanced, Focus::Recall] {
+            for comments in [true, false] {
+                let extractor = Options::new()
+                    .format(Format::Txt)
+                    .focus(focus)
+                    .comments(comments)
+                    .build();
+                let page = Input::bytes(&bytes);
+                let dropped = extractor.extract(&page, &Call::default());
+                let kept = extractor
+                    .with_script_text()
+                    .extract(&page, &Call::default());
+                if dropped != kept {
+                    differing.push(format!("{id} {focus:?} comments={comments}"));
+                }
+            }
+        }
+    }
+    assert!(
+        differing.is_empty(),
+        "{} outputs differ: {differing:?}",
+        differing.len()
     );
 }
