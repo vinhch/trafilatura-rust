@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 
 use serde_json::{Value, json};
 use trafilatura_rust::__internals::{HtmlInput, MAX_FILE_SIZE, ParseLimits, Tree, load_html};
-use trafilatura_rust::{Call, ExtractError, Extractor, Format, Input, Options, Rejection};
+use trafilatura_rust::{Call, ExtractError, Extractor, Focus, Format, Input, Options, Rejection};
 
 #[allow(dead_code)]
 #[path = "../common/mod.rs"]
@@ -123,7 +123,39 @@ fn ordered_list(items: usize) -> String {
     out
 }
 
-/// Pages for the limits and growth paths no corpus page reaches (D-5, D-9, Phase 8).
+/// `prefix`, then `unit` repeated until the length reaches `bytes`, then `suffix`.
+fn filled(prefix: &str, unit: &str, suffix: &str, bytes: usize) -> String {
+    let mut out = String::with_capacity(bytes + prefix.len() + unit.len() + suffix.len());
+    out.push_str(prefix);
+    while out.len() < bytes {
+        out.push_str(unit);
+    }
+    out.push_str(suffix);
+    out
+}
+
+/// A short paragraph after a large element, so the page has text to extract.
+fn short_paragraph() -> String {
+    format!("<p>{}</p>", "Short page text. ".repeat(20))
+}
+
+/// The page of the recall-revert test with its script body (`var a = 1;`) grown to `bytes`: with
+/// `Focus::Recall` the cleaning reverts to its pre-cleaning copy, which still holds the script.
+fn recall_page(bytes: usize) -> String {
+    let head = format!(
+        "<form><aside><p>Short aside paragraph here.</p></aside><div>{}</div></form><div>{}</div><script>",
+        "Form body sentence with several words in it. ".repeat(8),
+        "Outside text that is part of the page as well. ".repeat(3),
+    );
+    filled(&head, "var a = 1;", "</script>", bytes)
+}
+
+const MIB: usize = 1 << 20;
+const JSON_LD_PREFIX: &str = r#"<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","articleBody":""#;
+
+/// Pages for the limits and growth paths no corpus page reaches (D-5, D-9, Phase 8), and the shapes of
+/// large real pages: an inline script, JSON-LD, preformatted text, a data table and a page that
+/// extracts twice. `Nm` in a page name means `N` MiB of input.
 /// `large_page` is above the default parse limit and raises it. `node_limit` is just under
 /// `DEFAULT_MAX_NODES` and `node_limit_over` just over it. `cell_budget` is exactly `MAX_OUTPUT_NODES`
 /// (1,000,000) cells and `cell_budget_over` one row more.
@@ -138,7 +170,7 @@ pub fn synthetic() -> Vec<Synthetic> {
         large.push_str("</tr>");
     }
     large.push_str("</table>");
-    vec![
+    let mut pages = vec![
         Synthetic {
             name: "large_page",
             html: document(&large),
@@ -181,7 +213,70 @@ pub fn synthetic() -> Vec<Synthetic> {
             options: Options::new().format(Format::Markdown),
             expect: Expect::Ok,
         },
-    ]
+    ];
+    let inline_script = |bytes: usize| {
+        filled(
+            "<script>",
+            "var a = [1, 2, 3];
+",
+            &format!("</script>{}", short_paragraph()),
+            bytes,
+        )
+    };
+    let json_ld = |bytes: usize| {
+        filled(
+            JSON_LD_PREFIX,
+            "word ",
+            &format!("\"}}</script>{}", short_paragraph()),
+            bytes,
+        )
+    };
+    let csv_pre = |bytes: usize| {
+        filled(
+            "<pre>",
+            "1,alpha,2.5,beta
+",
+            "</pre>",
+            bytes,
+        )
+    };
+    for (name, body, options) in [
+        ("inline_script_20m", inline_script(20 * MIB), Options::new()),
+        ("inline_script_50m", inline_script(50 * MIB), Options::new()),
+        ("json_ld_20m", json_ld(20 * MIB), Options::new()),
+        ("json_ld_50m", json_ld(50 * MIB), Options::new()),
+        ("csv_pre_20m", csv_pre(20 * MIB), Options::new()),
+        // Just above a power of two, where a text buffer grown piece by piece has the most spare capacity.
+        ("csv_pre_33m", csv_pre(33 * MIB), Options::new()),
+        ("csv_pre_50m", csv_pre(50 * MIB), Options::new()),
+        (
+            "data_table_20m",
+            filled(
+                "<table>",
+                "<tr><td>1</td><td>alpha</td><td>2.5</td></tr>",
+                "</table>",
+                20 * MIB,
+            ),
+            Options::new().max_nodes(Some(2_000_000)),
+        ),
+        (
+            "recall_rerun_20m",
+            recall_page(20 * MIB),
+            Options::new().focus(Focus::Recall),
+        ),
+    ] {
+        pages.push(Synthetic {
+            name,
+            html: document(&body),
+            options,
+            expect: if name == "data_table_20m" {
+                Expect::TooLarge
+            } else {
+                Expect::Ok
+            },
+        });
+    }
+    pages
 }
 
 /// Runs the corpus with `corpus` and the synthetic pages `include` accepts with `synthetic`, as

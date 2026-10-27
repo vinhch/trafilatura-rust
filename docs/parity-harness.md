@@ -124,7 +124,7 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
   below. The Python side covers decode plus parse only: the comparison with upstream is `load_html`
   alone, and an upstream extraction number is part of Phase 9. Heap is comparable only on the Rust side:
   tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
-  the Rust targets takes about five minutes, and the `large_page` page peaks at about 1.4 GB of heap.
+  the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 2.2 GB of heap.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
   ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing
   `.temp/measure/<version>-rust-<kind>-synthetic.json` beside the corpus file. `large_page` has 1.1M
@@ -139,6 +139,12 @@ report is `.temp/parity/output-report.md`: counts per format and class, the page
   runtime (the 200k list alone takes about 150 s). A synthetic entry holds `name`, `input_bytes`,
   `expected`, `outcome`, and `output_bytes` and `elapsed_ns` (time) or `alloc_bytes`, `alloc_count` and
   `peak_bytes` (heap).
+  The large-page pages have the shapes of large real pages, and `Nm` in a name means N MiB of input:
+  `inline_script_20m` and `inline_script_50m` (one `<script>` of JavaScript), `json_ld_20m` and
+  `json_ld_50m` (one JSON-LD script), `csv_pre_20m`, `csv_pre_33m` and `csv_pre_50m` (one `<pre>` of
+  text), `data_table_20m` (a table of 3-cell rows, `max_nodes` raised to 2,000,000, `too_large` at the
+  output limit) and `recall_rerun_20m` (a 20 MiB script on a page whose recall extraction reverts to its
+  pre-cleaning copy, a page that extracts twice once script text is dropped).
 - `scripts/oracle.sh 'CODE'` (or `.ps1`) runs one Python snippet with upstream importable at the pin
   and prints its stdout: the way to get an expected value for a ported test. It runs where
   `scripts/fixtures.sh` runs (uv on Linux, Docker elsewhere), so lxml is libxml2 2.14.6 in both.
