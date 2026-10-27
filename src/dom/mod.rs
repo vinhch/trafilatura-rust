@@ -166,11 +166,42 @@ impl Tree {
         if text.is_empty() {
             return;
         }
-        let target = match self.node(parent).last_child {
+        self.text_target(parent)
+            .get_or_insert_with(String::new)
+            .push_str(text);
+    }
+
+    /// `add_text` for a `String` the caller no longer needs: an empty target takes the allocation
+    /// itself instead of a copy of it.
+    pub fn add_text_owned(&mut self, parent: NodeId, text: String) {
+        if text.is_empty() {
+            return;
+        }
+        match self.text_target(parent) {
+            Some(existing) => existing.push_str(&text),
+            target @ None => {
+                let mut text = text;
+                // The sink grows text piece by piece, up to twice its length, and the raw tree
+                // lives through the whole extraction.
+                if text.capacity() > text.len() {
+                    text.shrink_to_fit();
+                }
+                *target = Some(text);
+            }
+        }
+    }
+
+    /// Makes room for `additional` more elements in the arena.
+    pub fn reserve(&mut self, additional: usize) {
+        self.nodes.reserve(additional);
+    }
+
+    /// Where character data at the end of `parent`'s content goes.
+    fn text_target(&mut self, parent: NodeId) -> &mut Option<String> {
+        match self.node(parent).last_child {
             Some(last) => &mut self.node_mut(last).tail,
             None => &mut self.node_mut(parent).text,
-        };
-        target.get_or_insert_with(String::new).push_str(text);
+        }
     }
 }
 

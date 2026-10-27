@@ -485,7 +485,7 @@ impl Inner {
             frame.2 = self.node(child).next;
             let node = self.node_mut(child);
             match node.kind {
-                Kind::Text => tree.add_text(out, &node.text),
+                Kind::Text => tree.add_text_owned(out, mem::take(&mut node.text)),
                 Kind::Element => {
                     let attrs = mem::take(&mut node.attrs);
                     let id = tree.add_child(out, node.qual.local.clone(), ns_of(&node.qual), attrs);
@@ -580,6 +580,7 @@ impl TreeSink for Sink<'_> {
         if self.fragment {
             // The context element is `div`; the tree builder's `html` root holds the result.
             let mut tree = Tree::new(local_name!("div"), Ns::Html, Vec::new());
+            tree.reserve(inner.elements);
             let root = tree.root();
             inner.convert(html, &mut tree, root);
             return Ok(tree);
@@ -587,6 +588,8 @@ impl TreeSink for Sink<'_> {
         let node = inner.node_mut(html);
         let attrs = mem::take(&mut node.attrs);
         let mut tree = Tree::new(node.qual.local.clone(), ns_of(&node.qual), attrs);
+        // `elements` counts every element created, clones included: an upper bound.
+        tree.reserve(inner.elements);
         let root = tree.root();
         inner.convert(html, &mut tree, root);
         Ok(tree)

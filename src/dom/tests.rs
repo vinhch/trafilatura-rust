@@ -79,6 +79,54 @@ fn text_and_tail_follow_lxml() {
     assert_eq!(b.tail.as_deref(), Some("c"));
 }
 
+fn root_with_child() -> (Tree, NodeId, NodeId) {
+    let mut tree = Tree::new(LocalName::from("a"), Ns::Html, vec![]);
+    let root = tree.root();
+    let child = tree.add_child(root, LocalName::from("b"), Ns::Html, vec![]);
+    (tree, root, child)
+}
+
+#[test]
+fn add_text_owned_moves_into_empty_target() {
+    let mut tree = Tree::new(LocalName::from("a"), Ns::Html, vec![]);
+    let root = tree.root();
+    let text = String::from("abc");
+    let ptr = text.as_ptr();
+    tree.add_text_owned(root, text);
+    let stored = tree.node(root).text.as_ref().unwrap();
+    assert_eq!(stored, "abc");
+    assert_eq!(stored.as_ptr(), ptr);
+}
+
+#[test]
+fn add_text_owned_appends_to_last_child_tail() {
+    let (mut tree, root, child) = root_with_child();
+    tree.add_text(root, "a");
+    tree.add_text_owned(root, "b".into());
+    assert_eq!(tree.node(child).tail.as_deref(), Some("ab"));
+    assert_eq!(tree.node(root).text, None);
+}
+
+#[test]
+fn add_text_owned_ignores_empty_text() {
+    let mut tree = Tree::new(LocalName::from("a"), Ns::Html, vec![]);
+    let root = tree.root();
+    tree.add_text_owned(root, String::new());
+    assert_eq!(tree.node(root).text, None);
+}
+
+#[test]
+fn add_text_owned_drops_spare_capacity() {
+    let mut tree = Tree::new(LocalName::from("a"), Ns::Html, vec![]);
+    let root = tree.root();
+    let mut text = String::with_capacity(64);
+    text.push_str("abc");
+    tree.add_text_owned(root, text);
+    let stored = tree.node(root).text.as_ref().unwrap();
+    assert_eq!(stored, "abc");
+    assert!(stored.capacity() < 64);
+}
+
 #[test]
 fn implied_tbody_and_head() {
     let tree = parse("<table><tr><td>x</td></tr></table>");
