@@ -98,6 +98,10 @@ pub struct ParseLimits {
     /// Raw input length above which loading fails with `Rejection::InputTooLarge`, checked before
     /// decompression; `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
     pub max_input_bytes: Option<usize>,
+    /// Drops the text of HTML `style` elements and of HTML `script` elements whose `type` is not one
+    /// upstream reads (`READ_SCRIPT_TYPES`); `parse_document` only, `parse_fragment` ignores it.
+    /// `Tree::dropped_script_text` tells whether a parse dropped any. Defaults to `false`.
+    pub drop_script_text: bool,
 }
 
 impl Default for ParseLimits {
@@ -108,8 +112,37 @@ impl Default for ParseLimits {
             max_nodes: Some(DEFAULT_MAX_NODES),
             // deviation: D-11
             max_input_bytes: Some(DEFAULT_MAX_INPUT_BYTES),
+            drop_script_text: false,
         }
     }
+}
+
+/// The `script` types whose text upstream reads, all as exact `@type=` matches:
+/// `baseline.py::_collect_json_content`, `core.py::_forum_thread_page` and `metadata.py`.
+pub(crate) const READ_SCRIPT_TYPES: [&str; 2] =
+    ["application/ld+json", "application/settings+json"];
+
+/// Whether the text of this element is never read: an HTML `style`, or an HTML `script` whose first
+/// `type` attribute is absent or not in `READ_SCRIPT_TYPES` (exact, case-sensitive).
+pub(crate) fn is_unread_text_element(
+    name: &LocalName,
+    ns: Ns,
+    attrs: &[(LocalName, Arc<str>)],
+) -> bool {
+    if ns != Ns::Html {
+        return false;
+    }
+    if *name == local_name!("style") {
+        return true;
+    }
+    if *name != local_name!("script") {
+        return false;
+    }
+    let script_type = attrs
+        .iter()
+        .find(|(attr, _)| *attr == local_name!("type"))
+        .map(|(_, value)| &**value);
+    !script_type.is_some_and(|value| READ_SCRIPT_TYPES.contains(&value))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -166,6 +199,11 @@ struct Inner {
     /// counted, never changed, so memory does not grow with their number. Handles for which
     /// html5ever calls `same_node` are elements, so two comments comparing equal never matters.
     dropped: u32,
+    /// Text under an unread `style` or `script` is not stored (`ParseLimits::drop_script_text`, never
+    /// set for a fragment).
+    drop_script_text: bool,
+    /// A piece of text was dropped.
+    dropped_script_text: bool,
 }
 
 /// An element name cloned out of the arena (atom clones), so html5ever may hold it across sink
@@ -252,6 +290,8 @@ impl Inner {
             values: HashMap::new(),
             merged: HashMap::new(),
             dropped: 0,
+            drop_script_text: false,
+            dropped_script_text: false,
         };
         inner.new_node(Kind::Document, empty_name());
         // Allocated here, not on first use: a full arena would answer `new_node` with the
@@ -457,6 +497,19 @@ impl Inner {
                 if self.stopped {
                     return;
                 }
+                if self.drop_script_text {
+                    let owner = self.node(parent);
+                    if owner.kind == Kind::Element
+                        && is_unread_text_element(
+                            &owner.qual.local,
+                            ns_of(&owner.qual),
+                            &owner.attrs,
+                        )
+                    {
+                        self.dropped_script_text = true;
+                        return;
+                    }
+                }
                 let prev = match before {
                     Some(sibling) => self.node(sibling).prev,
                     None => self.node(parent).last_child,
@@ -588,6 +641,7 @@ impl TreeSink for Sink<'_> {
         let node = inner.node_mut(html);
         let attrs = mem::take(&mut node.attrs);
         let mut tree = Tree::new(node.qual.local.clone(), ns_of(&node.qual), attrs);
+        tree.dropped_script_text = inner.dropped_script_text;
         // `elements` counts every element created, clones included: an upper bound.
         tree.reserve(inner.elements);
         let root = tree.root();
@@ -778,8 +832,10 @@ fn parse_opts() -> ParseOpts {
 }
 
 fn new_sink<'c>(limits: &ParseLimits, call: &'c Call<'c>, fragment: bool) -> Sink<'c> {
+    let mut inner = Inner::new(limits);
+    inner.drop_script_text = limits.drop_script_text && !fragment;
     Sink {
-        inner: RefCell::new(Inner::new(limits)),
+        inner: RefCell::new(inner),
         call,
         fragment,
     }
@@ -2621,5 +2677,28 @@ mod tests {
             }
         }
         assert!(checked > 20_000, "{checked} formatting tags checked");
+    }
+
+    #[test]
+    fn long_script_text_dropped_across_chunks() {
+        let html = format!("<script>{}</script><p>x</p>", "a".repeat(CHUNK_BYTES * 3));
+        let limits = ParseLimits {
+            drop_script_text: true,
+            ..ParseLimits::default()
+        };
+        let tree = parse_document(&html, &limits, &Call::default()).unwrap();
+        let text_of = |name: &str| {
+            let mut stack = vec![tree.root()];
+            while let Some(id) = stack.pop() {
+                if &*tree.node(id).name == name {
+                    return tree.node(id).text.clone();
+                }
+                stack.extend(tree.children(id));
+            }
+            panic!("no element named {name}");
+        };
+        assert_eq!(text_of("script"), None);
+        assert_eq!(text_of("p"), Some("x".to_string()));
+        assert!(tree.dropped_script_text);
     }
 }

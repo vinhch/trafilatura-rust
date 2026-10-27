@@ -98,6 +98,9 @@ pub struct Tree {
     /// Cells `main_extractor` table construction has minted here; copies of the tree share it
     /// because they live in the same arena (D-9).
     pub(crate) table_cells: usize,
+    /// The parse dropped the text of at least one unread `style` or `script`
+    /// (`ParseLimits::drop_script_text`).
+    pub(crate) dropped_script_text: bool,
 }
 
 impl Tree {
@@ -106,6 +109,7 @@ impl Tree {
         Self {
             nodes: vec![Node::new(name, ns, attrs)],
             table_cells: 0,
+            dropped_script_text: false,
         }
     }
 
