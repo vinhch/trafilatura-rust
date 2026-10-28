@@ -171,6 +171,21 @@ fn returnstring_is_nfc() {
     }
 }
 
+#[test]
+fn returnstring_strips_both_ends() {
+    // an empty body leaves the join starting with `\n`
+    let mut only_comment = Document::new();
+    let p = only_comment.tree.new_element("p");
+    only_comment.tree.append(only_comment.comments_body, p);
+    only_comment.tree.node_mut(p).text = Some("c".to_owned());
+    assert_eq!(render(&mut only_comment, Format::Txt, false), "c");
+
+    // an empty comments body leaves the join ending with `\n`
+    let mut only_body = Document::new();
+    paragraph(&mut only_body, "b");
+    assert_eq!(render(&mut only_body, Format::Txt, false), "b");
+}
+
 // ---------------------------------------------------------------------------- the cascade
 
 const NEL: char = '\u{85}';

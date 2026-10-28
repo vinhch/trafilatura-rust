@@ -101,7 +101,7 @@ pub fn determine_returnstring(
     options: &Extractor,
     call: &Call<'_>,
 ) -> Result<String, ExtractError> {
-    let returnstring = match options.format {
+    let mut returnstring = match options.format {
         Format::Xml | Format::XmlTei => {
             // todo(phase 6): xml (the last cleaning of empty elements, then the output tree)
             control_xml_output(doc, options)
@@ -134,10 +134,19 @@ pub fn determine_returnstring(
                 options.formatting,
                 call,
             )?;
-            pystr::strip(&format!("{header}{text}\n{comments}")).to_owned()
+            let mut joined = format!("{header}{text}\n{comments}");
+            // `strip()` in place: the same two trims as `pystr::strip`, without a second string
+            joined.truncate(pystr::rstrip(&joined).len());
+            let leading = joined.len() - pystr::lstrip(&joined).len();
+            joined.drain(..leading);
+            joined
         }
     };
-    Ok(normalize_unicode(&returnstring).into_owned())
+    // an already normalized string is returned as it is
+    if let Cow::Owned(normalized) = normalize_unicode(&returnstring) {
+        returnstring = normalized;
+    }
+    Ok(returnstring)
 }
 
 /// Only an extraction shorter than this many characters is considered for the recall escalation.
