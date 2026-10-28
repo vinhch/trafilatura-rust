@@ -2,6 +2,8 @@
 //! elements, the empty-element pass, the element text and `xml_to_text`, plus `meta_items`. The XML,
 //! TEI, JSON and CSV builders and the TEI checks are stubs until phase 6.
 
+use std::borrow::Cow;
+
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::dom::{LiveIter, LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
@@ -911,26 +913,18 @@ fn escape_and_convert_math_tree(
     if tag == Some("code") || is_code_span {
         return Ok(());
     }
-    if let Some(text) = tree
-        .node(element)
-        .text
-        .as_deref()
-        .filter(|text| !text.is_empty())
+    if let Some(text) = tree.node(element).text.as_deref()
+        && let Cow::Owned(converted) = escape_and_convert_math(text)
     {
-        let converted = escape_and_convert_math(text);
         tree.node_mut(element).text = Some(converted);
     }
     let mut next = tree.first_child(element);
     while let Some(child) = next {
         next = tree.node(child).next_sibling();
         escape_and_convert_math_tree(tree, child, call, visited)?;
-        if let Some(tail) = tree
-            .node(child)
-            .tail
-            .as_deref()
-            .filter(|tail| !tail.is_empty())
+        if let Some(tail) = tree.node(child).tail.as_deref()
+            && let Cow::Owned(converted) = escape_and_convert_math(tail)
         {
-            let converted = escape_and_convert_math(tail);
             tree.node_mut(child).tail = Some(converted);
         }
     }

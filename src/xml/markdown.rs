@@ -249,10 +249,14 @@ pub(crate) fn escape_inline_specials(text: &str) -> Cow<'_, str> {
 
 /// Escapes the prose and rewrites the formulas in one pass: the text is split on the math spans
 /// (block or inline, the block pattern tried first at each position), the prose is escaped and the
-/// spans are converted.
+/// spans are converted. Text without a `\[` or `\(` opener, the only two the scanners accept, has no
+/// span and skips the scan.
 // upstream: xml.py::_escape_and_convert_math
 // upstream: xml.py::_MATH_SPAN_RE
-pub(crate) fn escape_and_convert_math(text: &str) -> String {
+pub(crate) fn escape_and_convert_math(text: &str) -> Cow<'_, str> {
+    if !text.contains("\\[") && !text.contains("\\(") {
+        return escape_inline_specials(text);
+    }
     let chars: Vec<char> = text.chars().collect();
     let mut scanner = MathScanner::new(&chars);
     let mut out = String::with_capacity(text.len());
@@ -273,7 +277,7 @@ pub(crate) fn escape_and_convert_math(text: &str) -> String {
     }
     let prose = collect(chars_between(&chars, prose_start, chars.len()));
     out.push_str(&escape_inline_specials(&prose));
-    out
+    Cow::Owned(out)
 }
 
 /// Whether the rest of the line after a block marker allows it: a space or tab, or the end of the
@@ -588,6 +592,16 @@ mod tests {
             assert_eq!(escape_and_convert_math(text), escaped, "escape {text:?}");
             assert_eq!(convert_math(text), converted, "convert {text:?}");
         }
+    }
+
+    #[test]
+    fn escape_and_convert_math_borrows_math_free_text() {
+        assert!(matches!(
+            escape_and_convert_math("plain words"),
+            Cow::Borrowed("plain words")
+        ));
+        assert_eq!(escape_and_convert_math(r"a\)b *c*"), r"a\)b \*c\*");
+        assert_eq!(escape_and_convert_math(r"x \(a\) y"), "x $a$ y");
     }
 
     #[test]
