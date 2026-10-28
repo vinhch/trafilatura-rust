@@ -743,6 +743,9 @@ mod text {
             ("Test&nbsp;Text", false, false, Some("Test Text")),
             ("  a b  ", true, true, Some("  a b  ")),
             ("\ta\n", true, false, Some("\ta")),
+            // oracle: sanitize("a\n␤\nb"), sanitize("x &nbsp;y\n&#13;")
+            ("a\n\u{2424}\nb", false, false, Some("a\n\nb")),
+            ("x &nbsp;y\n&#13;", false, false, Some("x y")),
         ];
         for &(text, preserve, trailing, expected) in table {
             assert_eq!(

@@ -608,10 +608,16 @@ pub fn trim(string: &str) -> String {
 // upstream: utils.py::line_processing
 pub fn line_processing(line: &str, preserve_space: bool, trailing_space: bool) -> Option<String> {
     // spacing HTML entities: https://www.w3.org/MarkUp/html-spec/html-spec_13.html
-    let replaced = line
-        .replace("&#13;", "\r")
-        .replace("&#10;", "\n")
-        .replace("&nbsp;", "\u{a0}");
+    // every needle starts with `&`, so a line without one is unchanged by the replacements
+    let replaced = if line.contains('&') {
+        Cow::Owned(
+            line.replace("&#13;", "\r")
+                .replace("&#10;", "\n")
+                .replace("&nbsp;", "\u{a0}"),
+        )
+    } else {
+        Cow::Borrowed(line)
+    };
     let cleaned = remove_control_characters(&replaced);
     if preserve_space {
         return Some(cleaned.into_owned());
@@ -647,11 +653,19 @@ pub fn sanitize(text: &str, preserve_space: bool, trailing_space: bool) -> Optio
         return line_processing(text, preserve_space, true);
     }
     // process line by line
-    let lines: Vec<String> = pystr::splitlines(text)
+    let mut sanitized = String::with_capacity(text.len());
+    let kept_lines = pystr::splitlines(text)
         .filter_map(|line| line_processing(line, preserve_space, false))
-        .filter(|line| !line.is_empty())
-        .collect();
-    Some(lines.join("\n").replace('\u{2424}', ""))
+        .filter(|line| !line.is_empty());
+    for (index, line) in kept_lines.enumerate() {
+        if index > 0 {
+            sanitized.push('\n');
+        }
+        // removing U+2424 per line, after the empty-line filter, equals upstream's removal over the
+        // joined text, because the separator is not U+2424
+        sanitized.extend(line.chars().filter(|&c| c != '\u{2424}'));
+    }
+    Some(sanitized)
 }
 
 /// Trims spaces, removes control characters and drops attributes whose name has a colon, for `root`
