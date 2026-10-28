@@ -63,6 +63,10 @@ fn charref(after: &str) -> Option<(Charref<'_>, usize)> {
     Some((Charref::Name(after.get(..len)?), len))
 }
 
+/// Code points of the longest entity name without `;`, the only names a proper prefix of a
+/// reference can match.
+const LEGACY_NAME_MAX_CHARS: usize = 6;
+
 /// The entity `name` stands for (`;` included where the table has it), as one or two code points.
 /// `web_atoms` also lists every proper prefix of a name with `(0, 0)`, which is not an entity.
 // upstream: cpython Lib/html/__init__.py::_replace_charref
@@ -91,9 +95,12 @@ fn push_named(out: &mut String, name: &str) {
         push_entity(out, codes);
         return;
     }
-    let starts: Vec<usize> = name.char_indices().map(|(index, _)| index).collect();
-    for &end in starts.get(2..).unwrap_or_default().iter().rev() {
-        if let Some((prefix, rest)) = name.split_at_checked(end)
+    // Same result as trying every proper prefix: only a name without `;` can be a proper prefix
+    // of the reference, and none of those is longer than `LEGACY_NAME_MAX_CHARS`.
+    let longest = LEGACY_NAME_MAX_CHARS.min(name.chars().count().saturating_sub(1));
+    for chars in (2..=longest).rev() {
+        if let Some((end, _)) = name.char_indices().nth(chars)
+            && let Some((prefix, rest)) = name.split_at_checked(end)
             && let Some(codes) = entity(prefix)
         {
             push_entity(out, codes);
@@ -250,6 +257,10 @@ mod tests {
             ("&#x0;", "\u{FFFD}"),
             ("&#x0D;", "\r"),
             ("&#xD;", "\r"),
+            ("&Aacutex", "\u{C1}x"),
+            ("&notit;", "\u{AC}it;"),
+            ("&ampxyzxyzxyz", "&xyzxyzxyz"),
+            ("&am\u{E9}", "&am\u{E9}"),
         ] {
             assert_eq!(unescaped(s), expected, "{s:?}");
         }
@@ -320,6 +331,16 @@ mod tests {
                 382, 376
             ]
         );
+    }
+
+    #[test]
+    fn legacy_name_bound_matches_the_table() {
+        let longest = NAMED_ENTITIES
+            .entries()
+            .filter(|&(name, codes)| !name.ends_with(';') && *codes != (0, 0))
+            .map(|(name, _)| name.chars().count())
+            .max();
+        assert_eq!(longest, Some(LEGACY_NAME_MAX_CHARS));
     }
 
     #[test]
