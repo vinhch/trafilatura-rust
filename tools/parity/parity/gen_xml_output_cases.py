@@ -181,6 +181,7 @@ MATH_TEXTS = [
     r"\[x_1\] a_b", r"$a$", r"$$a$$", r"\[a\]\[b\]", r"\[a\]\(b\)", r"\(a\)\[b\]", r"\\[a\]", r"\[\[a\]\]",
     r"\(\(a\)\)", r"\[ \[a\] \]", r"\(a \[b \(c\) d\] e\)", r"a \[b\] c \(d\) e \[f", "\\(a \\[\nb\n\\] c\\)",
     r"\[a\] \(b \[c\] d\)", r"x\(a \[b\]", r"\[a\ b\]", r"\[ a * b \]", r"\[\n\]",
+    r"a\)b *c*", r"x\] _y_", r"\\ a`b`", "plain words",
 ]
 
 
@@ -364,6 +365,12 @@ def list_cases() -> None:
         '<doc><list rend="ol"><item>a</item></list><item>b</item></doc>',
         "<doc><list><item>a<list><item>b</item></list>\n</item></list></doc>",
         "<doc><list><item>a</item></list>\n<list><item>b</item></list>\n</doc>",
+        # ol_twelve_items_tail_in_item_eleven: two-digit parent width for the sublist tail
+        '<doc><list rend="ol">' + "".join(f"<item>i{n}</item>" for n in range(10)) + '<item>a<list><item>s</item></list> tail</item><item>z</item></list></doc>',
+        '<doc><list rend="ol"><item>a</item><item><code>x<lb/>y</code></item><item>b</item></list></doc>',
+        # nested ordered list in item 10
+        '<doc><list rend="ol">' + "".join(f"<item>i{n}</item>" for n in range(9)) + '<item>j<list rend="ol"><item>k</item><item>l</item></list></item></list></doc>',
+        '<doc><list rend="ol"><item>a</item>t<foo/><item>b</item><item>c<p>d<list><item>e</item></list> tail</p></item></list></doc>',
     ):
         x(source)
     for count in (1, 2, 3):
@@ -520,6 +527,13 @@ MERGE = [
     '<hi rend="#b">x</hi><ref target="u">r</ref><hi rend="#b">y</hi>',
     '<hi rend="#t">a`</hi><hi rend="#t">`b</hi>',
     '<hi rend="#b">x</hi><hi rend="#b" class="c">y</hi>',
+    '<hi rend="#b">x</hi><hi rend="#b">y</hi>t<hi rend="#b">z</hi><hi rend="#b">w</hi>',
+    '<hi rend="#b">x</hi><hi rend="#b">y<lb/></hi><hi rend="#b">z</hi><hi rend="#b">w</hi>',
+    '<hi rend="#b"/><hi rend="#b"/><hi rend="#b"/>',
+    '<hi rend="#b">x</hi> <hi rend="#b"></hi> <hi rend="#b">z</hi> t',
+    '<hi rend="#b">x</hi><hi rend="#b">y</hi><hi rend="#b">z</hi><hi rend="#i">w</hi><hi rend="#i">v</hi><hi rend="#i">u</hi>',
+    '<hi rend="#u">a</hi>\n<hi rend="#u">b</hi>\n<hi rend="#u">c</hi>\n',
+    '<hi rend="#t">a</hi><hi rend="#t">b</hi><hi rend="#t">c</hi><hi rend="#t">d</hi>',
 ]
 
 
