@@ -39,6 +39,9 @@ pub(crate) fn in_ranges(table: &[(u32, u32)], c: char) -> bool {
 
 /// Python `str.isspace` for one character: `\x1c`-`\x1f` count, which Rust's `is_whitespace` misses.
 pub(crate) fn is_space(c: char) -> bool {
+    if c.is_ascii() {
+        return matches!(c, '\t'..='\r' | '\x1c'..=' ');
+    }
     in_ranges(SPACE, c)
 }
 
@@ -164,6 +167,9 @@ pub fn splitlines(s: &str) -> impl Iterator<Item = &str> {
 
 /// Python `str.isprintable` for one character.
 pub(crate) fn is_printable(c: char) -> bool {
+    if c.is_ascii() {
+        return matches!(c, ' '..='~');
+    }
     in_ranges(PRINTABLE, c)
 }
 
@@ -520,6 +526,14 @@ mod tests {
                 _ => false,
             }
         }));
+    }
+
+    #[test]
+    fn ascii_fast_paths_match_tables() {
+        for c in '\0'..='\x7f' {
+            assert_eq!(is_space(c), in_ranges(SPACE, c), "{c:?}");
+            assert_eq!(is_printable(c), in_ranges(PRINTABLE, c), "{c:?}");
+        }
     }
 
     fn class_regex(class: &str) -> Regex {
