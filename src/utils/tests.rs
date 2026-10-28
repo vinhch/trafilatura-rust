@@ -118,6 +118,26 @@ fn test_repair_strips_xml_invalid_chars() {
 }
 
 #[test]
+fn has_invalid_xml_char_matches_the_regex() {
+    let regex = INVALID_XML_CHARS.as_ref().expect("pattern compiles");
+    for c in (0..=0xFFFF)
+        .chain([0x10000, 0x10FFFF])
+        .filter_map(char::from_u32)
+    {
+        let text = format!("a{c}b");
+        assert_eq!(has_invalid_xml_char(&text), regex.is_match(&text), "{c:?}");
+    }
+}
+
+#[test]
+fn repair_faulty_html_borrows_a_clean_doctype_page() {
+    let page = "<!DOCTYPE html>\n<html></html>";
+    let repaired = repair_faulty_html(page, "<!doctype html>\n<html></html>");
+    assert!(matches!(repaired, Cow::Borrowed(_)));
+    assert_eq!(repaired, page);
+}
+
+#[test]
 fn test_input_load_html() {
     assert!(load("<html><body>ÄÖÜ</body></html>").is_ok());
     assert!(load_bytes(b"<html><body>\x2f\x2e\x9f</body></html>").is_ok());

@@ -279,21 +279,34 @@ pub fn is_dubious_html(beginning: &str) -> bool {
     !beginning.contains("html")
 }
 
+/// Whether `INVALID_XML_CHARS` matches `html`: a C0 control other than tab, line feed and carriage
+/// return, or U+FFFE or U+FFFF.
+fn has_invalid_xml_char(html: &str) -> bool {
+    html.bytes()
+        .any(|byte| byte < 0x20 && !matches!(byte, b'\t' | b'\n' | b'\r'))
+        || html.contains(['\u{fffe}', '\u{ffff}'])
+}
+
 /// Strips XML-illegal characters, a doctype libxml2 mishandles and a self-closing `<html/>`.
 // upstream: utils.py::repair_faulty_html
 pub fn repair_faulty_html<'a>(html: &'a str, beginning: &str) -> Cow<'a, str> {
+    // The pre-scan only gates the regex: it matches exactly when `replace_all` would change `html`.
     let mut html = match INVALID_XML_CHARS.as_ref() {
-        Some(invalid) => invalid.replace_all(html, ""),
-        None => Cow::Borrowed(html),
+        Some(invalid) if has_invalid_xml_char(html) => invalid.replace_all(html, ""),
+        _ => Cow::Borrowed(html),
     };
     // libxml2/LXML issue: https://bugs.launchpad.net/lxml/+bug/1955915
     if beginning.contains("doctype") {
-        let (first_line, rest) = html.split_once('\n').unwrap_or((&html, ""));
+        let split = html.split_once('\n');
+        let (first_line, rest) = split.unwrap_or((&html, ""));
         let first_line = match DOCTYPE_TAG.as_ref() {
             Some(doctype) => doctype.replace(first_line, ""),
             None => Cow::Borrowed(first_line),
         };
-        html = Cow::Owned(format!("{first_line}\n{rest}"));
+        // With a newline found and the first line unchanged, `first_line + "\n" + rest` is `html`.
+        if split.is_none() || matches!(first_line, Cow::Owned(_)) {
+            html = Cow::Owned(format!("{first_line}\n{rest}"));
+        }
     }
     // Self-closing <html/> in the first lines.
     let self_closing = leading_lines(&html, 4096, 4)
