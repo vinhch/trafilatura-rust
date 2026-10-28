@@ -500,10 +500,15 @@ struct Walk<'c, 'a> {
 /// The Markdown marker of a list item: `N. ` or `- `, indented by its nesting. Numbering is
 /// Markdown-only: in plain text it would inject digit tokens, so the marker is `- `.
 ///
-/// The parent is whatever element holds the item, and an item with no `list` ancestor has no
-/// indent.
+/// `items_before` is the number of `item` elements among the preceding siblings of `item`. The
+/// parent is whatever element holds the item, and an item with no `list` ancestor has no indent.
 // upstream: xml.py::_list_marker
-pub(crate) fn list_marker(tree: &Tree, item: NodeId, include_formatting: bool) -> String {
+pub(crate) fn list_marker(
+    tree: &Tree,
+    item: NodeId,
+    items_before: usize,
+    include_formatting: bool,
+) -> String {
     let depth = tree.iterancestors(item, &["list"]).count();
     // upstream computes `"  " * (depth - 1)`, which is empty for a negative count
     let indent = "  ".repeat(depth.saturating_sub(1));
@@ -515,12 +520,23 @@ pub(crate) fn list_marker(tree: &Tree, item: NodeId, include_formatting: bool) -
     if !ordered {
         return format!("{indent}- ");
     }
-    let preceding = std::iter::successors(tree.node(item).prev_sibling(), |&sibling| {
+    format!("{indent}{}. ", items_before.saturating_add(1))
+}
+
+/// The number of `item` elements among the preceding siblings of `id`.
+fn preceding_items(tree: &Tree, id: NodeId) -> usize {
+    std::iter::successors(tree.node(id).prev_sibling(), |&sibling| {
         tree.node(sibling).prev_sibling()
     })
     .filter(|&sibling| tree.tag(sibling) == Some("item"))
-    .count();
-    format!("{indent}{}. ", preceding.saturating_add(1))
+    .count()
+}
+
+/// The preceding `item` siblings of an element and of its parent, which `list_marker` numbers by.
+#[derive(Clone, Copy)]
+struct ItemCounts {
+    own: usize,
+    parent: usize,
 }
 
 /// Whether the element carries the trailing content of its enclosing `item` or `cell`: the
@@ -591,6 +607,7 @@ fn append_tail(
     in_cell: bool,
     in_item: bool,
     include_formatting: bool,
+    parent_items_before: usize,
 ) {
     let Some(tail) = tree
         .node(element)
@@ -611,7 +628,9 @@ fn append_tail(
         && let Some(parent) = parent
     {
         // a blank line and the parent item's indent, else CommonMark continues the last sub-item
-        let indent = list_marker(tree, parent, true).chars().count();
+        let indent = list_marker(tree, parent, parent_items_before, true)
+            .chars()
+            .count();
         out.push(&format!("\u{2424}\n{}{stripped}", " ".repeat(indent)));
         return;
     }
@@ -652,6 +671,7 @@ fn open_element(
     walk: Walk<'_, '_>,
     in_cell: bool,
     in_item: bool,
+    items_before: usize,
 ) -> Result<(bool, bool), ExtractError> {
     let tag = tag_name(tree, element);
     let tag = tag.as_deref();
@@ -680,7 +700,12 @@ fn open_element(
     let renders_inline = has_text(tree, element) || consumes_children;
 
     if tag == Some("item") && !in_cell && item_needs_marker(tree, element, walk.call, visited)? {
-        out.push(&list_marker(tree, element, walk.include_formatting));
+        out.push(&list_marker(
+            tree,
+            element,
+            items_before,
+            walk.include_formatting,
+        ));
     }
 
     // whitespace-only item text would split the marker from the content
@@ -717,6 +742,7 @@ fn open_element(
 /// Appends what comes after the children of `element`: its newline or image, the separator, the
 /// tail and the end of its item.
 // upstream: xml.py::process_element, from the loop over the children on
+#[allow(clippy::too_many_arguments)] // the walk's inherited context, as upstream's arguments
 fn close_element(
     tree: &Tree,
     element: NodeId,
@@ -725,6 +751,7 @@ fn close_element(
     in_cell: bool,
     in_item: bool,
     renders_inline: bool,
+    parent_items_before: usize,
 ) {
     let tag = tree.tag(element);
     let is_block = tag.is_some_and(|name| NEWLINE_ELEMS.contains(&name));
@@ -761,7 +788,15 @@ fn close_element(
         } else if !matches!(tag, Some("cell" | "item")) {
             // cells still need to append vertical bars
             if in_cell {
-                append_tail(tree, element, out, in_cell, in_item, false);
+                append_tail(
+                    tree,
+                    element,
+                    out,
+                    in_cell,
+                    in_item,
+                    false,
+                    parent_items_before,
+                );
             }
             return;
         }
@@ -789,7 +824,15 @@ fn close_element(
 
     // a graphic's tail is already handled above
     if tag != Some("graphic") {
-        append_tail(tree, element, out, in_cell, in_item, include_formatting);
+        append_tail(
+            tree,
+            element,
+            out,
+            in_cell,
+            in_item,
+            include_formatting,
+            parent_items_before,
+        );
     }
 
     // deal with list items alone
@@ -810,6 +853,7 @@ fn process_element(
     walk: Walk<'_, '_>,
     in_cell: bool,
     in_item: bool,
+    counts: ItemCounts,
 ) -> Result<(), ExtractError> {
     tick(&mut state.visited, walk.call)?;
     // in_cell and in_item are inherited down the recursion instead of re-walking the ancestors
@@ -817,12 +861,22 @@ fn process_element(
     let in_item = in_item || tree.tag(element) == Some("item");
 
     let (consumes_children, renders_inline) =
-        open_element(tree, element, state, walk, in_cell, in_item)?;
+        open_element(tree, element, state, walk, in_cell, in_item, counts.own)?;
     if !consumes_children {
+        // the walk removes only `lb` elements under a `code`, never an `item`, so the running count
+        // equals upstream's `itersiblings('item', preceding=True)`
+        let mut items_before = 0usize;
         let mut next = tree.first_child(element);
         while let Some(child) = next {
             next = tree.node(child).next_sibling();
-            process_element(tree, child, state, walk, in_cell, in_item)?;
+            let child_counts = ItemCounts {
+                own: items_before,
+                parent: counts.own,
+            };
+            process_element(tree, child, state, walk, in_cell, in_item, child_counts)?;
+            if tree.tag(child) == Some("item") {
+                items_before = items_before.saturating_add(1);
+            }
         }
     }
     close_element(
@@ -833,6 +887,7 @@ fn process_element(
         in_cell,
         in_item,
         renders_inline,
+        counts.parent,
     );
     Ok(())
 }
@@ -1070,7 +1125,14 @@ pub fn xml_to_text(
     } else {
         root
     };
-    process_element(tree, root, &mut state, walk, false, false)?;
+    let counts = ItemCounts {
+        own: preceding_items(tree, root),
+        parent: tree
+            .node(root)
+            .parent()
+            .map_or(0, |parent| preceding_items(tree, parent)),
+    };
+    process_element(tree, root, &mut state, walk, false, false, counts)?;
     let sanitized = sanitize(&state.out.text, true, false).unwrap_or_default();
     Ok(unescape(&sanitized)?.into_owned())
 }

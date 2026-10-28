@@ -499,6 +499,25 @@ fn list_marker_parent_and_no_list() {
     assert_eq!(text_of(&mut xml(source), true), "- a\n- b");
 }
 
+// The numbering of an ordered list costs a constant per item: render time stays linear in the items.
+#[test]
+#[ignore = "slow"]
+fn ordered_list_numbering_is_linear() {
+    let time = |count: usize| {
+        let source = format!(
+            "<doc><list rend=ol>{}</list></doc>",
+            "<item>w</item>".repeat(count)
+        );
+        let mut tree = xml(&source);
+        let start = std::time::Instant::now();
+        text_of(&mut tree, true);
+        start.elapsed()
+    };
+    let base = time(50_000);
+    let scaled = time(200_000);
+    assert!(scaled < base * 8, "{base:?} for N, {scaled:?} for 4N");
+}
+
 #[test]
 fn xml_to_text_raises_on_long_reference() {
     // a decimal reference of more than 4300 digits makes `html.unescape` raise, and nothing catches it
