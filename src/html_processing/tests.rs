@@ -122,6 +122,28 @@ fn cleaning_loop_skips_like_lxml() {
     assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
 }
 
+#[test]
+fn cleaning_deletes_a_root_that_is_the_only_match() {
+    let mut tree = parse_document(
+        "<html><body><aside><p>x</p></aside><p>keep</p></body></html>",
+        &ParseLimits::default(),
+        &Call::default(),
+    )
+    .unwrap();
+    let options = options();
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    let document = tree.root();
+    let aside = tree.find(document, "aside").unwrap();
+    tree_cleaning_with(&mut tree, aside, &ctx, &["aside"], &[]).unwrap();
+    // the walk includes its start node, so the only aside is `root` itself and still goes
+    let expected = "html\n  head\n  body\n    p\n      #text \"keep\"\n";
+    assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
+}
+
 /// `.//div[@class='widget']`
 fn widget_divs(tree: &Tree, context: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
     descendants(tree, context, call, |tree, id| {

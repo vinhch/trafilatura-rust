@@ -159,8 +159,8 @@ fn handle_forms(tree: &mut Tree, root: NodeId, call: &Call<'_>) -> Result<(), Ex
 /// Prunes the tree below `root` by discarding the unwanted elements of `MANUALLY_CLEANED` and
 /// `MANUALLY_STRIPPED`; returns the root to continue with, which is `root` except when recall
 /// restores its copy. Checks `ctx.call` about every `CHECK_INTERVAL` nodes of the walks it makes
-/// itself and of the elements a live walk matches, and once per cleaning expression; `strip_tags`,
-/// `copy` and the start of a live walk take no `Call`.
+/// itself and of the elements a live walk matches, and once per cleaning expression whose tag the
+/// tree holds; `strip_tags`, `copy` and the start of a live walk take no `Call`.
 // upstream: htmlprocessing.py::tree_cleaning
 pub fn tree_cleaning(tree: &mut Tree, root: NodeId, ctx: &Ctx<'_>) -> Result<NodeId, ExtractError> {
     tree_cleaning_with(tree, root, ctx, MANUALLY_CLEANED, MANUALLY_STRIPPED)
@@ -225,7 +225,23 @@ pub fn tree_cleaning_with(
         && (cleaning_list.contains(&"p")
             || !any_paragraph_survives(tree, root, &cleaning_list, call)?);
     let backup = needs_backup.then(|| tree.copy(root));
-    for expression in &cleaning_list {
+    // the loop only deletes, so a tag absent now stays absent; `tree.tag` matches the HTML namespace
+    // only, as `LiveIter` does
+    let mut present = HashSet::new();
+    for (index, node) in tree.iter(root, &[]).enumerate() {
+        if index.is_multiple_of(CHECK_INTERVAL) {
+            call.check()?;
+        }
+        if let Some(name) = tree.tag(node)
+            && let Some(&entry) = cleaning_list.iter().find(|&&entry| entry == name)
+        {
+            present.insert(entry);
+        }
+    }
+    for expression in cleaning_list
+        .iter()
+        .filter(|&expression| present.contains(expression))
+    {
         // a live walk: upstream deletes inside `tree.iter(expression)`, and lxml's walk skips what
         // follows a deleted subtree
         call.check()?;
