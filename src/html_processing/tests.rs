@@ -1157,3 +1157,44 @@ fn tree_cleaning_marks_surviving_dropped_text() {
     assert!(!cleaned(true, false));
     assert!(!cleaned(false, true));
 }
+
+const COUNT_SOURCES: [&str; 6] = [
+    "<p>a<b>b</b> c</p>",
+    "<p>  <b> </b> </p>",
+    "<p></p>",
+    "<p>\x1cx\u{a0}<i>y</i>\u{a0}</p>",
+    "<div> lead <a>link text</a>tail  <span>w</span></div>",
+    "<p>a<b></b>b</p>",
+];
+
+/// The parsed `source` and the first element of its body.
+fn first_body_element(source: &str) -> (Tree, NodeId) {
+    let tree = parse_document(source, &ParseLimits::default(), &Call::default()).unwrap();
+    let body = tree.find(tree.root(), "body").unwrap();
+    let first = tree.iterdescendants(body, &[]).next().unwrap();
+    (tree, first)
+}
+
+#[test]
+fn trimmed_len_matches_trim() {
+    for source in COUNT_SOURCES {
+        let (tree, element) = first_body_element(source);
+        assert_eq!(
+            trimmed_len(&tree, element),
+            trim(&tree.text_content(element)).chars().count(),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn char_len_matches_text_content() {
+    for source in COUNT_SOURCES {
+        let (tree, element) = first_body_element(source);
+        assert_eq!(
+            char_len(&tree, element),
+            tree.text_content(element).chars().count(),
+            "{source:?}"
+        );
+    }
+}

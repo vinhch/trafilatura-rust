@@ -141,12 +141,13 @@ fn handle_forms(tree: &mut Tree, root: NodeId, call: &Call<'_>) -> Result<(), Ex
         return Ok(());
     }
     // measured once, after the other elements are gone, so script and head text cannot skew it
-    let total = tree.text_content(root).chars().count();
+    // upstream counts the untrimmed text_content, so char_len, not trimmed_len
+    let total = char_len(tree, root);
     for (index, form) in forms.into_iter().enumerate() {
         if index.is_multiple_of(CHECK_INTERVAL) {
             call.check()?;
         }
-        if total != 0 && tree.text_content(form).chars().count() as f64 > total as f64 / 2.0 {
+        if total != 0 && char_len(tree, form) as f64 > total as f64 / 2.0 {
             tree.set_name(form, "div");
         } else {
             delete_element(tree, form, true);
@@ -437,6 +438,33 @@ fn find_refs(tree: &Tree, element: NodeId, call: &Call<'_>) -> Result<Vec<NodeId
     collect_tagged(tree, call, tree.iterdescendants(element, &[]), &["ref"])
 }
 
+/// Characters in `trim(&tree.text_content(id))`, counted without building either string.
+fn trimmed_len(tree: &Tree, id: NodeId) -> usize {
+    let mut len = 0usize;
+    // `text_content` joins the pieces with nothing between them, so a word can span several
+    let mut in_word = false;
+    for c in tree.itertext(id).flat_map(str::chars) {
+        if pystr::is_space(c) {
+            in_word = false;
+            continue;
+        }
+        // a word is at least one character, so `len > 0` means an earlier word needs a separator
+        if !in_word && len > 0 {
+            len = len.saturating_add(1);
+        }
+        in_word = true;
+        len = len.saturating_add(1);
+    }
+    len
+}
+
+/// Characters in `tree.text_content(id)`, counted without building the string.
+fn char_len(tree: &Tree, id: NodeId) -> usize {
+    tree.itertext(id).fold(0usize, |sum, piece| {
+        sum.saturating_add(piece.chars().count())
+    })
+}
+
 /// Whether `element` is rich in links (probably boilerplate), and whether it is a short one with
 /// links. Checks `call` about every `CHECK_INTERVAL` nodes.
 // upstream: htmlprocessing.py::link_density_test
@@ -455,11 +483,12 @@ pub fn link_density_test(
     if !graphics.is_empty() {
         return Ok((false, false));
     }
-    let text_len = trim(&tree.text_content(element)).chars().count();
+    // same count as len(trim(text_content)), without building the strings
+    let text_len = trimmed_len(tree, element);
     // shortcut
     if let [only] = links[..] {
         let len_threshold = if favor_precision { 10 } else { 100 };
-        let link_len = trim(&tree.text_content(only)).chars().count();
+        let link_len = trimmed_len(tree, only);
         if link_len > len_threshold && link_len as f64 > text_len as f64 * 0.9 {
             return Ok((true, false));
         }
@@ -512,7 +541,8 @@ pub fn link_density_test_tables(
     if links.is_empty() {
         return Ok(false);
     }
-    let text_len = trim(&tree.text_content(element)).chars().count();
+    // same count as len(trim(text_content)), without building the strings
+    let text_len = trimmed_len(tree, element);
     if text_len < 200 {
         return Ok(false);
     }
@@ -547,7 +577,8 @@ pub fn delete_by_link_density(
             || (backtracking
                 && short_with_links
                 && tree.child_count(element) >= depth_threshold
-                && trim(&tree.text_content(element)).chars().count() < len_threshold)
+                // same count as len(trim(text_content)), without building the strings
+                && trimmed_len(tree, element) < len_threshold)
         {
             // a paragraph that holds the content of a list item is kept: the link density of the
             // whole list is checked separately, and removing it here would leave the item empty
