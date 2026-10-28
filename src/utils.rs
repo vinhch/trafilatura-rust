@@ -579,9 +579,15 @@ fn trim_lines(text: &str) -> String {
 /// Removes the unnecessary spaces within a text: every run of whitespace becomes one space.
 // upstream: utils.py::trim
 pub fn trim(string: &str) -> String {
-    pystr::split_whitespace(string)
-        .collect::<Vec<_>>()
-        .join(" ")
+    // The result is never longer than the input, so one allocation covers it.
+    let mut trimmed = String::with_capacity(string.len());
+    for (index, part) in pystr::split_whitespace(string).enumerate() {
+        if index > 0 {
+            trimmed.push(' ');
+        }
+        trimmed.push_str(part);
+    }
+    trimmed
 }
 
 /// Removes HTML space entities, then incompatible Unicode and invalid XML characters, on line level;

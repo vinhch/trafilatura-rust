@@ -657,6 +657,11 @@ mod text {
         assert_eq!(trim("\t\tTest  Test\r\n"), "Test Test");
         // oracle: trim("a\x1cb\xa0c" + chr(0x200b) + "d")
         assert_eq!(trim("a\x1cb\u{a0}c\u{200b}d"), "a b c\u{200b}d");
+        // oracle: trim(""), trim(" \x1c "), trim("\xa0a\tb\n\nc "), trim("one")
+        assert_eq!(trim(""), "");
+        assert_eq!(trim(" \x1c "), "");
+        assert_eq!(trim("\u{a0}a\tb\n\nc "), "a b c");
+        assert_eq!(trim("one"), "one");
     }
 
     #[test]
