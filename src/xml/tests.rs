@@ -671,6 +671,28 @@ fn output_deep_nesting_fits_512k_stack() {
         .unwrap();
 }
 
+// Merging a run of adjacent `hi` costs a constant per element: time stays linear in the run length.
+#[test]
+#[ignore = "slow"]
+fn adjacent_hi_merge_is_linear() {
+    let time = |count: usize| {
+        let source = format!("<doc><p>{}</p></doc>", "<hi rend=#b>w</hi>".repeat(count));
+        let mut tree = xml(&source);
+        let root = tree.root();
+        let start = std::time::Instant::now();
+        merge_adjacent_hi(&mut tree, root, &Call::default(), &mut 0).unwrap();
+        let elapsed = start.elapsed();
+        let paragraph = tree.first_child(root).unwrap();
+        let merged = tree.first_child(paragraph).unwrap();
+        assert_eq!(tree.children(paragraph).count(), 1);
+        assert_eq!(tree.node(merged).text, Some("w".repeat(count)));
+        elapsed
+    };
+    let base = time(100_000);
+    let scaled = time(400_000);
+    assert!(scaled < base * 8, "{base:?} for N, {scaled:?} for 4N");
+}
+
 #[test]
 fn merge_adjacent_hi_ticks_in_the_pair_loop() {
     // `CHECK_INTERVAL` is 256: the visits of the `p` and its two `hi` children tick at 253, 254 and

@@ -1004,7 +1004,7 @@ fn collapse_emphasis(
 /// Merges the adjacent `hi` siblings with the same `MERGEABLE_RENDS` rend below `element` into one,
 /// to avoid `**X** **Y**`. Mutates the tree in place.
 ///
-/// Recursive, bounded like `process_element`. Ticks `visited` per element.
+/// Recursive, bounded like `process_element`. Ticks `visited` per element and per adjacent pair.
 // upstream: xml.py::_merge_adjacent_hi
 fn merge_adjacent_hi(
     tree: &mut Tree,
@@ -1017,36 +1017,58 @@ fn merge_adjacent_hi(
     for &child in &children {
         merge_adjacent_hi(tree, child, call, visited)?;
     }
-    // reverse pass: removing the next element never disturbs the pairs still to be visited
-    for pair in children.windows(2).rev() {
+    // Every pair is judged on the original nodes before anything is removed: a removed node keeps
+    // its tail, and the condition reads the tail of the current element.
+    let mut mergeable = Vec::with_capacity(children.len().saturating_sub(1));
+    for (&current, &next) in children.iter().zip(children.iter().skip(1)) {
         tick(visited, call)?;
-        let &[current, next] = pair else { continue };
         let rend = tree.get(current, "rend");
-        let mergeable = tree.tag(current) == Some("hi")
-            && tree.tag(next) == Some("hi")
-            && rend == tree.get(next, "rend")
-            && rend.is_some_and(|rend| MERGEABLE_RENDS.contains(&rend))
-            && tree.first_child(current).is_none()
-            && tree.first_child(next).is_none()
-            && strip(tree.node(current).tail.as_deref().unwrap_or("")).is_empty();
-        if !mergeable {
-            continue;
+        mergeable.push(
+            tree.tag(current) == Some("hi")
+                && tree.tag(next) == Some("hi")
+                && rend == tree.get(next, "rend")
+                && rend.is_some_and(|rend| MERGEABLE_RENDS.contains(&rend))
+                && tree.first_child(current).is_none()
+                && tree.first_child(next).is_none()
+                && strip(tree.node(current).tail.as_deref().unwrap_or("")).is_empty(),
+        );
+    }
+    // A run of mergeable pairs collapses into its first element, built once so the cost stays
+    // linear in the run length.
+    let mut start = 0;
+    while start < children.len() {
+        let mut end = start;
+        while mergeable.get(end) == Some(&true) {
+            end = end.saturating_add(1);
         }
-        let joined: String = [
-            tree.node(current).text.as_deref(),
-            tree.node(current).tail.as_deref(),
-            tree.node(next).text.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        let next_tail = tree.node(next).tail.clone();
-        let node = tree.node_mut(current);
-        node.text = Some(joined);
-        node.tail = next_tail;
-        tree.remove(next);
+        if let Some(run) = children.get(start..=end).filter(|run| run.len() > 1) {
+            merge_run(tree, run);
+        }
+        start = end.saturating_add(1);
     }
     Ok(())
+}
+
+/// Joins the `hi` elements of `run` into its first one: the text and tail of each element but the
+/// last, then the text of the last, whose tail becomes the tail of the first. The rest are removed.
+fn merge_run(tree: &mut Tree, run: &[NodeId]) {
+    let (Some(&first), Some(&last)) = (run.first(), run.last()) else {
+        return;
+    };
+    let mut joined = String::new();
+    for &node in run {
+        joined.extend(tree.node(node).text.as_deref());
+        if node != last {
+            joined.extend(tree.node(node).tail.as_deref());
+        }
+    }
+    let last_tail = tree.node_mut(last).tail.take();
+    let node = tree.node_mut(first);
+    node.text = Some(joined);
+    node.tail = last_tail;
+    for &node in run.iter().skip(1) {
+        tree.remove(node);
+    }
 }
 
 /// Strips the whitespace around the text of every `p`, `quote` and `head` below `root` (it is
