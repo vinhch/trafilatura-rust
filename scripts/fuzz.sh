@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# Fuzz one target with libFuzzer, or minimize one crash artifact. Runs on Linux x86_64 with
+# cargo-fuzz; scripts/fuzz.ps1 runs this script in a container.
+set -euo pipefail
+
+readonly script_name="fuzz.sh"
+readonly fuzz_target_triple="x86_64-unknown-linux-gnuasan"
+# libFuzzer limits, shared by a run and --tmin so a minimized input reproduces under the same limits.
+readonly timeout_seconds=60
+readonly rss_limit_mb=4096
+readonly max_len=1048576
+
+usage() {
+  cat <<EOF
+Usage: scripts/$script_name [-h] <target> [seconds]
+       scripts/$script_name --tmin <target> <artifact>
+
+Fuzzes <target> (parse_document or extract) for [seconds] (a positive integer, default 60), with the
+corpus in fuzz/corpus/<target> and the upstream test pages as seeds. --tmin minimizes <artifact>, a
+crash file, with the same limits. Needs cargo-fuzz and the $fuzz_target_triple target (Linux x86_64
+only); the build is AddressSanitizer on the stable toolchain.
+
+  -max_total_time=<seconds>  libFuzzer stops after this many seconds.
+  -max_len=$max_len     the largest input libFuzzer generates, in bytes (1 MiB).
+  -timeout=$timeout_seconds          one input running longer than this many seconds is a finding.
+  -rss_limit_mb=$rss_limit_mb     memory above this many MiB is a finding.
+  --tmin       minimize <artifact> instead of fuzzing.
+  -h, --help   Show this message.
+
+Seed directories: tests/cache, tests/eval and tests/resources under \$TRAFILATURA_UPSTREAM, else
+../trafilatura; each is used only if it exists.
+EOF
+}
+
+fail() {
+  usage >&2
+  echo "$script_name: $*" >&2
+  exit 1
+}
+
+check_target() {
+  case "$1" in
+    parse_document | extract) ;;
+    *) fail "unknown or missing target: ${1:-}" ;;
+  esac
+}
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+limit_args=(-timeout="$timeout_seconds" -rss_limit_mb="$rss_limit_mb")
+
+case "${1:-}" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  --tmin)
+    [ "$#" -eq 3 ] || fail "--tmin takes <target> <artifact>"
+    check_target "$2"
+    [ -f "$3" ] || fail "artifact not found: $3"
+    artifact="$(realpath "$3")"
+    cd "$repo_root"
+    exec cargo fuzz tmin --fuzz-dir fuzz --sanitizer none --target "$fuzz_target_triple" "$2" "$artifact" -- "${limit_args[@]}"
+    ;;
+esac
+
+[ "$#" -ge 1 ] && [ "$#" -le 2 ] || fail "expected <target> [seconds]"
+target="$1"
+seconds="${2:-60}"
+check_target "$target"
+[[ "$seconds" =~ ^[1-9][0-9]*$ ]] || fail "seconds must be a positive integer: $seconds"
+
+cd "$repo_root"
+corpus="fuzz/corpus/$target"
+mkdir -p "$corpus"
+
+upstream="${TRAFILATURA_UPSTREAM:-../trafilatura}"
+seed_dirs=()
+for sub in tests/cache tests/eval tests/resources; do
+  if [ -d "$upstream/$sub" ]; then
+    seed_dirs+=("$upstream/$sub")
+  fi
+done
+if [ "${#seed_dirs[@]}" -gt 0 ]; then
+  echo "$script_name: seed dirs: ${seed_dirs[*]}"
+else
+  echo "$script_name: no seed dirs"
+fi
+
+# ${seed_dirs[@]+...}: an empty array is an unbound variable under set -u on bash before 4.4.
+exec cargo fuzz run --fuzz-dir fuzz --sanitizer none --target "$fuzz_target_triple" "$target" "$corpus" \
+  ${seed_dirs[@]+"${seed_dirs[@]}"} -- -max_total_time="$seconds" -max_len="$max_len" "${limit_args[@]}"

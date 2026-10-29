@@ -21,6 +21,8 @@ adding, changing or removing one. A row is added with the dependency and removed
 - Each dependency has a row in the table below: what it replaces upstream and why this crate.
   No exact `=` pins and no git dependencies; Dependabot moves versions weekly.
 - Optional functionality goes behind a cargo feature so the default build stays small.
+- The `fuzz/` crate has its own `Cargo.lock`, outside `cargo deny` and its license allow list (libFuzzer
+is NCSA), moved by its own Dependabot entry, and never shipped to users.
 
 ## Table
 
@@ -36,3 +38,4 @@ adding, changing or removing one. A row is added with the dependency and removed
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |
 | `dhat` | dev | `tracemalloc` | Peak heap and allocation count per page for `scripts/measure`; dev-only, so stable and widely used is enough (Policy) |
 | `serde_json` | dev | none | Reads parity fixtures in tests; never a normal dependency |
+| `libfuzzer-sys` | fuzz (`fuzz/` crate) | none | The cargo-fuzz runtime; lives in its own crate and lock, never reaches users; bundles libFuzzer (NCSA) |
