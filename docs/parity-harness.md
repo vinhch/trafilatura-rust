@@ -78,6 +78,7 @@ compare. A dump that is `None` on one side (an empty tree against a tree) is a w
 | `match` | crate tree equals the `html5` fixture |
 | `encoding` | input is not valid UTF-8 (D-3), the hunk has as many removed as inserted lines, and each pair is equal once every non-ASCII char is removed |
 | `python-parser` | html5lib predates a WHATWG rule html5ever follows (`PYTHON_PARSER_TAGS` in `tests/hunks/mod.rs`): every hunk line lies inside an unchanged element of that list and both sides hold the same text |
+| `html5lib-cell-space` | html5lib 1.1 has no `processSpaceCharacters` in its table cell phase, so whitespace-only text in a `td` or `th` skips "reconstruct the active formatting elements", which html5ever and WHATWG do: one expected text line `ws+rest` against a formatting element (`a`, `b`, `i`, ...) holding `ws`, then the text `rest`, inside an unchanged `td` or `th` |
 | `port-bug` | a hunk no rule above explains |
 | `decompress` | compressed input without the `decompress` feature (D-4), whole page |
 | `upstream-error` | upstream raised while building the `html5` tree, whole page |

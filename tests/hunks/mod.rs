@@ -18,6 +18,16 @@ pub(crate) const PYTHON_PARSER_TAGS: [&str; 6] = [
     "selectedcontent",
 ];
 
+/// Table cell elements: html5lib's `InCellPhase` has no `processSpaceCharacters`, so whitespace-only
+/// text in a cell skips "reconstruct the active formatting elements", which html5ever (and WHATWG)
+/// does.
+const CELL_TAGS: [&str; 2] = ["td", "th"];
+
+/// The elements that step reconstructs.
+const FORMATTING_TAGS: [&str; 14] = [
+    "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
+];
+
 /// One run of removed and inserted lines, as line index ranges into the expected and actual lists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Hunk {
@@ -82,9 +92,9 @@ fn element_name(line: &str) -> &str {
     name.split('@').next().unwrap_or(name)
 }
 
-/// True when some ancestor of `lines[index]` that lies before `start` (so unchanged) is a
-/// `PYTHON_PARSER_TAGS` element. Ancestors are found by walking back to each strictly smaller indent.
-fn has_parser_ancestor(lines: &[&str], index: usize, start: usize) -> bool {
+/// True when some ancestor of `lines[index]` that lies before `start` (so unchanged) is one of `tags`.
+/// Ancestors are found by walking back to each strictly smaller indent.
+fn has_ancestor_in(lines: &[&str], index: usize, start: usize, tags: &[&str]) -> bool {
     let mut depth = lines.get(index).map_or(0, |line| indent_of(line));
     let before = lines.get(..index).unwrap_or_default();
     for (position, line) in before.iter().enumerate().rev() {
@@ -92,7 +102,7 @@ fn has_parser_ancestor(lines: &[&str], index: usize, start: usize) -> bool {
             continue;
         }
         depth = indent_of(line);
-        if position < start && PYTHON_PARSER_TAGS.contains(&element_name(line)) {
+        if position < start && tags.contains(&element_name(line)) {
             return true;
         }
     }
@@ -119,11 +129,55 @@ pub(crate) fn is_python_parser_hunk(expected: &[&str], actual: &[&str], hunk: &H
     let inside = |lines: &[&str], range: &Range<usize>| {
         range
             .clone()
-            .all(|index| has_parser_ancestor(lines, index, range.start))
+            .all(|index| has_ancestor_in(lines, index, range.start, &PYTHON_PARSER_TAGS))
     };
     inside(expected, &hunk.expected)
         && inside(actual, &hunk.actual)
         && text_of(expected, &hunk.expected) == text_of(actual, &hunk.actual)
+}
+
+fn text_payload(line: &str) -> Option<&str> {
+    line.trim_start()
+        .strip_prefix("#text \"")?
+        .strip_suffix('"')
+}
+
+/// Whitespace as the dump writes it: spaces and the backslash-n and backslash-t escapes.
+fn is_dumped_whitespace(payload: &str) -> bool {
+    let bare = payload.replace("\\n", "").replace("\\t", "");
+    !payload.is_empty() && bare.trim_matches(' ').is_empty()
+}
+
+/// Rule for the html5lib whitespace bug in a table cell: one text line `ws+rest` on the expected side
+/// against a formatting element holding the whitespace `ws`, then the text `rest`, on the actual side
+/// (the element html5ever reconstructs), inside an unchanged `td` or `th`.
+pub(crate) fn is_html5lib_cell_space_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
+    let (left, right) = (
+        lines_in(expected, &hunk.expected),
+        lines_in(actual, &hunk.actual),
+    );
+    let (&[text], &[element, space, rest]) = (left.as_slice(), right.as_slice()) else {
+        return false;
+    };
+    let depth = indent_of(text);
+    let shape = indent_of(element) == depth
+        && indent_of(rest) == depth
+        && indent_of(space) > depth
+        && FORMATTING_TAGS.contains(&element_name(element));
+    let payloads = (text_payload(text), text_payload(space), text_payload(rest));
+    let (Some(whole), Some(blank), Some(tail)) = payloads else {
+        return false;
+    };
+    shape
+        && is_dumped_whitespace(blank)
+        && whole.strip_prefix(blank) == Some(tail)
+        && has_ancestor_in(
+            expected,
+            hunk.expected.start,
+            hunk.expected.start,
+            &CELL_TAGS,
+        )
+        && has_ancestor_in(actual, hunk.actual.start, hunk.actual.start, &CELL_TAGS)
 }
 
 #[cfg(test)]
@@ -235,5 +289,86 @@ mod tests {
             actual: 1..1,
         };
         assert!(!is_python_parser_hunk(&e, &a, &hunk));
+    }
+
+    const CELL: [&str; 2] = ["    td", "      p"];
+
+    fn cell_lines(lines: &[&'static str]) -> Vec<&'static str> {
+        CELL.iter().chain(lines).copied().collect()
+    }
+
+    fn cell_hunk(expected: &[&str], actual: &[&str]) -> Hunk {
+        Hunk {
+            expected: 2..expected.len(),
+            actual: 2..actual.len(),
+        }
+    }
+
+    #[test]
+    fn cell_space_hunk_accepts_unreconstructed_formatting_element() {
+        let e = cell_lines(&["        #text \" was published\""]);
+        let a = cell_lines(&[
+            "        a href=\"x\"",
+            "          #text \" \"",
+            "        #text \"was published\"",
+        ]);
+        assert!(is_html5lib_cell_space_hunk(&e, &a, &cell_hunk(&e, &a)));
+    }
+
+    #[test]
+    fn cell_space_hunk_accepts_newline_whitespace() {
+        let e = cell_lines(&["        #text \"\\n was\""]);
+        let a = cell_lines(&[
+            "        i",
+            "          #text \"\\n \"",
+            "        #text \"was\"",
+        ]);
+        assert!(is_html5lib_cell_space_hunk(&e, &a, &cell_hunk(&e, &a)));
+    }
+
+    #[test]
+    fn cell_space_hunk_rejects_changed_text() {
+        let e = cell_lines(&["        #text \" was published\""]);
+        let a = cell_lines(&[
+            "        a href=\"x\"",
+            "          #text \" \"",
+            "        #text \"was publisher\"",
+        ]);
+        assert!(!is_html5lib_cell_space_hunk(&e, &a, &cell_hunk(&e, &a)));
+    }
+
+    #[test]
+    fn cell_space_hunk_rejects_non_whitespace_text_in_element() {
+        let e = cell_lines(&["        #text \"x was\""]);
+        let a = cell_lines(&[
+            "        a href=\"x\"",
+            "          #text \"x\"",
+            "        #text \" was\"",
+        ]);
+        assert!(!is_html5lib_cell_space_hunk(&e, &a, &cell_hunk(&e, &a)));
+    }
+
+    #[test]
+    fn cell_space_hunk_rejects_non_formatting_element() {
+        let e = cell_lines(&["        #text \" was\""]);
+        let a = cell_lines(&[
+            "        div",
+            "          #text \" \"",
+            "        #text \"was\"",
+        ]);
+        assert!(!is_html5lib_cell_space_hunk(&e, &a, &cell_hunk(&e, &a)));
+    }
+
+    #[test]
+    fn cell_space_hunk_rejects_text_outside_a_cell() {
+        let e = ["    div", "      p", "        #text \" was\""];
+        let a = [
+            "    div",
+            "      p",
+            "        a href=\"x\"",
+            "          #text \" \"",
+            "        #text \"was\"",
+        ];
+        assert!(!is_html5lib_cell_space_hunk(&e, &a, &cell_hunk(&e, &a)));
     }
 }

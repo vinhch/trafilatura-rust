@@ -22,13 +22,17 @@ use trafilatura_rust::__internals::{
 };
 use trafilatura_rust::{Call, ExtractError, Focus, Format, Input, Options, Rejection};
 
-use hunks::{Hunk, is_encoding_hunk, is_encoding_text_hunk, is_python_parser_hunk};
+use hunks::{
+    Hunk, is_encoding_hunk, is_encoding_text_hunk, is_html5lib_cell_space_hunk,
+    is_python_parser_hunk,
+};
 
-const CLASSES: [&str; 6] = [
+const CLASSES: [&str; 7] = [
     "match",
     "decompress",
     "encoding",
     "python-parser",
+    "html5lib-cell-space",
     "port-bug",
     "upstream-error",
 ];
@@ -74,7 +78,7 @@ fn tree_of(variant: &Value) -> Option<String> {
 }
 
 /// Class of one hunk of the tree dump, first match wins: `encoding` (page not valid UTF-8),
-/// `python-parser`, else `port-bug`.
+/// `python-parser`, `html5lib-cell-space`, else `port-bug`.
 fn classify_hunk(
     expected: &[&str],
     actual: &[&str],
@@ -85,6 +89,8 @@ fn classify_hunk(
         "encoding"
     } else if is_python_parser_hunk(expected, actual, hunk) {
         "python-parser"
+    } else if is_html5lib_cell_space_hunk(expected, actual, hunk) {
+        "html5lib-cell-space"
     } else {
         "port-bug"
     }
@@ -653,6 +659,16 @@ fn classify_page_mixes_classes() {
     let (classes, hunks) = classify_page("p.html", false, &expected, &actual);
     assert_eq!(classes, ["encoding", "python-parser"]);
     assert_eq!(hunks.len(), 2);
+}
+
+#[test]
+fn classify_page_names_cell_space_hunk() {
+    let expected = Some("html\n  td\n    p\n      #text \" was\"\n".to_string());
+    let actual =
+        Some("html\n  td\n    p\n      a\n        #text \" \"\n      #text \"was\"\n".to_string());
+    let (classes, hunks) = classify_page("p.html", true, &expected, &actual);
+    assert_eq!(classes, ["html5lib-cell-space"]);
+    assert_eq!(hunks.len(), 1);
 }
 
 #[test]
