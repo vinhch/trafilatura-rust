@@ -9,6 +9,7 @@
 
 #[allow(dead_code)]
 mod common;
+mod hunks;
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -21,18 +22,7 @@ use trafilatura_rust::__internals::{
 };
 use trafilatura_rust::{Call, ExtractError, Focus, Format, Input, Options, Rejection};
 
-/// Elements whose tree differs because html5lib (the fixture parser) predates a WHATWG change that
-/// html5ever has: the 2025 "customizable select" parsing, where `select` and `option` keep phrasing
-/// content such as `<span>` instead of dropping the tags, and the `search`, `hgroup` and
-/// `selectedcontent` elements.
-const PYTHON_PARSER_TAGS: [&str; 6] = [
-    "search",
-    "select",
-    "option",
-    "optgroup",
-    "hgroup",
-    "selectedcontent",
-];
+use hunks::{PYTHON_PARSER_TAGS, indent_of};
 
 const CLASSES: [&str; 7] = [
     "match",
@@ -81,10 +71,6 @@ fn read_json(path: &Path) -> Value {
 
 fn tree_of(variant: &Value) -> Option<String> {
     variant["tree"].as_str().map(str::to_string)
-}
-
-fn indent_of(line: &str) -> usize {
-    line.len() - line.trim_start().len()
 }
 
 /// The element a dump line is about: its own name, or for a text line the parent element's.

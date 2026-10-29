@@ -38,4 +38,5 @@ is NCSA), moved by its own Dependabot entry, and never shipped to users.
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |
 | `dhat` | dev | `tracemalloc` | Peak heap and allocation count per page for `scripts/measure`; dev-only, so stable and widely used is enough (Policy) |
 | `serde_json` | dev | none | Reads parity fixtures in tests; never a normal dependency |
+| `similar` | dev | none | Myers line diff for the parity check's per-hunk classes; dev-only, so stable and widely used is enough (Policy) |
 | `libfuzzer-sys` | fuzz (`fuzz/` crate) | none | The cargo-fuzz runtime; lives in its own crate and lock, never reaches users; bundles libFuzzer (NCSA) |
