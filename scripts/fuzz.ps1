@@ -1,7 +1,8 @@
 #Requires -Version 7.2
 
-# Fuzz one target with libFuzzer, or minimize one crash artifact. Runs scripts/fuzz.sh in a rust
-# container at the CI toolchain, so the host needs only Docker.
+# Fuzz one target with libFuzzer, or minimize one crash artifact. Runs scripts/fuzz.sh in a container
+# built from scripts/fuzz.Dockerfile (CI toolchain, cargo-fuzz and the target baked in), so the host
+# needs only Docker.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -13,9 +14,7 @@ if (Test-Path Variable:PSNativeCommandUseErrorActionPreference) {
 }
 
 $ScriptName = 'fuzz.ps1'
-# Moves with rust-version and the toolchain pin of _ci.yml (OI-6 in docs/phase-plan.md).
-$Image = 'rust:1.98.1'
-$CargoFuzzVersion = '0.13.2'
+$Image = 'trafilatura-fuzz'
 $Targets = @('parse_document', 'extract')
 
 function Show-Usage {
@@ -25,8 +24,8 @@ Usage: scripts/$ScriptName [-h] <target> [seconds]
 
 Runs scripts/fuzz.sh with the same arguments in a $Image container: fuzzes <target> (parse_document or
 extract) for [seconds] (a positive integer, default 60), or with --tmin minimizes <artifact>, a crash
-file under the repository, with the same limits. Needs Docker; cargo-fuzz is installed into the
-Docker volume trafilatura-fuzz-tools-stable on the first run. Run scripts/fuzz.sh -h for the libFuzzer flags.
+file under the repository, with the same limits. Needs Docker; the image is built from
+scripts/fuzz.Dockerfile on the first run and cached after. Run scripts/fuzz.sh -h for the libFuzzer flags.
 
 Seed directories: tests/cache, tests/eval and tests/resources under `$env:TRAFILATURA_UPSTREAM, else
 trafilatura beside the repository; mounted only if it exists.
@@ -76,23 +75,25 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+docker build -f (Join-Path $PSScriptRoot 'fuzz.Dockerfile') -t $Image $PSScriptRoot
+if ($LASTEXITCODE -ne 0) {
+    $Host.UI.WriteErrorLine("$ScriptName`: docker build of $Image failed")
+    exit 1
+}
+
 $Upstream = if ($env:TRAFILATURA_UPSTREAM) { $env:TRAFILATURA_UPSTREAM } else { Join-Path (Split-Path -Parent $RepoRoot) 'trafilatura' }
 $UpstreamMount = @()
 if (Test-Path -PathType Container $Upstream) {
     $UpstreamMount = @('-v', "$((Resolve-Path $Upstream).ProviderPath):/upstream:ro", '-e', 'TRAFILATURA_UPSTREAM=/upstream')
 }
 
-# The container is Linux: its target dir, registry and tools live in named volumes, not in the repository.
-$Command = 'export PATH=/opt/fuzz-tools/bin:$PATH; ' +
-    'rustup target add x86_64-unknown-linux-gnuasan >/dev/null; ' +
-    "command -v cargo-fuzz >/dev/null || cargo install --root /opt/fuzz-tools cargo-fuzz --version $CargoFuzzVersion --locked; " +
-    'scripts/fuzz.sh "$@"'
+# The container is Linux: its target dir and registry live in named volumes, not in the repository.
+$Command = 'scripts/fuzz.sh "$@"'
 
 docker run --rm `
     -v "$((Resolve-Path $RepoRoot).ProviderPath):/work" `
     -v trafilatura-fuzz-target:/work/fuzz/target `
     -v trafilatura-fuzz-cargo:/usr/local/cargo/registry `
-    -v trafilatura-fuzz-tools-stable:/opt/fuzz-tools `
     @UpstreamMount `
     -w /work $Image `
     bash -c $Command fuzz.ps1 @ScriptArgs
