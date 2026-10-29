@@ -7,8 +7,8 @@ set -euo pipefail
 readonly script_name="fuzz.sh"
 readonly fuzz_target_triple="x86_64-unknown-linux-gnuasan"
 # libFuzzer limits, shared by a run and --tmin so a minimized input reproduces under the same limits.
-readonly timeout_seconds=60
-readonly rss_limit_mb=4096
+readonly timeout_seconds=37
+readonly rss_limit_mb=6144
 readonly max_len=1048576
 
 usage() {
@@ -23,8 +23,10 @@ only); the build is AddressSanitizer on the stable toolchain.
 
   -max_total_time=<seconds>  libFuzzer stops after this many seconds.
   -max_len=$max_len     the largest input libFuzzer generates, in bytes (1 MiB).
-  -timeout=$timeout_seconds          one input running longer than this many seconds is a finding.
-  -rss_limit_mb=$rss_limit_mb     memory above this many MiB is a finding.
+  -timeout=$timeout_seconds          one input running longer than this many seconds is a finding. 5 times the slowest
+                             1 MiB linear page (7.3 s, extract under AddressSanitizer), rounded up.
+  -rss_limit_mb=$rss_limit_mb    memory above this many MiB is a finding. 2 times the peak of a linear page at the
+                             64 MiB input cap (2.9 GiB, extract), rounded up to a multiple of 1024.
   --tmin       minimize <artifact> instead of fuzzing.
   -h, --help   Show this message.
 
