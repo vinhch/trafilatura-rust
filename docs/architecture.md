@@ -107,7 +107,8 @@ upstream has no equivalent.
   `unwrap`, `expect` and `panic` fail clippy outside tests; `string_slice` fails everywhere, tests
   included; `indexing_slicing` is a warning, and CI denies warnings. `clippy.toml` exempts only
   `#[test]` and `#[cfg(test)]` code, so a shared helper under `tests/` starts with the `allow` line
-  given in `AGENTS.md` (Runtime rules).
+  given in `AGENTS.md` (Runtime rules). The `fuzz/` targets (`scripts/fuzz.sh`) check it on arbitrary
+  input, weekly in `quality.yml`.
   Clippy does not catch arithmetic overflow, division by zero or a `RefCell` double borrow: use
   checked arithmetic (Exceptions in the porting rules of `AGENTS.md`) and never let two `RefCell`
   borrows overlap.

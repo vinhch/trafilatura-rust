@@ -56,7 +56,8 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 CI (`.github/workflows/`): `ci.yml` calls `_ci.yml` on pushes to `main` and pull requests targeting
 `main`, on Ubuntu and Windows with the toolchain pinned to `rust-version`. `release.yml` checks that
 the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through
-the `crates-io` environment. `quality.yml` re-checks advisories weekly. Actions are pinned by commit
+the `crates-io` environment. `quality.yml` re-checks advisories and runs each fuzz target for 15
+minutes with AddressSanitizer, weekly and on demand. Actions are pinned by commit
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with
 `rust-version` (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh`, so CI and a
 local run execute the same checks. Which job runs the parity test: `docs/parity-harness.md`.
