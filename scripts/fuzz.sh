@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Fuzz one target with libFuzzer, or minimize one crash artifact. Runs on Linux x86_64 with
-# cargo-fuzz; scripts/fuzz.ps1 runs this script in a container.
+# Fuzz one target with libFuzzer, minimize one crash artifact, or minimize a corpus. Runs on Linux
+# x86_64 with cargo-fuzz; scripts/fuzz.ps1 runs this script in a container.
 set -euo pipefail
 
 readonly script_name="fuzz.sh"
 readonly fuzz_target_triple="x86_64-unknown-linux-gnuasan"
-# libFuzzer limits, shared by a run and --tmin so a minimized input reproduces under the same limits.
+# libFuzzer limits, shared by a run, --tmin and --cmin so a minimized input reproduces under the same limits.
 readonly timeout_seconds=37
 readonly rss_limit_mb=6144
 readonly max_len=1048576
@@ -15,6 +15,7 @@ usage() {
   cat <<EOF
 Usage: scripts/$script_name [-h] <target> [seconds]
        scripts/$script_name --tmin <target> <artifact>
+       scripts/$script_name --cmin <target>
 
 Fuzzes <target> (parse_document or extract) for [seconds] (a positive integer, default 60), with the
 corpus in fuzz/corpus/<target> and the upstream test pages as seeds. --tmin minimizes <artifact>, a
@@ -28,6 +29,7 @@ only); the build is AddressSanitizer on the stable toolchain.
   -rss_limit_mb=$rss_limit_mb    memory above this many MiB is a finding. 2 times the peak of a linear page at the
                              64 MiB input cap (2.9 GiB, extract), rounded up to a multiple of 1024.
   --tmin       minimize <artifact> instead of fuzzing.
+  --cmin       minimize the corpus in fuzz/corpus/<target> in place, keeping the inputs that add coverage.
   -h, --help   Show this message.
 
 Seed directories: tests/cache, tests/eval and tests/resources under \$TRAFILATURA_UPSTREAM, else
@@ -63,6 +65,21 @@ case "${1:-}" in
     artifact="$(realpath "$3")"
     cd "$repo_root"
     exec cargo fuzz tmin --fuzz-dir fuzz --sanitizer none --target "$fuzz_target_triple" "$2" "$artifact" -- "${limit_args[@]}"
+    ;;
+  --cmin)
+    [ "$#" -eq 2 ] || fail "--cmin takes <target>"
+    check_target "$2"
+    cd "$repo_root"
+    corpus="fuzz/corpus/$2"
+    before="$(find "$corpus" -type f 2> /dev/null | wc -l || true)"
+    if [ "$before" -eq 0 ]; then
+      echo "$script_name: no corpus in $corpus, nothing to minimize"
+      exit 0
+    fi
+    # No -max_len and no seed dirs: cmin takes one corpus dir and rewrites it in place.
+    cargo fuzz cmin --fuzz-dir fuzz --sanitizer none --target "$fuzz_target_triple" "$2" "$corpus" -- "${limit_args[@]}"
+    echo "$script_name: $corpus held $before files, now $(find "$corpus" -type f | wc -l)"
+    exit 0
     ;;
 esac
 

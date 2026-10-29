@@ -1,8 +1,8 @@
 #Requires -Version 7.2
 
-# Fuzz one target with libFuzzer, or minimize one crash artifact. Runs scripts/fuzz.sh in a container
-# built from scripts/fuzz.Dockerfile (CI toolchain, cargo-fuzz and the target baked in), so the host
-# needs only Docker.
+# Fuzz one target with libFuzzer, minimize one crash artifact, or minimize a corpus. Runs
+# scripts/fuzz.sh in a container built from scripts/fuzz.Dockerfile (CI toolchain, cargo-fuzz and the
+# target baked in), so the host needs only Docker.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -21,16 +21,19 @@ function Show-Usage {
     @"
 Usage: scripts/$ScriptName [-h] <target> [seconds]
        scripts/$ScriptName --tmin <target> <artifact>
+       scripts/$ScriptName --cmin <target>
 
 Runs scripts/fuzz.sh with the same arguments in a $Image container: fuzzes <target> (parse_document or
-extract) for [seconds] (a positive integer, default 60), or with --tmin minimizes <artifact>, a crash
-file under the repository, with the same limits. Needs Docker; the image is built from
-scripts/fuzz.Dockerfile on the first run and cached after. Run scripts/fuzz.sh -h for the libFuzzer flags.
+extract) for [seconds] (a positive integer, default 60), with --tmin minimizes <artifact>, a crash
+file under the repository, with the same limits, or with --cmin minimizes the corpus of <target>. Needs
+Docker; the image is built from scripts/fuzz.Dockerfile on the first run and cached after. Run
+scripts/fuzz.sh -h for the libFuzzer flags.
 
 Seed directories: tests/cache, tests/eval and tests/resources under `$env:TRAFILATURA_UPSTREAM, else
 trafilatura beside the repository; mounted only if it exists.
 
   --tmin       minimize <artifact> instead of fuzzing.
+  --cmin       minimize the corpus in fuzz/corpus/<target> in place, keeping the inputs that add coverage.
   -h, --help   Show this message.
 "@
 }
@@ -45,7 +48,10 @@ function Fail {
 if ($args.Count -gt 0 -and $args[0] -in '-h', '--help') { Show-Usage; exit 0 }
 
 $ScriptArgs = @($args)
-if ($ScriptArgs.Count -gt 0 -and $ScriptArgs[0] -eq '--tmin') {
+if ($ScriptArgs.Count -gt 0 -and $ScriptArgs[0] -eq '--cmin') {
+    if ($ScriptArgs.Count -ne 2) { Fail '--cmin takes <target>' }
+    if ($ScriptArgs[1] -notin $Targets) { Fail "unknown or missing target: $($ScriptArgs[1])" }
+} elseif ($ScriptArgs.Count -gt 0 -and $ScriptArgs[0] -eq '--tmin') {
     if ($ScriptArgs.Count -ne 3) { Fail '--tmin takes <target> <artifact>' }
     if ($ScriptArgs[1] -notin $Targets) { Fail "unknown or missing target: $($ScriptArgs[1])" }
 } else {
