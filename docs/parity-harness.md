@@ -77,7 +77,7 @@ compare. A dump that is `None` on one side (an empty tree against a tree) is a w
 | --- | --- |
 | `match` | crate tree equals the `html5` fixture |
 | `encoding` | input is not valid UTF-8 (D-3), the hunk has as many removed as inserted lines, and each pair is equal once every non-ASCII char is removed |
-| `python-parser` | html5lib predates a WHATWG rule html5ever follows (`PYTHON_PARSER_TAGS` in `tests/hunks/mod.rs`): every hunk line lies inside an unchanged element of that list and both sides hold the same text |
+| `python-parser` | html5lib predates a WHATWG rule html5ever follows (`PYTHON_PARSER_TAGS` in `tests/hunks/mod.rs`): every hunk line lies inside an unchanged element of that list, both sides hold the same text, the fixture side holds no element line and the crate side adds no element of that list (html5lib only drops tags, so a dropped or added `option` or a changed attribute stays `port-bug`) |
 | `html5lib-cell-space` | html5lib 1.1 has no `processSpaceCharacters` in its table cell phase, so whitespace-only text in a `td` or `th` skips "reconstruct the active formatting elements", which html5ever and WHATWG do: one expected text line `ws+rest` against a formatting element (`a`, `b`, `i`, ...) holding `ws`, then the text `rest`, inside an unchanged `td` or `th` |
 | `port-bug` | a hunk no rule above explains |
 | `decompress` | compressed input without the `decompress` feature (D-4), whole page |
@@ -109,7 +109,7 @@ classified; the first rule that applies decides the output, and the test fails o
 | `decompress` | compressed input without the `decompress` feature (D-4), whole output |
 | `upstream-error` | upstream raised and the crate returned a `Rejected` error, whole output |
 | `normalized` | the page is listed in `NORMALIZED_REJECTS`: the crate rejects it with `InvalidValue` where upstream extracted text, because the oracle's normalized tree dropped an element whose name is not an XML Name (D-2), whole output (empty list today) |
-| `encoding` | per hunk: input is not valid UTF-8 (D-3), as many removed as inserted lines, and each pair equal once non-ASCII chars and whitespace are removed (upstream decodes some bytes to characters Python's `str.split()` counts as whitespace, where the crate's cp1252 guess gives a printable one) |
+| `encoding` | per hunk: input is not valid UTF-8 (D-3), as many removed as inserted lines, and each pair equal once non-ASCII chars are removed, or once a run of whitespace and non-ASCII chars counts as one space (upstream decodes some bytes to characters Python's `str.split()` counts as whitespace, where the crate's cp1252 guess gives a printable one); whitespace not next to a non-ASCII char must match |
 | `port-bug` | any other hunk, or text on one side only |
 
 The report is `.temp/parity/output-report.md`: per format the outputs and hunks of each class, the

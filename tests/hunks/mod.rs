@@ -55,35 +55,67 @@ fn lines_in<'a>(lines: &[&'a str], range: &Range<usize>) -> Vec<&'a str> {
     lines.get(range.clone()).unwrap_or_default().to_vec()
 }
 
-/// Both ranges hold the same number of lines and each pair is equal once `drop` chars are removed.
-fn pairs_equal_without(
+/// Both ranges hold the same number of lines and each pair satisfies `same`.
+fn pairs_match(
     expected: &[&str],
     actual: &[&str],
     hunk: &Hunk,
-    drop: impl Fn(char) -> bool,
+    same: impl Fn(&str, &str) -> bool,
 ) -> bool {
     let (left, right) = (
         lines_in(expected, &hunk.expected),
         lines_in(actual, &hunk.actual),
     );
-    let keep = |line: &str| line.chars().filter(|c| !drop(*c)).collect::<String>();
     !left.is_empty()
         && left.len() == right.len()
-        && left.iter().zip(&right).all(|(a, b)| keep(a) == keep(b))
+        && left.iter().zip(&right).all(|(a, b)| same(a, b))
+}
+
+fn without_non_ascii(line: &str) -> String {
+    line.chars().filter(char::is_ascii).collect()
+}
+
+/// Each run of whitespace and non-ASCII chars that holds a non-ASCII char becomes one space; a run of
+/// ASCII whitespace alone stays, so whitespace not next to a non-ASCII char still has to match.
+fn spaced_non_ascii(line: &str) -> String {
+    fn flush(out: &mut String, run: &mut String, has_non_ascii: &mut bool) {
+        if *has_non_ascii {
+            out.push(' ');
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+        *has_non_ascii = false;
+    }
+    let (mut out, mut run, mut has_non_ascii) = (String::new(), String::new(), false);
+    for c in line.chars() {
+        if c.is_whitespace() || !c.is_ascii() {
+            run.push(c);
+            has_non_ascii |= !c.is_ascii();
+        } else {
+            flush(&mut out, &mut run, &mut has_non_ascii);
+            out.push(c);
+        }
+    }
+    flush(&mut out, &mut run, &mut has_non_ascii);
+    out
 }
 
 /// Tree dump rule for a page that is not valid UTF-8: equal line counts and each pair equal after
 /// removing every non-ASCII char. The caller checks the page encoding.
 pub(crate) fn is_encoding_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
-    pairs_equal_without(expected, actual, hunk, |c| !c.is_ascii())
+    pairs_match(expected, actual, hunk, |a, b| {
+        without_non_ascii(a) == without_non_ascii(b)
+    })
 }
 
-/// Output rule: as `is_encoding_hunk`, and whitespace is removed too. Upstream decodes some bytes to
-/// characters Python's `str.split()` counts as whitespace (latin-1 0x85 is U+0085), which `trim` turns
-/// into a space, where the crate's cp1252 guess gives a printable character (`…`); both are D-3.
+/// Output rule: as `is_encoding_hunk`, or equal once a whitespace run next to a non-ASCII char counts
+/// as one space. Upstream decodes some bytes to characters Python's `str.split()` counts as whitespace
+/// (latin-1 0x85 is U+0085), which `trim` turns into a space, where the crate's cp1252 guess gives a
+/// printable character (`…`); both are D-3.
 pub(crate) fn is_encoding_text_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
-    pairs_equal_without(expected, actual, hunk, |c| {
-        !c.is_ascii() || c.is_whitespace()
+    pairs_match(expected, actual, hunk, |a, b| {
+        without_non_ascii(a) == without_non_ascii(b) || spaced_non_ascii(a) == spaced_non_ascii(b)
     })
 }
 
@@ -124,14 +156,26 @@ fn text_of(lines: &[&str], range: &Range<usize>) -> String {
 }
 
 /// Rule for the customizable-select parse difference: every line of both ranges sits inside an
-/// unchanged `PYTHON_PARSER_TAGS` element, and the text of the two ranges is the same.
+/// unchanged `PYTHON_PARSER_TAGS` element, and the text of the two ranges is the same. html5lib only
+/// drops tags, so the expected range holds no element line and the actual range holds no element line
+/// of `PYTHON_PARSER_TAGS`: a dropped or added `option`, or a changed attribute, is not this class.
 pub(crate) fn is_python_parser_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
     let inside = |lines: &[&str], range: &Range<usize>| {
         range
             .clone()
             .all(|index| has_ancestor_in(lines, index, range.start, &PYTHON_PARSER_TAGS))
     };
-    inside(expected, &hunk.expected)
+    let is_element = |line: &&str| !line.trim_start().starts_with('#');
+    let no_element = lines_in(expected, &hunk.expected)
+        .iter()
+        .all(|line| !is_element(line));
+    let no_parser_element = lines_in(actual, &hunk.actual)
+        .iter()
+        .filter(|line| is_element(line))
+        .all(|line| !PYTHON_PARSER_TAGS.contains(&element_name(line)));
+    no_element
+        && no_parser_element
+        && inside(expected, &hunk.expected)
         && inside(actual, &hunk.actual)
         && text_of(expected, &hunk.expected) == text_of(actual, &hunk.actual)
 }
@@ -278,6 +322,60 @@ mod tests {
         let e = tail(&["        #text \"1 Person\""]);
         let a = tail(&["        #text \"1 \"", "    span", "      #text \"Person\""]);
         assert!(!is_python_parser_hunk(&e, &a, &tail_hunk(&e, &a)));
+    }
+
+    #[test]
+    fn python_parser_hunk_rejects_dropped_empty_option() {
+        let e = ["  select", "    option value=\"1\""];
+        let a = ["  select"];
+        let hunk = Hunk {
+            expected: 1..2,
+            actual: 1..1,
+        };
+        assert!(!is_python_parser_hunk(&e, &a, &hunk));
+    }
+
+    #[test]
+    fn python_parser_hunk_rejects_added_empty_option() {
+        let e = ["  select"];
+        let a = ["  select", "    option value=\"1\""];
+        let hunk = Hunk {
+            expected: 1..1,
+            actual: 1..2,
+        };
+        assert!(!is_python_parser_hunk(&e, &a, &hunk));
+    }
+
+    #[test]
+    fn python_parser_hunk_rejects_changed_attribute() {
+        let e = [
+            "    select",
+            "      option value=\"1\"",
+            "        #text \"x\"",
+        ];
+        let a = ["    select", "      option", "        #text \"x\""];
+        let hunk = Hunk {
+            expected: 1..2,
+            actual: 1..2,
+        };
+        assert!(!is_python_parser_hunk(&e, &a, &hunk));
+    }
+
+    #[test]
+    fn encoding_text_hunk_rejects_whitespace_only_change() {
+        for (e, a) in [("Hello world", "Helloworld"), ("  - item", "- item")] {
+            let (e, a) = ([e], [a]);
+            assert!(
+                !is_encoding_text_hunk(&e, &a, &whole(&e, &a)),
+                "{e:?} {a:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn encoding_text_hunk_accepts_dropped_non_ascii_inside_a_word() {
+        let (e, a) = (["word„x"], ["wordx"]);
+        assert!(is_encoding_text_hunk(&e, &a, &whole(&e, &a)));
     }
 
     #[test]
