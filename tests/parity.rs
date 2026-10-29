@@ -22,13 +22,12 @@ use trafilatura_rust::__internals::{
 };
 use trafilatura_rust::{Call, ExtractError, Focus, Format, Input, Options, Rejection};
 
-use hunks::{PYTHON_PARSER_TAGS, indent_of};
+use hunks::{Hunk, is_encoding_hunk, is_python_parser_hunk};
 
-const CLASSES: [&str; 7] = [
+const CLASSES: [&str; 6] = [
     "match",
     "decompress",
     "encoding",
-    "normalized",
     "python-parser",
     "port-bug",
     "upstream-error",
@@ -59,7 +58,8 @@ const DIFF_LINES: usize = 10;
 
 struct Page {
     id: String,
-    class: &'static str,
+    classes: Vec<&'static str>,
+    hunks: Vec<(Hunk, &'static str)>,
     expected: Option<String>,
     actual: Option<String>,
 }
@@ -73,63 +73,88 @@ fn tree_of(variant: &Value) -> Option<String> {
     variant["tree"].as_str().map(str::to_string)
 }
 
-/// The element a dump line is about: its own name, or for a text line the parent element's.
-fn element_of<'a>(lines: &[&'a str], index: usize) -> Option<&'a str> {
-    let line = *lines.get(index)?;
-    let name = |line: &'a str| {
-        line.trim_start()
-            .split(' ')
-            .next()
-            .map(|n| n.split('@').next().unwrap_or(n))
-    };
-    if !line.trim_start().starts_with('#') {
-        return name(line);
+/// Class of one hunk of the tree dump, first match wins: `encoding` (page not valid UTF-8),
+/// `python-parser`, else `port-bug`.
+fn classify_hunk(
+    expected: &[&str],
+    actual: &[&str],
+    valid_utf8: bool,
+    hunk: &Hunk,
+) -> &'static str {
+    if !valid_utf8 && is_encoding_hunk(expected, actual, hunk) {
+        "encoding"
+    } else if is_python_parser_hunk(expected, actual, hunk) {
+        "python-parser"
+    } else {
+        "port-bug"
     }
-    let depth = indent_of(line);
-    lines
-        .get(..index)?
-        .iter()
-        .rev()
-        .find(|candidate| indent_of(candidate) < depth && !candidate.trim_start().starts_with('#'))
-        .and_then(|parent| name(parent))
 }
 
-fn first_difference_names_python_parser_tag(expected: &str, actual: &str) -> bool {
-    let left: Vec<&str> = expected.lines().collect();
-    let right: Vec<&str> = actual.lines().collect();
-    let Some(index) = (0..left.len().max(right.len())).find(|&i| left.get(i) != right.get(i))
-    else {
-        return false;
-    };
-    [element_of(&left, index), element_of(&right, index)]
-        .into_iter()
-        .flatten()
-        .any(|name| PYTHON_PARSER_TAGS.contains(&name))
-}
-
-fn classify(
+/// The classes of a page (sorted, unique) and its classified hunks. `match`, `decompress` and a dump
+/// that is `None` on one side (an empty tree against a tree) are whole-page.
+fn classify_page(
     source: &str,
     valid_utf8: bool,
-    normalized: bool,
     expected: &Option<String>,
     actual: &Option<String>,
-) -> &'static str {
+) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
     if expected == actual {
-        return "match";
+        return (vec!["match"], vec![]);
     }
     if source.ends_with(".gz") && cfg!(not(feature = "decompress")) {
-        return "decompress";
+        return (vec!["decompress"], vec![]);
     }
-    if !valid_utf8 {
-        return "encoding";
+    let (Some(expected), Some(actual)) = (expected, actual) else {
+        return (vec!["port-bug"], vec![]);
+    };
+    let (left, right): (Vec<&str>, Vec<&str>) =
+        (expected.lines().collect(), actual.lines().collect());
+    let classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
+        .into_iter()
+        .map(|hunk| {
+            let class = classify_hunk(&left, &right, valid_utf8, &hunk);
+            (hunk, class)
+        })
+        .collect();
+    // Texts that differ only in the final newline make no line hunk and are still a difference.
+    if classified.is_empty() {
+        return (vec!["port-bug"], vec![]);
     }
-    if normalized {
-        return "normalized";
+    let classes: std::collections::BTreeSet<&'static str> =
+        classified.iter().map(|(_, class)| *class).collect();
+    (classes.into_iter().collect(), classified)
+}
+
+/// Lines of one side of a hunk shown in the report.
+const HUNK_LINES: usize = 20;
+
+/// The first `DIFF_LINES` hunks, `port-bug` first and then in order: a `@@ -start,len +start,len
+/// (class)` header, the removed fixture lines (`-`), then the inserted crate lines (`+`).
+fn hunk_diff(expected: &[&str], actual: &[&str], hunks: &[(Hunk, &'static str)]) -> String {
+    let (urgent, rest): (Vec<_>, Vec<_>) =
+        hunks.iter().partition(|(_, class)| *class == "port-bug");
+    let mut out = String::new();
+    for (hunk, class) in urgent.into_iter().chain(rest).take(DIFF_LINES) {
+        let (e, a) = (&hunk.expected, &hunk.actual);
+        let _ = writeln!(
+            out,
+            "@@ -{},{} +{},{} ({class})",
+            e.start + 1,
+            e.len(),
+            a.start + 1,
+            a.len()
+        );
+        for (sign, lines, range) in [('-', expected, e), ('+', actual, a)] {
+            let shown = lines.get(range.clone()).unwrap_or_default();
+            for line in shown.iter().take(HUNK_LINES) {
+                let _ = writeln!(out, "{sign}{line}");
+            }
+            if shown.len() > HUNK_LINES {
+                let _ = writeln!(out, "{sign}... {} more lines", shown.len() - HUNK_LINES);
+            }
+        }
     }
-    match (expected, actual) {
-        (Some(e), Some(a)) if first_difference_names_python_parser_tag(e, a) => "python-parser",
-        _ => "port-bug",
-    }
+    out
 }
 
 /// The first `DIFF_LINES` lines that differ, position by position: `-` fixture, `+` crate.
@@ -171,7 +196,8 @@ fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, bool) {
     if html5["errors"]["tree"].is_string() {
         let page = Page {
             id,
-            class: "upstream-error",
+            classes: vec!["upstream-error"],
+            hunks: vec![],
             expected: None,
             actual: None,
         };
@@ -184,24 +210,46 @@ fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, bool) {
         &ParseLimits::default(),
         &Call::default(),
     );
-    let (actual, rust_normalized) = match loaded {
-        Ok(tree) => {
-            let (text, changed) = dump(&tree, DumpMode::Normalized);
-            (Some(text), changed)
-        }
-        Err(ExtractError::Rejected(Rejection::EmptyTree)) => (None, false),
+    let actual = match loaded {
+        Ok(tree) => Some(dump(&tree, DumpMode::Normalized).0),
+        Err(ExtractError::Rejected(Rejection::EmptyTree)) => None,
         Err(other) => panic!("{id}: unexpected error {other:?}"),
     };
     let expected = tree_of(html5);
-    let normalized = fixture["normalized"].as_bool().unwrap() || rust_normalized;
-    let class = classify(source, valid_utf8, normalized, &expected, &actual);
+    let (classes, hunks) = classify_page(source, valid_utf8, &expected, &actual);
     let page = Page {
         id,
-        class,
+        classes,
+        hunks,
         expected,
         actual,
     };
     (page, parser_differs)
+}
+
+/// The hunks to print for a page that differs: its classified hunks, or for a page classified whole
+/// (a dump that is `None` on one side) every line as one `port-bug` hunk.
+fn page_diff(page: &Page) -> String {
+    let lines = |text: &Option<String>| -> Vec<String> {
+        text.as_deref()
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    };
+    let (left, right) = (lines(&page.expected), lines(&page.actual));
+    let (left, right): (Vec<&str>, Vec<&str>) = (
+        left.iter().map(String::as_str).collect(),
+        right.iter().map(String::as_str).collect(),
+    );
+    if page.hunks.is_empty() {
+        let all: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
+            .into_iter()
+            .map(|hunk| (hunk, "port-bug"))
+            .collect();
+        return hunk_diff(&left, &right, &all);
+    }
+    hunk_diff(&left, &right, &page.hunks)
 }
 
 fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
@@ -209,15 +257,22 @@ fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
     let _ = writeln!(out, "Pages: {}\n", pages.len());
     out.push_str("## Classes\n\n");
     for class in CLASSES {
-        let count = pages.iter().filter(|p| p.class == class).count();
-        let _ = writeln!(out, "- {class}: {count}");
+        let count = pages.iter().filter(|p| p.classes.contains(&class)).count();
+        let hunk_count: usize = pages
+            .iter()
+            .map(|p| p.hunks.iter().filter(|(_, c)| *c == class).count())
+            .sum();
+        let _ = writeln!(out, "- {class}: {count} pages, {hunk_count} hunks");
     }
     let _ = writeln!(
         out,
         "\nparser (D-2, lxml tree differs from html5 tree): {parser_count}\n"
     );
     for class in CLASSES.iter().filter(|c| **c != "match") {
-        let mut ids = pages.iter().filter(|p| p.class == *class).peekable();
+        let mut ids = pages
+            .iter()
+            .filter(|p| p.classes.contains(class))
+            .peekable();
         if ids.peek().is_none() {
             continue;
         }
@@ -227,17 +282,18 @@ fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
         }
         out.push('\n');
     }
-    out.push_str("## Diffs (first pages that do not match)\n\n");
-    let mismatches = pages
+    out.push_str("## Diffs (pages with a port-bug hunk first, then the others)\n\n");
+    let (urgent, rest): (Vec<&Page>, Vec<&Page>) = pages
         .iter()
-        .filter(|p| p.class != "match" && p.class != "upstream-error");
-    for page in mismatches.take(DIFF_PAGES) {
+        .filter(|p| p.classes != ["match"] && p.classes != ["upstream-error"])
+        .partition(|p| p.classes.contains(&"port-bug"));
+    for page in urgent.into_iter().chain(rest).take(DIFF_PAGES) {
         let _ = writeln!(
             out,
             "### {} ({})\n\n```diff\n{}```\n",
             page.id,
-            page.class,
-            diff(&page.expected, &page.actual)
+            page.classes.join(", "),
+            page_diff(page)
         );
     }
     let dir = common::report_dir();
@@ -558,6 +614,66 @@ fn classify_output_names_each_class() {
 }
 
 #[test]
+fn classify_page_none_side_is_port_bug() {
+    let dump = Some("html\n".to_string());
+    let page = |e: &Option<String>, a: &Option<String>| classify_page("p.html", true, e, a);
+    assert_eq!(page(&dump, &None), (vec!["port-bug"], vec![]));
+    assert_eq!(page(&None, &dump), (vec!["port-bug"], vec![]));
+    assert_eq!(page(&None, &None), (vec!["match"], vec![]));
+}
+
+#[test]
+fn classify_page_mixes_classes() {
+    let expected = Some(
+        "html\n  p\n    #text \"bliżej\"\n  q\n  select\n    option\n      #text \"1 Person\"\n"
+            .to_string(),
+    );
+    let actual = Some(
+        "html\n  p\n    #text \"bli¿ej\"\n  q\n  select\n    option\n      #text \"1 \"\n      span\n        #text \"Person\"\n"
+            .to_string(),
+    );
+    let (classes, hunks) = classify_page("p.html", false, &expected, &actual);
+    assert_eq!(classes, ["encoding", "python-parser"]);
+    assert_eq!(hunks.len(), 2);
+}
+
+#[test]
+fn classify_page_ascii_change_is_port_bug() {
+    let expected = Some("html\n  #text \"a\"\n".to_string());
+    let actual = Some("html\n  #text \"b\"\n".to_string());
+    let (classes, hunks) = classify_page("p.html", true, &expected, &actual);
+    assert_eq!(classes, ["port-bug"]);
+    assert_eq!(hunks.len(), 1);
+}
+
+#[test]
+fn hunk_diff_puts_port_bug_hunks_first() {
+    let lines: Vec<String> = (0..31).map(|i| format!("line {i}")).collect();
+    let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let classed: Vec<(Hunk, &'static str)> = (0..31)
+        .map(|i| {
+            let class = if i == 30 { "port-bug" } else { "encoding" };
+            (
+                Hunk {
+                    expected: i..i + 1,
+                    actual: i..i + 1,
+                },
+                class,
+            )
+        })
+        .collect();
+    let out = hunk_diff(&refs, &refs, &classed);
+    assert!(
+        out.starts_with("@@ -31,1 +31,1 (port-bug)\n-line 30\n+line 30\n"),
+        "{out}"
+    );
+    assert_eq!(
+        out.lines().filter(|l| l.starts_with("@@")).count(),
+        DIFF_LINES
+    );
+}
+
+#[test]
 fn tree_dump_matches_html5_fixture() {
     let Some((fixtures, upstream, index)) = load_corpus() else {
         return;
@@ -572,7 +688,7 @@ fn tree_dump_matches_html5_fixture() {
     let path = write_report(&pages, parser_count);
     let port_bugs: Vec<&str> = pages
         .iter()
-        .filter(|p| p.class == "port-bug")
+        .filter(|p| p.classes.contains(&"port-bug"))
         .map(|p| p.id.as_str())
         .collect();
     eprintln!("parity: report at {}", path.display());

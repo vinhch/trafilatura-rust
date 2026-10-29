@@ -67,21 +67,26 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
 
 ## Tree classes
 
-Every page gets a class. Only `port-bug` fails the test.
+The tree dump is compared line by line: expected and actual are aligned with a Myers diff (`similar`,
+`tests/hunks/mod.rs`) and each hunk (a run of removed and inserted lines) gets the first class that
+applies. A page's classes are the set of its hunk classes; the test fails when any hunk is `port-bug`.
+Only `decompress` and `upstream-error` apply to the whole page, because there is no crate tree to
+compare. A dump that is `None` on one side (an empty tree against a tree) is a whole-page `port-bug`.
 
 | Class | Meaning |
 | --- | --- |
 | `match` | crate tree equals the `html5` fixture |
-| `port-bug` | crate differs from `html5` for no reason below |
-| `python-parser` | html5lib predates a WHATWG rule html5ever follows (`PYTHON_PARSER_TAGS` in `tests/parity.rs`) |
-| `encoding` | input is not valid UTF-8 (D-3) |
-| `decompress` | compressed input without the `decompress` feature (D-4) |
-| `normalized` | the copy rule touched the page; check by hand |
-| `upstream-error` | upstream raised while building the `html5` tree |
+| `encoding` | input is not valid UTF-8 (D-3), the hunk has as many removed as inserted lines, and each pair is equal once every non-ASCII char is removed |
+| `python-parser` | html5lib predates a WHATWG rule html5ever follows (`PYTHON_PARSER_TAGS` in `tests/hunks/mod.rs`): every hunk line lies inside an unchanged element of that list and both sides hold the same text |
+| `port-bug` | a hunk no rule above explains |
+| `decompress` | compressed input without the `decompress` feature (D-4), whole page |
+| `upstream-error` | upstream raised while building the `html5` tree, whole page |
 
-The report also counts `parser`: pages whose `lxml` and `html5` fixtures differ (D-2). It is a count,
-not a class. A class excludes the whole page from the `port-bug` check; classifying each differing
-line is part of Phase 9. The report is `.temp/parity/report.md`.
+There is no `normalized` hunk class: the fixture and the crate dump go through the same copy rule, so
+lines it changes are equal on both sides and make no hunk. The report also counts `parser`: pages whose
+`lxml` and `html5` fixtures differ (D-2). It is a count, not a class. The report is
+`.temp/parity/report.md`: pages and hunks per class, the pages of each class, and the diffs of the first
+pages that differ, pages with a `port-bug` hunk first.
 
 ## Output check
 
@@ -104,8 +109,7 @@ this order, and only `port-bug` fails the test:
 | `normalized` | the page is listed in `NORMALIZED_REJECTS`: the crate rejects it with `InvalidValue` where upstream extracted text, because the oracle's normalized tree dropped an element whose name is not an XML Name (D-2) |
 | `port-bug` | anything else |
 
-`normalized` here is narrower than the tree check's class of the same name: the tree dump excludes every
-page the copy rule touched, the output check only the pages in `NORMALIZED_REJECTS` (empty today). The
+`normalized` here is the class of pages in `NORMALIZED_REJECTS` (empty today). The
 report is `.temp/parity/output-report.md`: counts per format and class, the pages of each other class
 (with the reason of a `normalized` page) and the first diffs.
 
