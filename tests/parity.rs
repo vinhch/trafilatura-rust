@@ -22,7 +22,7 @@ use trafilatura_rust::__internals::{
 };
 use trafilatura_rust::{Call, ExtractError, Focus, Format, Input, Options, Rejection};
 
-use hunks::{Hunk, is_encoding_hunk, is_python_parser_hunk};
+use hunks::{Hunk, is_encoding_hunk, is_encoding_text_hunk, is_python_parser_hunk};
 
 const CLASSES: [&str; 6] = [
     "match",
@@ -157,34 +157,6 @@ fn hunk_diff(expected: &[&str], actual: &[&str], hunks: &[(Hunk, &'static str)])
     out
 }
 
-/// The first `DIFF_LINES` lines that differ, position by position: `-` fixture, `+` crate.
-fn diff(expected: &Option<String>, actual: &Option<String>) -> String {
-    let shown = |text: &Option<String>| text.clone().unwrap_or_else(|| "<none>".to_string());
-    let (expected, actual) = (shown(expected), shown(actual));
-    let (mut left, mut right) = (expected.lines(), actual.lines());
-    let mut out = String::new();
-    let (mut number, mut count) = (0_usize, 0_usize);
-    while count < DIFF_LINES {
-        number += 1;
-        let (a, b) = (left.next(), right.next());
-        if a.is_none() && b.is_none() {
-            break;
-        }
-        if a == b {
-            continue;
-        }
-        count += 1;
-        let _ = writeln!(out, "@@ line {number}");
-        if let Some(a) = a {
-            let _ = writeln!(out, "-{a}");
-        }
-        if let Some(b) = b {
-            let _ = writeln!(out, "+{b}");
-        }
-    }
-    out
-}
-
 /// Runs one fixture page; the flag is whether the lxml tree differs from the html5 tree.
 fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, bool) {
     let id = entry["id"].as_str().unwrap().to_string();
@@ -227,9 +199,13 @@ fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, bool) {
     (page, parser_differs)
 }
 
-/// The hunks to print for a page that differs: its classified hunks, or for a page classified whole
-/// (a dump that is `None` on one side) every line as one `port-bug` hunk.
-fn page_diff(page: &Page) -> String {
+/// The hunks to print for a page or output that differs: its classified hunks, or for one classified
+/// whole (a side that is `None`) every line as one `port-bug` hunk.
+fn shown_diff(
+    expected: &Option<String>,
+    actual: &Option<String>,
+    classified: &[(Hunk, &'static str)],
+) -> String {
     let lines = |text: &Option<String>| -> Vec<String> {
         text.as_deref()
             .unwrap_or_default()
@@ -237,19 +213,19 @@ fn page_diff(page: &Page) -> String {
             .map(str::to_string)
             .collect()
     };
-    let (left, right) = (lines(&page.expected), lines(&page.actual));
+    let (left, right) = (lines(expected), lines(actual));
     let (left, right): (Vec<&str>, Vec<&str>) = (
         left.iter().map(String::as_str).collect(),
         right.iter().map(String::as_str).collect(),
     );
-    if page.hunks.is_empty() {
-        let all: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
-            .into_iter()
-            .map(|hunk| (hunk, "port-bug"))
-            .collect();
-        return hunk_diff(&left, &right, &all);
+    if !classified.is_empty() {
+        return hunk_diff(&left, &right, classified);
     }
-    hunk_diff(&left, &right, &page.hunks)
+    let all: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
+        .into_iter()
+        .map(|hunk| (hunk, "port-bug"))
+        .collect();
+    hunk_diff(&left, &right, &all)
 }
 
 fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
@@ -293,7 +269,7 @@ fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
             "### {} ({})\n\n```diff\n{}```\n",
             page.id,
             page.classes.join(", "),
-            page_diff(page)
+            shown_diff(&page.expected, &page.actual, &page.hunks)
         );
     }
     let dir = common::report_dir();
@@ -377,42 +353,64 @@ struct OutputCase<'a> {
     actual: &'a Result<String, ExtractError>,
 }
 
-/// Class of one output, in order: match, decompress, encoding, upstream-error, normalized (a page in
-/// `normalized_rejects` only), port-bug.
-fn classify_output(case: &OutputCase, normalized_rejects: &[(&str, &str)]) -> &'static str {
+/// Classes of one output and its classified hunks, first match wins: `match`, `decompress`,
+/// `upstream-error`, `normalized` (a page in `normalized_rejects` only, whole output), then, when both
+/// sides have text, per hunk `encoding` (page not valid UTF-8) or `port-bug`. Text on one side only is
+/// a whole-output `port-bug`.
+fn classify_output(
+    case: &OutputCase,
+    normalized_rejects: &[(&str, &str)],
+) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
+    let whole = |class: &'static str| (vec![class], vec![]);
     let rejected = |rejection: Option<Rejection>| match case.actual {
         Err(ExtractError::Rejected(found)) => rejection.is_none_or(|want| want == *found),
         _ => false,
     };
     match (case.expected, case.actual) {
-        (Some(expected), Ok(actual)) if expected == actual => return "match",
-        (None, Err(ExtractError::Rejected(_))) if !case.upstream_error => return "match",
+        (Some(expected), Ok(actual)) if expected == actual => return whole("match"),
+        (None, Err(ExtractError::Rejected(_))) if !case.upstream_error => return whole("match"),
         _ => {}
     }
     if case.source.ends_with(".gz") && cfg!(not(feature = "decompress")) {
-        return "decompress";
-    }
-    if !case.valid_utf8 {
-        return "encoding";
+        return whole("decompress");
     }
     if case.upstream_error {
-        return if rejected(Some(Rejection::InvalidValue)) {
+        return whole(if rejected(Some(Rejection::InvalidValue)) {
             "upstream-error"
         } else {
             "port-bug"
-        };
+        });
     }
     let listed = normalized_rejects.iter().any(|(id, _)| *id == case.id);
     if listed && case.expected.is_some() && rejected(Some(Rejection::InvalidValue)) {
-        return "normalized";
+        return whole("normalized");
     }
-    "port-bug"
+    let (Some(expected), Ok(actual)) = (case.expected, case.actual) else {
+        return whole("port-bug");
+    };
+    let (left, right): (Vec<&str>, Vec<&str>) =
+        (expected.lines().collect(), actual.lines().collect());
+    let classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
+        .into_iter()
+        .map(|hunk| {
+            let encoding = !case.valid_utf8 && is_encoding_text_hunk(&left, &right, &hunk);
+            (hunk, if encoding { "encoding" } else { "port-bug" })
+        })
+        .collect();
+    // Texts that differ only in the final newline make no line hunk and are still a difference.
+    if classified.is_empty() {
+        return whole("port-bug");
+    }
+    let classes: std::collections::BTreeSet<&'static str> =
+        classified.iter().map(|(_, class)| *class).collect();
+    (classes.into_iter().collect(), classified)
 }
 
 struct OutputResult {
     id: String,
     format: &'static str,
-    class: &'static str,
+    classes: Vec<&'static str>,
+    hunks: Vec<(Hunk, &'static str)>,
     expected: Option<String>,
     actual: Option<String>,
 }
@@ -443,7 +441,7 @@ fn run_output_page(upstream: &Path, fixtures: &Path, entry: &Value) -> Vec<Outpu
                 .format(format)
                 .build()
                 .extract(&Input::bytes(&bytes), &Call::default());
-            let class = classify_output(
+            let (classes, hunks) = classify_output(
                 &OutputCase {
                     id,
                     source,
@@ -457,7 +455,8 @@ fn run_output_page(upstream: &Path, fixtures: &Path, entry: &Value) -> Vec<Outpu
             OutputResult {
                 id: id.to_string(),
                 format: name,
-                class,
+                classes,
+                hunks,
                 expected,
                 actual: actual.ok(),
             }
@@ -465,14 +464,14 @@ fn run_output_page(upstream: &Path, fixtures: &Path, entry: &Value) -> Vec<Outpu
         .collect()
 }
 
-/// Indices of the outputs worth a diff: `port-bug` and `normalized` first, then the other classes
-/// that differ, each group in page order.
-fn diff_order(classes: &[&str]) -> Vec<usize> {
-    let (urgent, rest): (Vec<_>, Vec<_>) = classes
+/// Indices of the outputs worth a diff: rows holding `port-bug` or `normalized` first, then the other
+/// rows that differ (not `["match"]` or `["upstream-error"]`), each group in page order.
+fn diff_order(rows: &[&[&'static str]]) -> Vec<usize> {
+    let (urgent, rest): (Vec<_>, Vec<_>) = rows
         .iter()
         .enumerate()
-        .filter(|(_, class)| !matches!(**class, "match" | "upstream-error"))
-        .partition(|(_, class)| matches!(**class, "port-bug" | "normalized"));
+        .filter(|(_, row)| **row != ["match"] && **row != ["upstream-error"])
+        .partition(|(_, row)| row.iter().any(|c| matches!(*c, "port-bug" | "normalized")));
     urgent.into_iter().chain(rest).map(|(i, _)| i).collect()
 }
 
@@ -484,17 +483,21 @@ fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
         let counts: Vec<String> = OUTPUT_CLASSES
             .iter()
             .map(|class| {
-                let count = results
-                    .iter()
-                    .filter(|r| r.format == name && r.class == *class)
-                    .count();
-                format!("{class} {count}")
+                let mine = || results.iter().filter(|r| r.format == name);
+                let count = mine().filter(|r| r.classes.contains(class)).count();
+                let hunk_count: usize = mine()
+                    .map(|r| r.hunks.iter().filter(|(_, c)| c == class).count())
+                    .sum();
+                format!("{class} {count} ({hunk_count} hunks)")
             })
             .collect();
         let _ = writeln!(out, "- {name}: {}", counts.join(", "));
     }
     for class in OUTPUT_CLASSES.iter().filter(|c| **c != "match") {
-        let mut rows = results.iter().filter(|r| r.class == *class).peekable();
+        let mut rows = results
+            .iter()
+            .filter(|r| r.classes.contains(class))
+            .peekable();
         if rows.peek().is_none() {
             continue;
         }
@@ -507,9 +510,9 @@ fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
             let _ = writeln!(out, "{} {}{reason}", row.id, row.format);
         }
     }
-    out.push_str("\n## Diffs (first outputs that do not match)\n\n");
-    let classes: Vec<&str> = results.iter().map(|r| r.class).collect();
-    for row in diff_order(&classes)
+    out.push_str("\n## Diffs (outputs with a port-bug hunk first, then the others)\n\n");
+    let rows: Vec<&[&'static str]> = results.iter().map(|r| r.classes.as_slice()).collect();
+    for row in diff_order(&rows)
         .into_iter()
         .take(DIFF_PAGES)
         .map(|i| &results[i])
@@ -519,8 +522,8 @@ fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
             "### {} {} ({})\n\n```diff\n{}```\n",
             row.id,
             row.format,
-            row.class,
-            diff(&row.expected, &row.actual)
+            row.classes.join(", "),
+            shown_diff(&row.expected, &row.actual, &row.hunks)
         );
     }
     let dir = common::report_dir();
@@ -551,11 +554,12 @@ fn strip_lxml_namespaces_removes_only_ns_prefixes() {
 
 #[test]
 fn output_report_lists_port_bugs_first() {
-    let mut classes = vec!["encoding"; 25];
-    classes.push("port-bug");
-    classes.insert(3, "match");
-    let order = diff_order(&classes);
-    let port_bug = classes.len() - 1;
+    let encoding: &[&str] = &["encoding"];
+    let mut rows = vec![encoding; 25];
+    rows.push(&["port-bug"]);
+    rows.insert(3, &["match"]);
+    let order = diff_order(&rows);
+    let port_bug = rows.len() - 1;
     assert_eq!(order[0], port_bug);
     assert!(order[..DIFF_PAGES].contains(&port_bug));
     assert_eq!(order.len(), 26);
@@ -578,13 +582,13 @@ fn classify_output_names_each_class() {
         actual,
     };
     let listed = [("page", "element name is not an XML Name")];
-    let class = |case: &OutputCase| classify_output(case, &[]);
+    let class = |case: &OutputCase| classify_output(case, &[]).0;
 
-    assert_eq!(class(&case(Some("a"), false, &text)), "match");
-    assert_eq!(class(&case(None, false, &too_short)), "match");
-    assert_eq!(class(&case(None, false, &text)), "port-bug");
-    assert_eq!(class(&case(Some("a"), false, &too_short)), "port-bug");
-    assert_eq!(class(&case(Some("a"), false, &other)), "port-bug");
+    assert_eq!(class(&case(Some("a"), false, &text)), ["match"]);
+    assert_eq!(class(&case(None, false, &too_short)), ["match"]);
+    assert_eq!(class(&case(None, false, &text)), ["port-bug"]);
+    assert_eq!(class(&case(Some("a"), false, &too_short)), ["port-bug"]);
+    assert_eq!(class(&case(Some("a"), false, &other)), ["port-bug"]);
 
     let gz = OutputCase {
         source: "page.html.gz",
@@ -595,22 +599,36 @@ fn classify_output_names_each_class() {
     } else {
         "decompress"
     };
-    assert_eq!(class(&gz), gz_class);
-    let latin1 = OutputCase {
-        valid_utf8: false,
-        ..case(Some("a"), false, &other)
-    };
-    assert_eq!(class(&latin1), "encoding");
+    assert_eq!(class(&gz), [gz_class]);
 
-    assert_eq!(class(&case(None, true, &invalid)), "upstream-error");
-    assert_eq!(class(&case(None, true, &too_short)), "port-bug");
-    assert_eq!(class(&case(None, true, &text)), "port-bug");
+    let latin1 = |expected, actual| OutputCase {
+        valid_utf8: false,
+        ..case(expected, false, actual)
+    };
+    let decoded: Result<String, ExtractError> = Ok("bli¿ej".to_string());
+    assert_eq!(class(&latin1(Some("bliżej"), &decoded)), ["encoding"]);
+    let ellipsis: Result<String, ExtractError> = Ok("Idealen (…), hinter".to_string());
+    assert_eq!(
+        class(&latin1(Some("Idealen ( ), hinter"), &ellipsis)),
+        ["encoding"]
+    );
+    assert_eq!(class(&latin1(Some("a"), &other)), ["port-bug"]);
+    assert_eq!(class(&latin1(Some("a"), &too_short)), ["port-bug"]);
+
+    assert_eq!(class(&case(None, true, &invalid)), ["upstream-error"]);
+    assert_eq!(class(&case(None, true, &too_short)), ["port-bug"]);
+    assert_eq!(class(&case(None, true, &text)), ["port-bug"]);
 
     let dropped = case(Some("a"), false, &invalid);
-    assert_eq!(classify_output(&dropped, &listed), "normalized");
-    assert_eq!(classify_output(&dropped, &[]), "port-bug");
+    assert_eq!(classify_output(&dropped, &listed).0, ["normalized"]);
+    assert_eq!(classify_output(&dropped, &[]).0, ["port-bug"]);
     let two_texts = case(Some("a"), false, &other);
-    assert_eq!(classify_output(&two_texts, &listed), "port-bug");
+    assert_eq!(classify_output(&two_texts, &listed).0, ["port-bug"]);
+
+    let (classes, hunks) =
+        classify_output(&latin1(Some("a\nb\nc"), &Ok("a\nx\nc".to_string())), &[]);
+    assert_eq!(classes, ["port-bug"]);
+    assert_eq!(hunks.len(), 1);
 }
 
 #[test]
@@ -713,7 +731,7 @@ fn outputs_match_html5_fixture() {
     let path = write_output_report(&results, entries.len());
     let port_bugs: Vec<String> = results
         .iter()
-        .filter(|r| r.class == "port-bug")
+        .filter(|r| r.classes.contains(&"port-bug"))
         .map(|r| format!("{} {}", r.id, r.format))
         .collect();
     eprintln!("parity: output report at {}", path.display());

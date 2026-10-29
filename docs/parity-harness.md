@@ -97,21 +97,23 @@ pages that differ, pages with a `port-bug` hunk first.
 rejected by the crate with any `Rejected` error. The expected `html` text goes through
 `strip_lxml_namespaces` first, which removes the ` xmlns:nsN="..."` declarations and the `nsN:` tag
 prefixes lxml writes for foreign elements of the html5 tree, because the crate writes such an element by
-its local name (D-2); the test fails when any are left. Each output gets the first class that applies, in
-this order, and only `port-bug` fails the test:
+its local name (D-2); the test fails when any are left.
+
+When both sides have text, the two are aligned line by line as in the tree check and each hunk is
+classified; the first rule that applies decides the output, and the test fails on any `port-bug` hunk:
 
 | Class | Meaning |
 | --- | --- |
-| `match` | equal text, or no text upstream and a `Rejected` error from the crate |
-| `decompress` | compressed input without the `decompress` feature (D-4) |
-| `encoding` | input is not valid UTF-8 (D-3) |
-| `upstream-error` | upstream raised and the crate returned a `Rejected` error |
-| `normalized` | the page is listed in `NORMALIZED_REJECTS`: the crate rejects it with `InvalidValue` where upstream extracted text, because the oracle's normalized tree dropped an element whose name is not an XML Name (D-2) |
-| `port-bug` | anything else |
+| `match` | equal text, or no text upstream and a `Rejected` error from the crate, whole output |
+| `decompress` | compressed input without the `decompress` feature (D-4), whole output |
+| `upstream-error` | upstream raised and the crate returned a `Rejected` error, whole output |
+| `normalized` | the page is listed in `NORMALIZED_REJECTS`: the crate rejects it with `InvalidValue` where upstream extracted text, because the oracle's normalized tree dropped an element whose name is not an XML Name (D-2), whole output (empty list today) |
+| `encoding` | per hunk: input is not valid UTF-8 (D-3), as many removed as inserted lines, and each pair equal once non-ASCII chars and whitespace are removed (upstream decodes some bytes to characters Python's `str.split()` counts as whitespace, where the crate's cp1252 guess gives a printable one) |
+| `port-bug` | any other hunk, or text on one side only |
 
-`normalized` here is the class of pages in `NORMALIZED_REJECTS` (empty today). The
-report is `.temp/parity/output-report.md`: counts per format and class, the pages of each other class
-(with the reason of a `normalized` page) and the first diffs.
+The report is `.temp/parity/output-report.md`: per format the outputs and hunks of each class, the
+outputs of each class other than `match` (with the reason of a `normalized` page) and the diffs of the
+first outputs that differ, outputs with a `port-bug` hunk first.
 
 ## Test and measurement
 
