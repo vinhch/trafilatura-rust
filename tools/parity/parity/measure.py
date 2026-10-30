@@ -120,13 +120,17 @@ def run(upstream_root: Path, out: Path, only: str) -> None:
             trim.cache_clear()
             line_processing.cache_clear()
 
+        def extract_page(data: bytes):
+            return extract(data, options=options)
+
         pages = []
         for path in corpus(upstream_root):
             source = path.relative_to(upstream_root).as_posix()
             if only not in source:
                 continue
             print(source, file=sys.stderr)
-            pages.append({"id": page_id(source), "source": source, **measure_page(load_html, lambda data: extract(data, options=options), path.read_bytes(), clear_caches)})
+            measured = measure_page(load_html, extract_page, path.read_bytes(), clear_caches)
+            pages.append({"id": page_id(source), "source": source, **measured})
         out.mkdir(parents=True, exist_ok=True)
         version = pinned_version()
         target = out / f"{version}-python.json"
@@ -369,7 +373,8 @@ def _percent(base: int, head: int) -> float:
 
 
 def _signed(percent: float) -> str:
-    return f"{percent:+.2f}%"
+    # Round first: -0.001 would print as -0.00%, and adding 0.0 turns -0.0 into 0.0
+    return f"{round(percent, 2) + 0.0:+.2f}%"
 
 
 def heap_change(base: dict, head: dict) -> dict:
@@ -397,15 +402,30 @@ def heap_change(base: dict, head: dict) -> dict:
 
 
 def criterion_medians(root: Path) -> dict[str, float]:
-    "Median time in ns per `<group>/<bench>` from the last criterion run under `root`."
-    return {
-        estimates.relative_to(root).parent.parent.as_posix(): json.loads(estimates.read_text(encoding="utf-8"))["median"]["point_estimate"]
-        for estimates in sorted(root.glob("*/*/new/estimates.json"))
-    }
+    "Median time in ns per `<group>/<bench>` from the last criterion run under `root`; ValueError names a malformed file."
+    medians = {}
+    for estimates in sorted(root.glob("*/*/new/estimates.json")):
+        try:
+            medians[estimates.relative_to(root).parent.parent.as_posix()] = json.loads(estimates.read_text(encoding="utf-8"))["median"]["point_estimate"]
+        except (ValueError, KeyError, TypeError) as err:
+            raise ValueError(f"{estimates} is malformed ({err!r})") from err
+    return medians
+
+
+def _read_heap(path: Path) -> dict:
+    "A heap-sample.json whose pages carry the fields the comparison reads; ValueError names the file otherwise."
+    try:
+        document = _read(path)
+        for page in document["pages"]:
+            for key in ("id", *GATED):
+                page[key]
+    except (ValueError, KeyError, TypeError) as err:
+        raise ValueError(f"{path} is malformed ({err!r})") from err
+    return document
 
 
 def _heap_table(heap: dict, head_heap: dict, head_only: str | None) -> list[str]:
-    if head_only:
+    if head_only is not None:
         lines = ["| metric | head |", "| --- | ---: |"]
         for key in GATED:
             lines.append(f"| {key} | {sum(p[key] for p in head_heap['pages'])} |")
@@ -435,7 +455,7 @@ def _page_rows(pages: list[dict]) -> list[str]:
 
 
 def _time_rows(base_times: dict[str, float], head_times: dict[str, float], head_only: str | None) -> list[str]:
-    if head_only:
+    if head_only is not None:
         return ["| bench | head ms |", "| --- | ---: |", *(f"| {k} | {v / 1e6:.3f} |" for k, v in sorted(head_times.items()))]
     rows = [(k, base_times[k], v, _percent(base_times[k], v)) for k, v in head_times.items() if k in base_times]
     rows.sort(key=lambda r: abs(r[3]), reverse=True)
@@ -449,34 +469,44 @@ def _time_rows(base_times: dict[str, float], head_times: dict[str, float], head_
 def regression_summary(heap: dict, head_heap: dict, base_times: dict[str, float], head_times: dict[str, float], head_only: str | None) -> tuple[str, bool]:
     """Markdown of the base against head comparison, and whether the heap gate failed. `heap` is
     `heap_change`'s result, `head_heap` the head's heap file (listed alone in head-only mode)."""
-    failed = not head_only and any(heap[key][2] > GATE_PERCENT for key in GATED)
-    lines = [f"Head only: {head_only}.", ""] if head_only else []
-    if head_only:
+    failed = head_only is None and any(heap[key][2] > GATE_PERCENT for key in GATED)
+    lines = [f"Head only: {head_only}.", ""] if head_only is not None else []
+    if head_only is not None:
         lines += ["Extraction heap, summed over the head pages:", ""]
     else:
         lines += [f"Extraction heap, summed over the pages on both sides (gate: more than +{GATE_PERCENT:.2f}% fails):", ""]
     lines += _heap_table(heap, head_heap, head_only)
-    if not head_only:
+    if head_only is None:
         lines += _page_rows(heap["pages"])
         if heap["one_side"]:
             lines += ["", f"{heap['one_side']} pages on one side only, not compared."]
     lines += ["", "Bench median times (reported only, runner noise is 10 to 20%):", ""]
     lines += _time_rows(base_times, head_times, head_only)
+    benches_one_side = len(base_times.keys() ^ head_times.keys())
+    if head_only is None and benches_one_side:
+        lines += ["", f"{benches_one_side} benches on one side only, not compared."]
     return "\n".join(lines), failed
 
 
 def compare(root: Path, head_only: str | None) -> int:
     "Print the summary of `root/base` against `root/head`; 1 when the heap gate fails or a file is missing."
     try:
-        head_heap = _read(root / "head" / "heap-sample.json")
-        base_heap = head_heap if head_only else _read(root / "base" / "heap-sample.json")
+        head_heap = _read_heap(root / "head" / "heap-sample.json")
+        base_heap = head_heap if head_only is not None else _read_heap(root / "base" / "heap-sample.json")
+        base_times = {} if head_only is not None else criterion_medians(root / "base" / "criterion")
+        head_times = criterion_medians(root / "head" / "criterion")
     except OSError as err:
         print(f"measure: {err}; run scripts/regression.sh first", file=sys.stderr)
         return 1
-    base_times = {} if head_only else criterion_medians(root / "base" / "criterion")
-    text, failed = regression_summary(
-        heap_change(base_heap, head_heap), head_heap, base_times, criterion_medians(root / "head" / "criterion"), head_only
-    )
+    except ValueError as err:
+        print(f"measure: {err}; rerun scripts/regression.sh", file=sys.stderr)
+        return 1
+    heap = heap_change(base_heap, head_heap)
+    # With no common page both sums are 0, which the gate would read as no growth
+    if head_only is None and heap["one_side"] == len(base_heap["pages"]) + len(head_heap["pages"]):
+        print("measure: no page is present on both sides; rerun scripts/regression.sh", file=sys.stderr)
+        return 1
+    text, failed = regression_summary(heap, head_heap, base_times, head_times, head_only)
     print(text)
     return 1 if failed else 0
 
@@ -491,6 +521,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compare", type=Path, metavar="DIR", help="compare DIR/base with DIR/head and apply the heap gate")
     parser.add_argument("--head-only", metavar="REASON", help="with --compare: list the head numbers only, never fail")
     args = parser.parse_args(argv)
+    if args.head_only is not None and args.compare is None:
+        parser.error("--head-only needs --compare")
+    if args.head_only == "":
+        parser.error("--head-only needs a non-empty REASON")
     if args.compare:
         return compare(args.compare, args.head_only)
     if args.out is None:

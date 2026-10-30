@@ -271,18 +271,72 @@ def test_summary_head_only_never_fails():
     assert "10000000" in text
 
 
+def _write_estimates(root, bench, run, median):
+    target = root / bench / run
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "estimates.json").write_text(json.dumps({"median": {"point_estimate": median}}))
+
+
 def test_criterion_medians_reads_new_estimates(tmp_path):
-    for run in ("new", "base"):
-        target = tmp_path / "extract" / "x" / run
-        target.mkdir(parents=True)
-        (target / "estimates.json").write_text(json.dumps({"median": {"point_estimate": 1500.0}}))
+    _write_estimates(tmp_path, "extract/x", "new", 1500.0)
+    _write_estimates(tmp_path, "extract/x", "base", 9999.0)
     assert measure.criterion_medians(tmp_path) == {"extract/x": 1500.0}
     assert measure.criterion_medians(tmp_path / "absent") == {}
+
+
+def test_criterion_medians_names_a_malformed_file(tmp_path):
+    _write_estimates(tmp_path, "extract/x", "new", 1.0)
+    (tmp_path / "extract" / "x" / "new" / "estimates.json").write_text('{"median": {}}')
+    with pytest.raises(ValueError, match="estimates.json"):
+        measure.criterion_medians(tmp_path)
 
 
 def _write_side(root, side, count):
     (root / side).mkdir(parents=True, exist_ok=True)
     (root / side / "heap-sample.json").write_text(json.dumps(_heap_doc(("a", count, 100))))
+
+
+def test_compare_names_a_truncated_heap_file(tmp_path, capsys):
+    _write_side(tmp_path, "base", 1000)
+    _write_side(tmp_path, "head", 1000)
+    (tmp_path / "head" / "heap-sample.json").write_text('{"pages": [{"id": "a", "extract_al')
+    assert measure.compare(tmp_path, None) == 1
+    err = capsys.readouterr().err
+    assert "head" in err and "heap-sample.json" in err
+
+
+def test_compare_names_a_page_without_the_gated_fields(tmp_path, capsys):
+    _write_side(tmp_path, "head", 1000)
+    (tmp_path / "base").mkdir()
+    (tmp_path / "base" / "heap-sample.json").write_text(json.dumps({"pages": [{"id": "a"}]}))
+    assert measure.compare(tmp_path, None) == 1
+    err = capsys.readouterr().err
+    assert "base" in err and "heap-sample.json" in err and "extract_alloc_count" in err
+
+
+def test_compare_names_a_malformed_criterion_file(tmp_path, capsys):
+    _write_side(tmp_path, "base", 1000)
+    _write_side(tmp_path, "head", 1000)
+    _write_estimates(tmp_path / "head" / "criterion", "extract/x", "new", 1.0)
+    (tmp_path / "head" / "criterion" / "extract" / "x" / "new" / "estimates.json").write_text("{")
+    assert measure.compare(tmp_path, None) == 1
+    assert "estimates.json" in capsys.readouterr().err
+
+
+def test_compare_fails_when_no_page_is_on_both_sides(tmp_path, capsys):
+    (tmp_path / "base").mkdir()
+    (tmp_path / "base" / "heap-sample.json").write_text(json.dumps(_heap_doc(("a", 1, 1))))
+    (tmp_path / "head").mkdir()
+    (tmp_path / "head" / "heap-sample.json").write_text(json.dumps(_heap_doc(("b", 1, 1))))
+    assert measure.compare(tmp_path, None) == 1
+    assert "no page is present on both sides" in capsys.readouterr().err
+    assert measure.compare(tmp_path, "reason") == 0
+
+
+def test_compare_names_the_script_when_a_file_is_missing(tmp_path, capsys):
+    _write_side(tmp_path, "head", 1000)
+    assert measure.compare(tmp_path, None) == 1
+    assert "scripts/regression.sh" in capsys.readouterr().err
 
 
 def test_compare_returns_one_on_failure(tmp_path):
@@ -298,3 +352,36 @@ def test_main_compare_needs_no_out(tmp_path):
     assert measure.main(["--compare", str(tmp_path), "--head-only", "x"]) == 0
     with pytest.raises(SystemExit):
         measure.main(["--merge"])
+
+
+def test_main_rejects_an_empty_reason_and_head_only_without_compare(tmp_path, capsys):
+    _write_side(tmp_path, "head", 1000)
+    with pytest.raises(SystemExit):
+        measure.main(["--compare", str(tmp_path), "--head-only", ""])
+    assert "REASON" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        measure.main(["--merge", "--out", str(tmp_path), "--head-only", "x"])
+    assert "--compare" in capsys.readouterr().err
+
+
+def test_signed_has_no_negative_zero():
+    assert measure._signed(-0.001) == "+0.00%"
+    assert measure._signed(0.0) == "+0.00%"
+    assert measure._signed(1.1) == "+1.10%"
+    assert measure._signed(-0.35) == "-0.35%"
+
+
+def _time_summary(base_times, head_times, head_only=None):
+    heap = _heap_doc(("a", 1, 1))
+    return measure.regression_summary(measure.heap_change(heap, heap), heap, base_times, head_times, head_only)[0]
+
+
+def test_time_table_from_a_zero_base_does_not_divide():
+    text = _time_summary({"g/x": 0.0}, {"g/x": 2e6})
+    assert "| g/x | 0.000 | 2.000 | +inf% |" in text
+
+
+def test_time_table_counts_benches_on_one_side_only():
+    text = _time_summary({"g/x": 1e6, "g/old": 1e6}, {"g/x": 1e6, "g/new": 1e6, "g/newer": 1e6})
+    assert "3 benches on one side only, not compared." in text
+    assert "benches on one side only" not in _time_summary({"g/x": 1e6}, {"g/x": 1e6})
