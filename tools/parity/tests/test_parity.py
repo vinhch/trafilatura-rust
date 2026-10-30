@@ -1,6 +1,8 @@
 import json
+import logging
 import os
 import sys
+import warnings
 from pathlib import Path
 
 import pytest
@@ -25,7 +27,7 @@ from parity import import_path  # noqa: E402
 import_path(UPSTREAM)
 
 from lxml.html import HtmlElement, fromstring  # noqa: E402
-from parity import generate, html5tree, treedump  # noqa: E402
+from parity import generate, html5tree, measure, treedump  # noqa: E402
 from trafilatura import bare_extraction  # noqa: E402
 from trafilatura.utils import HTML_PARSER  # noqa: E402
 
@@ -185,3 +187,58 @@ def test_import_path_supplies_version_metadata_for_a_clean_clone(tmp_path):
     result = subprocess.run([sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {str(Path(__file__).parents[1])!r}); exec({script!r})"], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "9.8.7"
+
+
+def _process_state() -> tuple:
+    return logging.root.manager.disable, list(warnings.filters)
+
+
+@pytest.fixture
+def clean_logging():
+    logging.disable(logging.NOTSET)
+    yield
+    logging.disable(logging.NOTSET)
+
+
+def _raise_runtime_error(*_, **__):
+    raise RuntimeError("boom")
+
+
+def test_main_restores_process_state_on_return(tmp_path, monkeypatch, clean_logging):
+    monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "corpus", lambda root: [])
+    monkeypatch.setattr(generate, "f1_scores", lambda root: {})
+    before = _process_state()
+    assert before[0] == logging.NOTSET
+    assert generate.main(["--upstream", str(UPSTREAM), "--out", str(tmp_path)]) == 0
+    assert _process_state() == before
+
+
+def test_main_restores_process_state_on_raise(tmp_path, monkeypatch, clean_logging):
+    monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "corpus", lambda root: [])
+    monkeypatch.setattr(generate, "f1_scores", _raise_runtime_error)
+    before = _process_state()
+    assert before[0] == logging.NOTSET
+    with pytest.raises(RuntimeError):
+        generate.main(["--upstream", str(UPSTREAM), "--out", str(tmp_path)])
+    assert _process_state() == before
+
+
+def test_measure_run_restores_process_state_on_return(tmp_path, monkeypatch, clean_logging):
+    monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "corpus", lambda root: [])
+    before = _process_state()
+    assert before[0] == logging.NOTSET
+    measure.run(UPSTREAM, tmp_path, "")
+    assert _process_state() == before
+
+
+def test_measure_run_restores_process_state_on_raise(tmp_path, monkeypatch, clean_logging):
+    monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "corpus", _raise_runtime_error)
+    before = _process_state()
+    assert before[0] == logging.NOTSET
+    with pytest.raises(RuntimeError):
+        measure.run(UPSTREAM, tmp_path, "")
+    assert _process_state() == before

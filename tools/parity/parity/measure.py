@@ -18,14 +18,12 @@ ratio for them.
 import argparse
 import gc
 import json
-import logging
 import os
 import platform
 import statistics
 import sys
 import time
 import tracemalloc
-import warnings
 from pathlib import Path
 
 RUNS = 5
@@ -80,27 +78,26 @@ def host() -> dict:
 
 def run(upstream_root: Path, out: Path, only: str) -> None:
     from . import import_path, page_id
-    from .generate import check_pin, corpus, pinned_version
+    from .generate import check_pin, corpus, pinned_version, quiet_upstream
 
     pin = check_pin(upstream_root)
     import_path(upstream_root)
-    logging.disable(logging.CRITICAL)
-    warnings.simplefilter("ignore")
-    from trafilatura.utils import load_html
+    with quiet_upstream():
+        from trafilatura.utils import load_html
 
-    pages = []
-    for path in corpus(upstream_root):
-        source = path.relative_to(upstream_root).as_posix()
-        if only not in source:
-            continue
-        print(source, file=sys.stderr)
-        pages.append({"id": page_id(source), "source": source, **measure_page(load_html, path.read_bytes())})
-    out.mkdir(parents=True, exist_ok=True)
-    version = pinned_version()
-    target = out / f"{version}-python.json"
-    document = {"pin": pin, "upstream_version": version, "host": host(), "extra": {"runs": RUNS}, "pages": pages}
-    target.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
-    print(f"wrote {len(pages)} pages to {target}", file=sys.stderr)
+        pages = []
+        for path in corpus(upstream_root):
+            source = path.relative_to(upstream_root).as_posix()
+            if only not in source:
+                continue
+            print(source, file=sys.stderr)
+            pages.append({"id": page_id(source), "source": source, **measure_page(load_html, path.read_bytes())})
+        out.mkdir(parents=True, exist_ok=True)
+        version = pinned_version()
+        target = out / f"{version}-python.json"
+        document = {"pin": pin, "upstream_version": version, "host": host(), "extra": {"runs": RUNS}, "pages": pages}
+        target.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+        print(f"wrote {len(pages)} pages to {target}", file=sys.stderr)
 
 
 def combine_rust(time_run: dict, heap_run: dict) -> dict:

@@ -107,6 +107,19 @@ def html5_parsers(normalized: list[bool] | None = None):
         utils_module.fromstring, baseline_module.fragment_fromstring = saved
 
 
+@contextlib.contextmanager
+def quiet_upstream():
+    "Silence upstream's logging and warnings for the block; the process state comes back on return or raise."
+    saved = logging.root.manager.disable
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        logging.disable(logging.CRITICAL)
+        try:
+            yield
+        finally:
+            logging.disable(saved)
+
+
 def corpus(upstream_root: Path) -> list[Path]:
     tests = upstream_root / "tests"
     pages = [*tests.joinpath("eval").glob("*.html"), *tests.joinpath("cache").glob("*.html")]
@@ -242,38 +255,36 @@ def main(argv: list[str] | None = None) -> int:
     upstream_root = args.upstream.resolve()
     pin = check_pin(upstream_root)
     import_path(upstream_root)
-    logging.disable(logging.CRITICAL)
-    warnings.simplefilter("ignore")
+    with quiet_upstream():
+        import trafilatura
+        from trafilatura.settings import DEFAULT_CONFIG
 
-    import trafilatura
-    from trafilatura.settings import DEFAULT_CONFIG
+        extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
+        pin_dir = args.out / pinned_version()
+        results = []
+        for path in corpus(upstream_root):
+            source = path.relative_to(upstream_root).as_posix()
+            if args.only not in source:
+                continue
+            print(source, file=sys.stderr)
+            data = path.read_bytes()
+            lxml_result = run_variant(data, extensive)
+            normalized: list[bool] = []
+            with html5_parsers(normalized):
+                html5_result = run_variant(data, extensive)
+            page = {"source": source, "normalized": any(normalized), "lxml": lxml_result, "html5": html5_result}
+            results.append(({"id": page_id(source), "source": source, "valid_utf8": valid_utf8(data)}, page))
 
-    extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
-    pin_dir = args.out / pinned_version()
-    results = []
-    for path in corpus(upstream_root):
-        source = path.relative_to(upstream_root).as_posix()
-        if args.only not in source:
-            continue
-        print(source, file=sys.stderr)
-        data = path.read_bytes()
-        lxml_result = run_variant(data, extensive)
-        normalized: list[bool] = []
-        with html5_parsers(normalized):
-            html5_result = run_variant(data, extensive)
-        page = {"source": source, "normalized": any(normalized), "lxml": lxml_result, "html5": html5_result}
-        results.append(({"id": page_id(source), "source": source, "valid_utf8": valid_utf8(data)}, page))
-
-    full = not args.only
-    meta = {
-        "pin": pin,
-        "upstream_version": trafilatura.__version__,
-        "max_date": MAX_DATE,
-        "lock_sha256": hashlib.sha256(LOCK_FILE.read_bytes()).hexdigest(),
-    }
-    # F1 first: a failure here must leave the previous fixture set untouched
-    store(pin_dir, meta, results, f1_scores(upstream_root) if full else None)
-    print(f"wrote {len(results)} pages to {pin_dir}", file=sys.stderr)
+        full = not args.only
+        meta = {
+            "pin": pin,
+            "upstream_version": trafilatura.__version__,
+            "max_date": MAX_DATE,
+            "lock_sha256": hashlib.sha256(LOCK_FILE.read_bytes()).hexdigest(),
+        }
+        # F1 first: a failure here must leave the previous fixture set untouched
+        store(pin_dir, meta, results, f1_scores(upstream_root) if full else None)
+        print(f"wrote {len(results)} pages to {pin_dir}", file=sys.stderr)
     return 0
 
 
