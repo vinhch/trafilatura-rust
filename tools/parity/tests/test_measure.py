@@ -1,3 +1,6 @@
+import json
+import math
+
 import pytest
 
 from parity import measure
@@ -211,3 +214,87 @@ def test_table_shows_python_extract_column_and_ratio():
     assert "| ... 1 more pages | | | | | | | | | | |" in table
     assert "| extraction median time, sum (ms) | 4.0 | 16.0 | 4.0x |" in table
     assert "no Python counterpart" not in table
+
+
+def _heap_doc(*pages):
+    "pages: (id, alloc_count, peak_bytes)"
+    return {"pages": [{"id": i, "extract_alloc_count": c, "extract_peak_bytes": p} for i, c, p in pages]}
+
+
+def test_heap_change_sums_common_pages_only():
+    base = _heap_doc(("a", 100, 10), ("b", 200, 20))
+    head = _heap_doc(("b", 250, 30), ("c", 999, 99))
+    change = measure.heap_change(base, head)
+    assert change["extract_alloc_count"] == (200, 250, 25.0)
+    assert change["extract_peak_bytes"] == (20, 30, 50.0)
+    assert change["one_side"] == 2
+
+
+def test_heap_change_orders_pages_by_largest_delta():
+    base = _heap_doc(("a", 10, 5), ("b", 100, 5), ("c", 7, 5))
+    head = _heap_doc(("a", 12, 5), ("b", 50, 5), ("c", 7, 5))
+    pages = measure.heap_change(base, head)["pages"]
+    assert [p["id"] for p in pages] == ["b", "a"]
+    assert (pages[0]["alloc_count_delta"], pages[0]["peak_bytes_delta"]) == (-50, 0)
+
+
+def test_heap_change_from_zero_base():
+    same = measure.heap_change(_heap_doc(("a", 0, 0)), _heap_doc(("a", 0, 0)))
+    assert same["extract_alloc_count"][2] == 0.0
+    grown = measure.heap_change(_heap_doc(("a", 0, 0)), _heap_doc(("a", 5, 0)))
+    assert grown["extract_alloc_count"][2] == math.inf
+
+
+def _summary(base_count, head_count, base_peak=1000, head_peak=1000, head_only=None):
+    base, head = _heap_doc(("a", base_count, base_peak)), _heap_doc(("a", head_count, head_peak))
+    return measure.regression_summary(measure.heap_change(base, head), head, {}, {}, head_only)
+
+
+def test_summary_fails_above_the_gate():
+    text, failed = _summary(1000, 1011)
+    assert failed
+    assert "+1.10%" in text and "FAIL" in text
+    text, failed = _summary(1000, 1010)
+    assert not failed
+    assert "+1.00%" in text and "FAIL" not in text
+
+
+def test_summary_fails_on_peak_alone():
+    _, failed = _summary(1000, 1000, base_peak=1000, head_peak=1020)
+    assert failed
+
+
+def test_summary_head_only_never_fails():
+    text, failed = _summary(1, 10_000_000, head_only="no base artifact")
+    assert not failed
+    assert text.startswith("Head only: no base artifact.")
+    assert "10000000" in text
+
+
+def test_criterion_medians_reads_new_estimates(tmp_path):
+    for run in ("new", "base"):
+        target = tmp_path / "extract" / "x" / run
+        target.mkdir(parents=True)
+        (target / "estimates.json").write_text(json.dumps({"median": {"point_estimate": 1500.0}}))
+    assert measure.criterion_medians(tmp_path) == {"extract/x": 1500.0}
+    assert measure.criterion_medians(tmp_path / "absent") == {}
+
+
+def _write_side(root, side, count):
+    (root / side).mkdir(parents=True, exist_ok=True)
+    (root / side / "heap-sample.json").write_text(json.dumps(_heap_doc(("a", count, 100))))
+
+
+def test_compare_returns_one_on_failure(tmp_path):
+    _write_side(tmp_path, "base", 1000)
+    _write_side(tmp_path, "head", 1100)
+    assert measure.compare(tmp_path, None) == 1
+    _write_side(tmp_path, "head", 1000)
+    assert measure.compare(tmp_path, None) == 0
+
+
+def test_main_compare_needs_no_out(tmp_path):
+    _write_side(tmp_path, "head", 1000)
+    assert measure.main(["--compare", str(tmp_path), "--head-only", "x"]) == 0
+    with pytest.raises(SystemExit):
+        measure.main(["--merge"])

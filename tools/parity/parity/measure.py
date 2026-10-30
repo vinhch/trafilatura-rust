@@ -2,6 +2,7 @@
 
     python -m parity.measure --upstream PATH --out DIR [--only SUBSTRING]
     python -m parity.measure --merge --out DIR [--rows N]
+    python -m parity.measure --compare DIR [--head-only REASON]
 
 The first form times `trafilatura.utils.load_html(bytes)` and `extract(bytes)` (TXT, fast mode, dedup off:
 the fixture options; 5-run medians) and measures the heap of `load_html` with tracemalloc, per page of the
@@ -14,11 +15,17 @@ Time is comparable. Heap is not: tracemalloc sees only memory allocated through 
 and lxml builds its tree with the libxml2 C allocator, so the Python heap columns miss the tree itself
 while the Rust columns count every allocation. The table prints the numbers side by side and no
 ratio for them. Upstream's extract heap is not measured at all.
+
+The third form compares DIR/base and DIR/head, each holding `heap-sample.json` and a `criterion/` tree: it
+prints a Markdown summary and returns 1 when the summed extraction allocation count or peak bytes over the
+pages on both sides grow by more than GATE_PERCENT. Times are reported only. `--head-only` lists the head
+numbers and never fails (no base to compare with).
 """
 
 import argparse
 import gc
 import json
+import math
 import os
 import platform
 import statistics
@@ -350,14 +357,144 @@ def merge(out: Path, rows: int) -> int:
     return 0
 
 
+GATE_PERCENT = 1.0
+DIFF_ROWS = 20
+GATED = ("extract_alloc_count", "extract_peak_bytes")
+
+
+def _percent(base: int, head: int) -> float:
+    if base == 0:
+        return 0.0 if head == 0 else math.inf
+    return (head - base) * 100 / base
+
+
+def _signed(percent: float) -> str:
+    return f"{percent:+.2f}%"
+
+
+def heap_change(base: dict, head: dict) -> dict:
+    """Extraction heap of base and head over the pages in both: summed allocation count and peak, with the
+    percent change, and the pages whose numbers moved, largest first."""
+    head_pages = {p["id"]: p for p in head["pages"]}
+    common = [(b, head_pages[b["id"]]) for b in base["pages"] if b["id"] in head_pages]
+    result = {"one_side": len(base["pages"]) + len(head["pages"]) - 2 * len(common)}
+    for key in GATED:
+        base_sum = sum(b[key] for b, _ in common)
+        head_sum = sum(h[key] for _, h in common)
+        result[key] = (base_sum, head_sum, _percent(base_sum, head_sum))
+    pages = [
+        {
+            "id": b["id"],
+            "alloc_count_delta": h["extract_alloc_count"] - b["extract_alloc_count"],
+            "peak_bytes_delta": h["extract_peak_bytes"] - b["extract_peak_bytes"],
+        }
+        for b, h in common
+    ]
+    pages = [p for p in pages if p["alloc_count_delta"] or p["peak_bytes_delta"]]
+    pages.sort(key=lambda p: (abs(p["alloc_count_delta"]), abs(p["peak_bytes_delta"])), reverse=True)
+    result["pages"] = pages
+    return result
+
+
+def criterion_medians(root: Path) -> dict[str, float]:
+    "Median time in ns per `<group>/<bench>` from the last criterion run under `root`."
+    return {
+        estimates.relative_to(root).parent.parent.as_posix(): json.loads(estimates.read_text(encoding="utf-8"))["median"]["point_estimate"]
+        for estimates in sorted(root.glob("*/*/new/estimates.json"))
+    }
+
+
+def _heap_table(heap: dict, head_heap: dict, head_only: str | None) -> list[str]:
+    if head_only:
+        lines = ["| metric | head |", "| --- | ---: |"]
+        for key in GATED:
+            lines.append(f"| {key} | {sum(p[key] for p in head_heap['pages'])} |")
+        return lines
+    lines = ["| metric | base | head | change |", "| --- | ---: | ---: | ---: |"]
+    for key in GATED:
+        base_sum, head_sum, percent = heap[key]
+        verdict = "FAIL" if percent > GATE_PERCENT else "OK"
+        lines.append(f"| {key} | {base_sum} | {head_sum} | {_signed(percent)} {verdict} |")
+    return lines
+
+
+def _page_rows(pages: list[dict]) -> list[str]:
+    if not pages:
+        return []
+    lines = [
+        "",
+        "Per-page heap deltas (informational: one page varies up to about 1% between runs of the same commit, the gate is on the sums):",
+        "",
+        "| page | alloc count delta | peak bytes delta |",
+        "| --- | ---: | ---: |",
+    ]
+    lines += [f"| {p['id']} | {p['alloc_count_delta']:+d} | {p['peak_bytes_delta']:+d} |" for p in pages[:DIFF_ROWS]]
+    if len(pages) > DIFF_ROWS:
+        lines.append(f"| ... {len(pages) - DIFF_ROWS} more pages | | |")
+    return lines
+
+
+def _time_rows(base_times: dict[str, float], head_times: dict[str, float], head_only: str | None) -> list[str]:
+    if head_only:
+        return ["| bench | head ms |", "| --- | ---: |", *(f"| {k} | {v / 1e6:.3f} |" for k, v in sorted(head_times.items()))]
+    rows = [(k, base_times[k], v, _percent(base_times[k], v)) for k, v in head_times.items() if k in base_times]
+    rows.sort(key=lambda r: abs(r[3]), reverse=True)
+    return [
+        "| bench | base ms | head ms | change |",
+        "| --- | ---: | ---: | ---: |",
+        *(f"| {k} | {b / 1e6:.3f} | {h / 1e6:.3f} | {_signed(pct)} |" for k, b, h, pct in rows),
+    ]
+
+
+def regression_summary(heap: dict, head_heap: dict, base_times: dict[str, float], head_times: dict[str, float], head_only: str | None) -> tuple[str, bool]:
+    """Markdown of the base against head comparison, and whether the heap gate failed. `heap` is
+    `heap_change`'s result, `head_heap` the head's heap file (listed alone in head-only mode)."""
+    failed = not head_only and any(heap[key][2] > GATE_PERCENT for key in GATED)
+    lines = [f"Head only: {head_only}.", ""] if head_only else []
+    if head_only:
+        lines += ["Extraction heap, summed over the head pages:", ""]
+    else:
+        lines += [f"Extraction heap, summed over the pages on both sides (gate: more than +{GATE_PERCENT:.2f}% fails):", ""]
+    lines += _heap_table(heap, head_heap, head_only)
+    if not head_only:
+        lines += _page_rows(heap["pages"])
+        if heap["one_side"]:
+            lines += ["", f"{heap['one_side']} pages on one side only, not compared."]
+    lines += ["", "Bench median times (reported only, runner noise is 10 to 20%):", ""]
+    lines += _time_rows(base_times, head_times, head_only)
+    return "\n".join(lines), failed
+
+
+def compare(root: Path, head_only: str | None) -> int:
+    "Print the summary of `root/base` against `root/head`; 1 when the heap gate fails or a file is missing."
+    try:
+        head_heap = _read(root / "head" / "heap-sample.json")
+        base_heap = head_heap if head_only else _read(root / "base" / "heap-sample.json")
+    except OSError as err:
+        print(f"measure: {err}; run scripts/regression.sh first", file=sys.stderr)
+        return 1
+    base_times = {} if head_only else criterion_medians(root / "base" / "criterion")
+    text, failed = regression_summary(
+        heap_change(base_heap, head_heap), head_heap, base_times, criterion_medians(root / "head" / "criterion"), head_only
+    )
+    print(text)
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path)
     parser.add_argument("--upstream", type=Path)
     parser.add_argument("--only", default="", help="keep pages whose source contains this substring")
     parser.add_argument("--merge", action="store_true", help="combine the Rust and Python files and print the table")
     parser.add_argument("--rows", type=int, default=0, help="with --merge: list this many pages before the totals")
+    parser.add_argument("--compare", type=Path, metavar="DIR", help="compare DIR/base with DIR/head and apply the heap gate")
+    parser.add_argument("--head-only", metavar="REASON", help="with --compare: list the head numbers only, never fail")
     args = parser.parse_args(argv)
+    if args.compare:
+        return compare(args.compare, args.head_only)
+    if args.out is None:
+        parser.error("--out is required unless --compare")
     if args.merge:
         return merge(args.out, args.rows)
     if args.upstream is None:
