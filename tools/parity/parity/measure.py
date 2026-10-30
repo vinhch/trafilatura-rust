@@ -417,8 +417,10 @@ def _read_heap(path: Path) -> dict:
     try:
         document = _read(path)
         for page in document["pages"]:
-            for key in ("id", *GATED):
-                page[key]
+            page["id"]
+            for key in GATED:
+                if not isinstance(page[key], int):
+                    raise ValueError(f"{key} of page {page['id']} is not an integer")
     except (ValueError, KeyError, TypeError) as err:
         raise ValueError(f"{path} is malformed ({err!r})") from err
     return document
@@ -489,7 +491,7 @@ def regression_summary(heap: dict, head_heap: dict, base_times: dict[str, float]
 
 
 def compare(root: Path, head_only: str | None) -> int:
-    "Print the summary of `root/base` against `root/head`; 1 when the heap gate fails or a file is missing."
+    "Print the summary of `root/base` against `root/head`; 1 when the heap gate fails, a file is missing or malformed, or no page is on both sides."
     try:
         head_heap = _read_heap(root / "head" / "heap-sample.json")
         base_heap = head_heap if head_only is not None else _read_heap(root / "base" / "heap-sample.json")

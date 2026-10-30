@@ -314,6 +314,16 @@ def test_compare_names_a_page_without_the_gated_fields(tmp_path, capsys):
     assert "base" in err and "heap-sample.json" in err and "extract_alloc_count" in err
 
 
+def test_compare_names_a_page_with_a_null_gated_field(tmp_path, capsys):
+    _write_side(tmp_path, "head", 1000)
+    (tmp_path / "base").mkdir()
+    page = {"id": "a", "extract_alloc_count": None, "extract_peak_bytes": 100}
+    (tmp_path / "base" / "heap-sample.json").write_text(json.dumps({"pages": [page]}))
+    assert measure.compare(tmp_path, None) == 1
+    err = capsys.readouterr().err
+    assert "base" in err and "heap-sample.json" in err and "extract_alloc_count" in err
+
+
 def test_compare_names_a_malformed_criterion_file(tmp_path, capsys):
     _write_side(tmp_path, "base", 1000)
     _write_side(tmp_path, "head", 1000)
@@ -358,10 +368,10 @@ def test_main_rejects_an_empty_reason_and_head_only_without_compare(tmp_path, ca
     _write_side(tmp_path, "head", 1000)
     with pytest.raises(SystemExit):
         measure.main(["--compare", str(tmp_path), "--head-only", ""])
-    assert "REASON" in capsys.readouterr().err
+    assert "--head-only needs a non-empty REASON" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         measure.main(["--merge", "--out", str(tmp_path), "--head-only", "x"])
-    assert "--compare" in capsys.readouterr().err
+    assert "--head-only needs --compare" in capsys.readouterr().err
 
 
 def test_signed_has_no_negative_zero():
