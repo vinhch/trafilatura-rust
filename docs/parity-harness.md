@@ -137,7 +137,9 @@ first outputs that differ, outputs with a `port-bug` hunk first.
   the fixture options (TXT, fast mode, dedup off; keys `extract_ok`, `extract_median_ns`), and clears
   the two `lru_cache`s of upstream's text helpers before each timed call. Time is comparable on both
   steps. Heap is comparable only on the Rust side: tracemalloc misses the lxml tree, and upstream's
-  extract heap is not measured. Run it by hand; the numbers depend on the machine. A full run of
+  extract heap is not measured. Both sides run in the same place: natively on Linux, off Linux (or with
+  `--docker`) in one Linux container built from `scripts/measure.Dockerfile`, so a table compares one
+  system; its `Platform:` line says where. Run it by hand; the numbers depend on the machine. A full run of
   the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
   ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing
@@ -170,7 +172,7 @@ first outputs that differ, outputs with a `port-bug` hunk first.
 | `PARITY_REQUIRE_FIXTURES` | parity test | missing fixtures fail instead of skip |
 | `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap` | `1` lets the targets run; they skip otherwise |
 | `TRAFILATURA_MEASURE_ONLY` | measure targets | unset: the corpus, then the synthetic pages; `synthetic`: only the synthetic pages, the corpus file untouched; any other text: only the corpus pages whose source path contains it |
-| `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure` | labels the host of a Python measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |
+| `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure`, measure targets | labels the host of a measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |
 
 ## Generated test data
 

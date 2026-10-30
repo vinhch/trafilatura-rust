@@ -296,10 +296,13 @@ fn output_path(file: &str) -> PathBuf {
 }
 
 fn write_document(path: &Path, extra: Value, pages: &[Value]) {
+    // Same variable and default as `measure.host()` in tools/parity, so the merged table can compare the hosts
+    let runtime =
+        std::env::var("TRAFILATURA_MEASURE_RUNTIME").unwrap_or_else(|_| "native".to_owned());
     let document = json!({
         "pin": common::pin(),
         "upstream_version": common::upstream_release(),
-        "host": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "runtime": "native" },
+        "host": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "runtime": runtime },
         "extra": extra,
         "pages": pages,
     });
