@@ -169,9 +169,10 @@ first outputs that differ, outputs with a `port-bug` hunk first.
   `extract` hold one benchmark per sample page, and the group `synthetic` holds `ordered_list_50k`.
   Without fixtures it prints a notice and exits.
 - Heap numbers are close to deterministic, not identical: the per-page peak varies by about 1% between
-  runs of the same commit, and the sums of the sample's `extract_alloc_count` and `extract_peak_bytes`
-  by less than 0.3% (five runs: 0.01% and 0.30%). A gate on the sums at 1% sits above that noise; it
-  does not compare per-page numbers.
+  runs of the same commit. Over five runs the min-to-max spread of the sample's summed
+  `extract_alloc_count` was about 0.02% and of its summed `extract_peak_bytes` about 0.3%. The
+  regression gate is on those two sums at strictly more than 1%, above that noise; it never gates a
+  per-page number.
 - The regression job: `scripts/regression.sh --base REF` (or `.ps1`; `bench.yml` runs it on pull requests
   with the base commit) builds REF in a detached worktree at `.temp/regression/base-src`, runs the heap
   sample and `benches/extract.rs` there and in the working tree, and `parity.measure --compare` prints the
