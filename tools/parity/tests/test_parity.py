@@ -117,23 +117,95 @@ def _sources(pin_dir) -> list[str]:
     return [p["source"] for p in json.loads((pin_dir / "index.json").read_text())["pages"]]
 
 
+def _files(root) -> dict[str, bytes]:
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def _failing_after(n, fn):
+    calls = 0
+
+    def wrapper(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls > n:
+            raise OSError("injected")
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def test_filtered_run_merges_instead_of_wiping(tmp_path):
-    meta = {"pin": "p", "max_date": "d", "lock_sha256": "l"}
-    generate.store(tmp_path, meta, [_page("tests/a.html"), _page("tests/b.html")], f1={"f1": 1})
-    generate.store(tmp_path, meta, [_page("tests/b.html")], f1=None)
-    assert _sources(tmp_path) == ["tests/a.html", "tests/b.html"]
-    assert (tmp_path / "pages" / "tests__a.html.json").is_file()
-    assert json.loads((tmp_path / "f1.json").read_text()) == {"f1": 1}
-    generate.store(tmp_path, meta, [_page("tests/c.html")], f1={"f1": 2})
-    assert _sources(tmp_path) == ["tests/c.html"]
-    assert not (tmp_path / "pages" / "tests__a.html.json").exists()
+    pin_dir = tmp_path / "pin"
+    meta = {"pin": "p", "upstream_version": "v", "max_date": "d", "lock_sha256": "l"}
+    generate.store(pin_dir, meta, [_page("tests/a.html"), _page("tests/b.html")], f1={"f1": 1})
+    generate.store(pin_dir, meta, [_page("tests/b.html")], f1=None)
+    assert _sources(pin_dir) == ["tests/a.html", "tests/b.html"]
+    assert (pin_dir / "pages" / "tests__a.html.json").is_file()
+    assert json.loads((pin_dir / "f1.json").read_text()) == {"f1": 1}
+    generate.store(pin_dir, meta, [_page("tests/c.html")], f1={"f1": 2})
+    assert _sources(pin_dir) == ["tests/c.html"]
+    assert not (pin_dir / "pages" / "tests__a.html.json").exists()
 
 
-def test_filtered_run_drops_pages_and_f1_from_another_lock(tmp_path):
-    generate.store(tmp_path, {"lock_sha256": "old"}, [_page("tests/a.html")], f1={"f1": 1})
-    generate.store(tmp_path, {"lock_sha256": "new"}, [_page("tests/b.html")], f1=None)
-    assert _sources(tmp_path) == ["tests/b.html"]
-    assert not (tmp_path / "f1.json").exists()
+@pytest.mark.parametrize("key", ["pin", "upstream_version", "max_date", "lock_sha256"])
+def test_filtered_run_with_another_identity_drops_pages_and_f1(tmp_path, key):
+    pin_dir = tmp_path / "pin"
+    meta = {"pin": "p", "upstream_version": "v", "max_date": "d", "lock_sha256": "l"}
+    generate.store(pin_dir, meta, [_page("tests/a.html")], f1={"f1": 1})
+    generate.store(pin_dir, {**meta, key: "other"}, [_page("tests/b.html")], f1=None)
+    assert _sources(pin_dir) == ["tests/b.html"]
+    assert not (pin_dir / "f1.json").exists()
+
+
+def test_full_run_failure_keeps_the_previous_set(tmp_path, monkeypatch):
+    pin_dir = tmp_path / "pin"
+    generate.store(pin_dir, {"pin": "p"}, [_page("tests/a.html"), _page("tests/b.html")], f1={"f1": 1})
+    before = _files(pin_dir)
+    monkeypatch.setattr(generate, "_write_json", _failing_after(1, generate._write_json))
+    with pytest.raises(OSError):
+        generate.store(pin_dir, {"pin": "p"}, [_page("tests/c.html"), _page("tests/d.html")], f1={"f1": 2})
+    assert _files(pin_dir) == before
+
+
+def test_full_run_clears_leftovers_of_a_crashed_run(tmp_path):
+    pin_dir = tmp_path / "pin"
+    generate.store(pin_dir, {"pin": "p"}, [_page("tests/a.html")], f1={"f1": 1})
+    for leftover in ("pin.new", "pin.old"):
+        (tmp_path / leftover).mkdir()
+        (tmp_path / leftover / "stray.json").write_text("{}")
+    generate.store(pin_dir, {"pin": "p"}, [_page("tests/c.html")], f1={"f1": 2})
+    assert _sources(pin_dir) == ["tests/c.html"]
+    assert not (tmp_path / "pin.new").exists() and not (tmp_path / "pin.old").exists()
+    assert not list(pin_dir.rglob("stray.json"))
+
+
+def test_filtered_run_failure_keeps_the_index(tmp_path, monkeypatch):
+    pin_dir = tmp_path / "pin"
+    generate.store(pin_dir, {"pin": "p"}, [_page("tests/a.html")], f1={"f1": 1})
+    before = (pin_dir / "index.json").read_bytes()
+    write_text = Path.write_text
+
+    def torn(self, text, *args, **kwargs):
+        if self.name.startswith("index.json"):
+            write_text(self, text[: len(text) // 2], *args, **kwargs)
+            raise OSError("injected")
+        return write_text(self, text, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", torn)
+    with pytest.raises(OSError):
+        generate.store(pin_dir, {"pin": "p"}, [_page("tests/b.html")], f1=None)
+    assert (pin_dir / "index.json").read_bytes() == before
+    assert json.loads((pin_dir / "pages" / "tests__a.html.json").read_text()) == {"source": "tests/a.html"}
+
+
+def test_write_json_leaves_no_temp_file_on_failure(tmp_path, monkeypatch):
+    def refuse(*_):
+        raise OSError("injected")
+
+    monkeypatch.setattr(generate.os, "replace", refuse)
+    with pytest.raises(OSError):
+        generate._write_json(tmp_path / "x.json", {})
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_failing_f1_leaves_the_previous_fixture_set(tmp_path, monkeypatch):

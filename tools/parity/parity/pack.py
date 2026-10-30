@@ -9,6 +9,7 @@ An existing archive is left alone.
 
 import argparse
 import json
+import os
 import tarfile
 from pathlib import Path
 
@@ -45,9 +46,15 @@ def validate(pin_dir: Path, pin: str, version: str) -> None:
 
 def pack(pin_dir: Path, out_file: Path) -> None:
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    with zstd.ZstdFile(out_file, "wb", level=LEVEL) as compressed:
-        with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as tar:
-            tar.add(pin_dir, arcname=pin_dir.name)
+    tmp = out_file.with_name(out_file.name + ".tmp")
+    try:
+        with zstd.ZstdFile(tmp, "wb", level=LEVEL) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as tar:
+                tar.add(pin_dir, arcname=pin_dir.name)
+        os.replace(tmp, out_file)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:

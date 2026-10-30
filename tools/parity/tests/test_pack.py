@@ -28,6 +28,17 @@ def test_archive_unpacks_to_the_version_directory(tmp_path):
     assert all(n == "1.0" or n.startswith("1.0/") for n in names)
 
 
+def test_failed_pack_leaves_no_archive(tmp_path, monkeypatch):
+    def refuse(*_, **__):
+        raise OSError("injected")
+
+    monkeypatch.setattr(tarfile.TarFile, "add", refuse)
+    with pytest.raises(OSError):
+        pack.pack(_full_set(tmp_path / "src"), tmp_path / "x.tar.zst")
+    assert not (tmp_path / "x.tar.zst").exists()
+    assert not (tmp_path / "x.tar.zst.tmp").exists()
+
+
 def test_validate_accepts_a_full_set(tmp_path):
     pack.validate(_full_set(tmp_path), "pin", "1.0")
 

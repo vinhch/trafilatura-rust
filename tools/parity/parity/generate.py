@@ -12,6 +12,8 @@ import contextlib
 import hashlib
 import json
 import logging
+import os
+import shutil
 import sys
 import tomllib
 import warnings
@@ -211,38 +213,68 @@ def f1_scores(upstream_root: Path) -> dict:
 
 
 def _write_json(path: Path, value: object) -> None:
-    path.write_text(json.dumps(value, ensure_ascii=True, indent=1) + "\n", encoding="utf-8")
+    "Write through a temp file beside `path` and rename it over, so a crash never leaves a torn file."
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(value, ensure_ascii=True, indent=1) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _swap_dirs(pin_dir: Path) -> tuple[Path, Path]:
+    return pin_dir.with_name(pin_dir.name + ".new"), pin_dir.with_name(pin_dir.name + ".old")
+
+
+def clear_leftovers(pin_dir: Path) -> None:
+    "Remove the `.new` and `.old` directories a crashed full run left beside pin_dir; raises when one is locked."
+    for leftover in _swap_dirs(pin_dir):
+        if leftover.exists():
+            shutil.rmtree(leftover)
 
 
 def store(pin_dir: Path, meta: dict, pages: list[tuple[dict, dict]], f1: dict | None) -> None:
     """Write page files, index.json and f1.json under pin_dir.
 
-    A full run (f1 given) removes stale page files, lists exactly `pages` and writes f1.json. A
-    filtered run (f1 None) overwrites only its pages and merges their entries into the existing
-    index when it has the same identity (pin, version, max_date, lock hash), keeping f1.json; on an
-    identity mismatch it starts a new index and deletes the f1.json that belongs to the old one.
+    The identity of a set is (pin, upstream_version, max_date, lock_sha256). A full run (f1 given)
+    builds the whole set in `<pin_dir>.new` and swaps it in by renaming, so a failure leaves the
+    previous set; it lists exactly `pages` and writes f1.json. A filtered run (f1 None) overwrites
+    only its pages, each file renamed into place and index.json last, and merges their entries into
+    the existing index when it has the same identity, keeping f1.json; on an identity mismatch it
+    starts a new index and deletes the f1.json that belongs to the old one first, so a crash leaves
+    a set without F1 that `pack.validate` refuses.
     """
-    pages_dir = pin_dir / "pages"
-    pages_dir.mkdir(parents=True, exist_ok=True)
     entries = {entry["id"]: entry for entry, _ in pages}
     if f1 is not None:
-        for stale in pages_dir.glob("*.json"):
-            stale.unlink()
-        _write_json(pin_dir / "f1.json", f1)
+        clear_leftovers(pin_dir)
+        staging, old = _swap_dirs(pin_dir)
+        target = staging
     else:
+        target = pin_dir
+    pages_dir = target / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    if f1 is None:
         try:
-            old = json.loads((pin_dir / "index.json").read_text(encoding="utf-8"))
+            current = json.loads((pin_dir / "index.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            old = {}
-        if all(old.get(k) == v for k, v in meta.items()):
-            kept = {e["id"]: e for e in old["pages"] if (pages_dir / f"{e['id']}.json").is_file()}
+            current = {}
+        if all(current.get(k) == v for k, v in meta.items()):
+            kept = {e["id"]: e for e in current["pages"] if (pages_dir / f"{e['id']}.json").is_file()}
             entries = kept | entries
         else:
             (pin_dir / "f1.json").unlink(missing_ok=True)
     for entry, page in pages:
         _write_json(pages_dir / f"{entry['id']}.json", page)
+    if f1 is not None:
+        _write_json(target / "f1.json", f1)
     ordered = sorted(entries.values(), key=lambda e: e["source"])
-    _write_json(pin_dir / "index.json", {**meta, "pages": ordered})
+    _write_json(target / "index.json", {**meta, "pages": ordered})
+    if f1 is not None:
+        if pin_dir.exists():
+            pin_dir.rename(old)
+        staging.rename(pin_dir)
+        shutil.rmtree(old, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -261,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
 
         extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
         pin_dir = args.out / pinned_version()
+        if not args.only:
+            clear_leftovers(pin_dir)
         results = []
         for path in corpus(upstream_root):
             source = path.relative_to(upstream_root).as_posix()
