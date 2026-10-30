@@ -7,8 +7,9 @@
 //! `extract`, `baseline` and `html2txt` on whole pages against what upstream gives
 //! (`docs/parity-harness.md`). `extract` runs through the public API; `baseline` is internal.
 //! The cases come from `tools/parity/parity/gen_extraction_cases.py`: the snippets of the
-//! main-extractor cases, pages for each branch of the cascade, and JSON-LD and Discourse pages for
-//! the baseline.
+//! main-extractor cases, pages for each branch of the cascade, JSON-LD and Discourse pages for the
+//! baseline, and pages whose output step raises. An expected `None` is a `None` from one of
+//! `bare_extraction`'s own checks; an expected exception class is one raised below them.
 
 #[allow(dead_code)]
 mod common;
@@ -62,22 +63,42 @@ fn run_extract(case: &ExtractCase) -> Result<String, ExtractError> {
     extractor.extract(&input, &Call::default())
 }
 
-/// Whether `got` is what upstream gave. `Err(Rejected(_))` stands for upstream's `None` and for an
-/// exception that escapes; the escape is the one `Rejection::InvalidValue`.
+/// Whether `got` is what upstream gave. `Err(Rejected(_))` other than `InvalidValue` stands for a
+/// `None` from one of upstream's checks; `InvalidValue` for an exception raised below them.
 fn extract_matches(got: &Result<String, ExtractError>, want: &Expected) -> bool {
+    let invalid_value = ExtractError::Rejected(Rejection::InvalidValue);
     match (got, want) {
         (Ok(got), Ok(Some(want))) => got == want,
-        (Err(ExtractError::Rejected(_)), Ok(None)) => true,
-        (Err(error), Err(_)) => *error == ExtractError::Rejected(Rejection::InvalidValue),
+        (Err(error @ ExtractError::Rejected(_)), Ok(None)) => *error != invalid_value,
+        (Err(error), Err(_)) => *error == invalid_value,
         _ => false,
     }
+}
+
+#[test]
+fn extract_matches_ties_invalid_value_to_a_raise() {
+    let rejected = |rejection| Err(ExtractError::Rejected(rejection));
+    assert!(!extract_matches(
+        &rejected(Rejection::InvalidValue),
+        &Ok(None)
+    ));
+    assert!(extract_matches(&rejected(Rejection::TooShort), &Ok(None)));
+    assert!(extract_matches(
+        &rejected(Rejection::InvalidValue),
+        &Err("TypeError")
+    ));
+    assert!(!extract_matches(
+        &rejected(Rejection::TooShort),
+        &Err("ValueError")
+    ));
+    assert!(!extract_matches(&Ok("a".into()), &Ok(None)));
 }
 
 fn show_expected(want: &Expected) -> String {
     match want {
         Ok(Some(text)) => format!("Ok({text:?})"),
         Ok(None) => "None".to_string(),
-        Err(name) => format!("raises {name}"),
+        Err(name) => format!("upstream raised {name}"),
     }
 }
 

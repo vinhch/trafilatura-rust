@@ -78,6 +78,20 @@ def test_html5_tree_accepted_by_bare_extraction():
     assert html5tree.last_parse_normalized() is False
 
 
+def test_run_extract_reports_a_raise_below_the_checks():
+    from parity.gen_extraction_cases import Options, run_extract
+
+    discourse = (
+        '<html><head><title>t</title></head><body><div id="data-preloaded" data-preloaded="{&quot;topic_1&quot;: '
+        '&quot;{\\&quot;post_stream\\&quot;: {\\&quot;posts\\&quot;: null}}&quot;}"></div><p>Saddle market teapot '
+        "iota quilt jacket magnet zipper hammer meadow lagoon kennel meadow needle jungle meadow oyster magnet "
+        "drawer gamma kappa teapot thimble.</p></body></html>"
+    )
+    with generate.html5_parsers():
+        assert run_extract(discourse, "txt", Options()) == ("Err", "TypeError")
+        assert run_extract("<html><body></body></html>", "txt", Options()) == ("Ok", None)
+
+
 def test_refuses_wrong_commit():
     with pytest.raises(SystemExit) as exc:
         generate.check_pin(UPSTREAM, expected="0" * 40)

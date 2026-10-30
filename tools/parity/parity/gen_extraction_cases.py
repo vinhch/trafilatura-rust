@@ -11,13 +11,16 @@ full `<html>` document, except the empty load `""`: a fragment such as `"123"` i
 check the crate emulates (`lxml_len`) and is a unit test with the plain-lxml value.
 
 `ExtractCase`: a page, an output format (`txt`, `markdown`, `html`), the options and what `extract` returns:
-`Ok(Some(text))`, `Ok(None)` for upstream's `None`, `Err(name)` for the exception class that escapes. Pages:
+`Ok(Some(text))`, `Ok(None)` for a `None` from one of `bare_extraction`'s own checks, `Err(name)` for the class of
+an exception raised below them, whether `bare_extraction` catches it (a Discourse preload whose `posts` is `null`)
+or it escapes `extract`. Pages:
 
     snippets   every html snippet of `gen_main_extractor_cases.HTML_CASES` after `build()` (imported, not
                copied), once per distinct (page, options); the format and options sets are `format_sets`
     targeted   pages for the branches of `trafilatura_sequence`, each checked while generating against a
                trace of the cascade (`Trace`); a page that misses its branch fails the generation
     baseline   the pages of `BaselineCase`, through `txt` and `markdown`, so the baseline rescue reads them
+    raising    the pages of `RAISING_PAGES`, in every format; each must raise in its listed format
 
 `BaselineCase`: a page, `baseline(page)` as `Ok((text, length))` or `Err(name)` (a Discourse preload whose
 `posts` is `null`, a number or a boolean raises `TypeError` out of `baseline`), and `html2txt(page)` with
@@ -198,6 +201,15 @@ class Target:
 
 TARGETS: list[Target] = []
 BASELINE_PAGES: list[str] = []
+
+# (name, page, the format that raises, the exception class): pages whose output step raises below `bare_extraction`'s
+# own checks, in the one format that reaches the raising code
+RAISING_PAGES: list[tuple[str, str, str, str]] = [
+    # 4301 digits: `html.unescape` in `xmltotxt` raises ValueError, outside any `try`
+    ("charref", doc(f"<article><p>{exact(1400, 300)} &amp;#{'0' * 4300}1;</p></article>"), "txt", "ValueError"),
+    # `convert_to_html` indexes `HTML_TAG_MAPPING` by rend
+    ("hi_rend", doc(f'<article><p>{exact(1401, 300)} <hi rend="zz">x</hi></p></article>'), "html", "KeyError"),
+]
 
 FORUM_LD = ('<script type="application/ld+json">{"@context":"https://schema.org",'
             '"@type":"DiscussionForumPosting","headline":"Thread"}</script>')
@@ -875,19 +887,67 @@ def make_extractor(output_format: str, options: Options):
     return extractor
 
 
+def raised_below_checks(error: BaseException) -> bool:
+    """Whether `error` came from deeper than `bare_extraction`'s own checks, which are `raise ValueError` lines
+    in its body: a raise in `baseline`, `int()`, `urljoin` or lxml sits in a deeper frame."""
+    tb = error.__traceback__
+    if tb is None:
+        return False
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    return tb.tb_frame.f_code.co_name != "bare_extraction"
+
+
+class _Discarded(logging.Handler):
+    """Records the exception live when `bare_extraction` logs `discarding data`, which its
+    `except (TypeError, ValueError)` handler does inside the `except`."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.errors: list[BaseException] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        error = sys.exc_info()[1]
+        if error is not None and record.getMessage().startswith("discarding data"):
+            self.errors.append(error)
+
+
+@contextlib.contextmanager
+def discarded_errors():
+    "Yield the list of exceptions `bare_extraction` caught and discarded inside the block."
+    logger = logging.getLogger("trafilatura.core")
+    handler, level = _Discarded(), logger.level
+    logger.addHandler(handler)
+    if level > logging.WARNING:
+        logger.setLevel(logging.WARNING)
+    try:
+        # under `logging.disable` the handler never fires and every raise would read as upstream's `None`
+        assert logger.isEnabledFor(logging.WARNING), "trafilatura.core warnings are disabled"
+        yield handler.errors
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(level)
+
+
 def run_extract(html: str, output_format: str, options: Options, trace: Trace | None = None):
-    "('Ok', text or None), or ('Err', exception class)."
+    """('Ok', text or None), or ('Err', exception class): the class of an exception that escapes `extract`, or of
+    one `bare_extraction` caught that was raised below its own checks (`None` from a check stays `('Ok', None)`)."""
     from trafilatura import extract
 
     extractor = make_extractor(output_format, options)
     try:
-        if trace is None:
-            text = extract(html, options=extractor)
-        else:
-            with tracing(trace):
+        with discarded_errors() as discarded:
+            if trace is None:
                 text = extract(html, options=extractor)
+            else:
+                with tracing(trace):
+                    text = extract(html, options=extractor)
     except Exception as error:
         return "Err", type(error).__name__
+    if text is None:
+        for error in discarded:
+            if raised_below_checks(error):
+                return "Err", type(error).__name__
     if text is not None and output_format == "html":
         text = rewrite_namespaces(text)
     return "Ok", text
@@ -969,7 +1029,8 @@ HEADER = """\
 
 use crate::trees::CaseOptions;
 
-/// What `extract` returns: the text, `None` for upstream's `None`, or the exception class that escapes.
+/// What `extract` returns: the text, `None` for a `None` from one of upstream's checks, or the class of an
+/// exception raised below them, whether `bare_extraction` catches it or it escapes `extract`.
 pub type Expected = Result<Option<&'static str>, &'static str>;
 
 /// A page through `extract` in `format` (`txt`, `markdown` or `html`) with `options`.
@@ -1038,8 +1099,13 @@ def main() -> None:
             add("baseline", html, "txt", Options())
             # Markdown differs from TXT only where it escapes or formats
             add("baseline", html, "markdown", Options(formatting=True), unless_same_as=("txt", Options()))
+        for name, html, output_format, error in RAISING_PAGES:
+            for fmt in FORMATS:
+                add("raising", html, fmt, Options())
+            if results[(html, output_format, Options())] != ("Err", error):
+                failures.append(f"{name}: {output_format} gives {results[(html, output_format, Options())]}, not {error}")
     if failures:
-        raise AssertionError(f"targeted pages that miss their branch or their output: {failures}")
+        raise AssertionError(f"pages that miss their branch, their output or their raise: {failures}")
     for case in cases:
         assert case.html == "" or case.html[:9].lower().startswith(("<html", "<!doctype")), case.html[:80]
 

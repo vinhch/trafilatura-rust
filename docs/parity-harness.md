@@ -191,7 +191,7 @@ writes it byte for byte.
 | `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
 | `gen_main_extractor_cases.py` | `tests/main_extractor_cases/cases.rs` | the seven element handlers on `etree.fromstring` snippets, and `extract_content` or `extract_comments` then `extract_content` on HTML snippets, each with the options it sets and built with `fast=True` (D-1); results are tree dumps and texts |
 | `gen_xml_output_cases.py` | `tests/xml_output_cases/cases.rs` | the TXT, Markdown and HTML output of `etree.fromstring` snippets and of the bodies the html snippets of `gen_main_extractor_cases` extract (imported, not copied), built with `fast=True` (D-1); an output is the text or the exception upstream raises |
-| `gen_extraction_cases.py` | `tests/extraction_cases/cases.rs` | `extract` in TXT, Markdown and HTML on the html snippets of `gen_main_extractor_cases` (imported) and on pages for each branch of the cascade, and `baseline` with `html2txt` on JSON-LD and Discourse pages, built with `fast=True` (D-1) and `dedup=False` inside the html5 parser swap; results are the text, `None` or the exception class |
+| `gen_extraction_cases.py` | `tests/extraction_cases/cases.rs` | `extract` in TXT, Markdown and HTML on the html snippets of `gen_main_extractor_cases` (imported) and on pages for each branch of the cascade, and `baseline` with `html2txt` on JSON-LD and Discourse pages, built with `fast=True` (D-1) and `dedup=False` inside the html5 parser swap; results are the text, `None` or the class of an exception raised below `bare_extraction`'s own checks, caught or escaping |
 | `gen_repeated_output_cases.py` | `tests/repeated_output_tests/cases.rs` | the sets of upstream's `repeated_output_tests.py` re-derived with `fast=True` (D-1) inside the html5 parser swap: the keys of `test_no_repeated_words` whose result is `None` or repeats a word (upstream's reason kept for a key it lists too), and the comment-list triples that repeat; the file is imported by path from the checkout, and the generation fails when one of the three plain upstream assertions does not hold in fast mode |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
@@ -228,8 +228,9 @@ generator strips them from the expected HTML (D-2) and prints how many cases it 
 
 The cases of `extraction_cases` run as an integration test too, `tests/extraction_cases.rs`.
 `extract_cases_match_upstream` runs each case through the public `Extractor::extract` with the format and
-options of the case: `None` matches any `Rejected` error and a raised exception matches
-`Rejection::InvalidValue`. `baseline_cases_match_upstream` runs the internal `baseline` and `html2txt` with
+options of the case: `None` (a `None` from one of `bare_extraction`'s own checks) matches any `Rejected` error
+but `InvalidValue`, and a raised exception (one below those checks, whether `bare_extraction` catches it, as for a
+Discourse preload whose `posts` is `null`, or it escapes `extract`) matches `Rejection::InvalidValue`. `baseline_cases_match_upstream` runs the internal `baseline` and `html2txt` with
 cleaning. Every page is a full `<html>` document except the empty load: a fragment such as `"123"` fails the
 crate's emulation of lxml's length check, which the html5 swap does not make, so it is a unit test with the
 plain-lxml value. A snippet page runs in the three formats under its own options, then in `txt` with
@@ -242,4 +243,7 @@ the salvage log line), so a page that misses its branch fails the generation. A 
 thresholds (250, 3000, the page share, the ratio, the retry floor), where the page on one side gains text from
 the stage (a discard-class paragraph the baseline recovers, a teaser block the recall retry keeps) and the page
 on the other side does not, so a `<` for a `<=` in the cascade changes an output. The generator prints the
-counts per kind to stderr. Pages that nest thousands of levels are unit tests, not cases.
+counts per kind to stderr. `RAISING_PAGES` lists pages whose output step raises (a 4301-digit character
+reference in `txt`, an unknown `rend` in `html`); each runs in every format and the generation fails when its
+listed format does not give the listed class. The generator reads a caught exception off the `discarding data`
+log record of `bare_extraction`, so it needs that logger enabled for warnings. Pages that nest thousands of levels are unit tests, not cases.
