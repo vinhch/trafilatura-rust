@@ -1,4 +1,4 @@
-"""Time of upstream's decode + parse and extract, heap of its decode + parse, and the merged Rust/Python comparison.
+"""Time of upstream's decode + parse and extract, heap of its decode + parse, and the merged Rust and Python comparison.
 
     python -m parity.measure --upstream PATH --out DIR [--only SUBSTRING]
     python -m parity.measure --merge --out DIR [--rows N]

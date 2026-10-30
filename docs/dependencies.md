@@ -37,7 +37,7 @@ is NCSA), moved by its own Dependabot entry, and never shipped to users.
 | `brotli-decompressor` | feature `decompress` | `brotli` | Decompress-only, forbids `unsafe` by default (D-4) |
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |
 | `dhat` | dev | `tracemalloc` | Peak heap and allocation count per page for `scripts/measure`; dev-only, so stable and widely used is enough (Policy) |
-| `criterion` | dev | none | Statistics-backed timing of the sample for `benches/` and the CI regression job; dev-only, so stable and widely used is enough (Policy); pulls a second `syn`, skipped in `deny.toml` |
+| `criterion` | dev | none | Statistics-backed timing of the sample for `benches/` and the CI regression job; dev-only, so stable and widely used is enough (Policy); pulls a second `syn`, skipped in `deny.toml`; pulls `alloca`, whose build script compiles C through `cc`, so a dev build with all targets needs a C compiler (GitHub runners and the `rust:1.98.1` image have one) |
 | `serde_json` | dev | none | Reads parity fixtures in tests; never a normal dependency |
 | `similar` | dev | none | Myers line diff for the parity check's per-hunk classes; dev-only, so stable and widely used is enough (Policy) |
 | `libfuzzer-sys` | fuzz (`fuzz/` crate) | none | The cargo-fuzz runtime; lives in its own crate and lock, never reaches users; bundles libFuzzer (NCSA) |
