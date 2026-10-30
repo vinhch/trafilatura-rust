@@ -36,4 +36,5 @@ jobs:
       - name: Compare the sample with the base
         env:
           TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
-        run: scripts/regression.sh --base ${{ github.event.pull_request.base.sha }}
+        # The checkout of a pull_request event is the merge commit; its first parent is the base tip.
+        run: scripts/regression.sh --base HEAD^1

@@ -59,7 +59,7 @@ for ($Index = 0; $Index -lt $args.Count; $Index++) {
 }
 
 Set-Location $RepoRoot
-if (-not (Test-Path (Join-Path $Upstream 'trafilatura/utils.py'))) { Fail "$Upstream is not an upstream trafilatura checkout" }
+if (-not (Test-Path (Join-Path $Upstream 'trafilatura/utils.py'))) { Fail "$Upstream is not an upstream trafilatura checkout; pass --upstream PATH or set TRAFILATURA_UPSTREAM" }
 $Upstream = (Resolve-Path $Upstream).Path
 git rev-parse --verify --quiet "$Base^{commit}" *> $null
 if ($LASTEXITCODE -ne 0) { Fail "$Base is not a commit" }
@@ -109,16 +109,27 @@ if ($LASTEXITCODE -ne 0) {
     if (($BasePin -join "`n") -ne ($HeadPin -join "`n")) { $HeadOnly = 'upstream pin differs between base and head' }
 }
 
+# The variables Measure-Tree sets; it puts the caller's values back afterwards.
+$MeasureEnv = 'CARGO_TARGET_DIR', 'TRAFILATURA_UPSTREAM', 'TRAFILATURA_FIXTURES', 'TRAFILATURA_MEASURE', 'TRAFILATURA_MEASURE_ONLY', 'CRITERION_HOME'
+
 # Runs the heap sample and the bench in the tree at $Tree and leaves heap-sample.json and criterion/ in $Out.
 # Both trees build into the head's target dir, so the dependencies compile once. Criterion writes
 # <group>/<bench>/new/estimates.json under CRITERION_HOME instead of the target dir.
 function Measure-Tree {
     param([Parameter(Mandatory = $true)][string]$Tree, [Parameter(Mandatory = $true)][string]$Out)
+    # A run that fails to write the file must not hand back one an earlier run left in the head's .temp
+    Remove-Item (Join-Path $Tree ".temp/measure/$Release-rust-heap-sample.json") -Force -ErrorAction SilentlyContinue
+    $Saved = @{}
+    foreach ($Name in $MeasureEnv) { $Saved[$Name] = [Environment]::GetEnvironmentVariable($Name) }
     Push-Location $Tree
     $env:CARGO_TARGET_DIR = Join-Path $RepoRoot 'target'
     $env:TRAFILATURA_UPSTREAM = $Upstream
     $env:TRAFILATURA_FIXTURES = $Fixtures
     try {
+        # cargo goes by file mtimes: the head's sources are older than the base build, so it would reuse the
+        # base binary, which also writes under base-src (CARGO_MANIFEST_DIR). Dependencies stay cached.
+        cargo clean --release --package trafilatura-rust 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
+        if ($LASTEXITCODE -ne 0) { Fail "cargo clean failed in $Tree" }
         [Console]::Error.WriteLine("== heap sample in $Tree ==")
         $env:TRAFILATURA_MEASURE = '1'
         $env:TRAFILATURA_MEASURE_ONLY = '@sample'
@@ -130,7 +141,7 @@ function Measure-Tree {
         cargo bench --locked --features __internals --bench extract -- --noplot 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
         if ($LASTEXITCODE -ne 0) { Fail "the bench failed in $Tree" }
     } finally {
-        Remove-Item Env:CARGO_TARGET_DIR, Env:TRAFILATURA_FIXTURES, Env:CRITERION_HOME, Env:TRAFILATURA_MEASURE, Env:TRAFILATURA_MEASURE_ONLY -ErrorAction SilentlyContinue
+        foreach ($Name in $MeasureEnv) { [Environment]::SetEnvironmentVariable($Name, $Saved[$Name]) }
         Pop-Location
     }
     Copy-Item (Join-Path $Tree ".temp/measure/$Release-rust-heap-sample.json") (Join-Path $Out 'heap-sample.json')

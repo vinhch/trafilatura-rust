@@ -58,7 +58,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 cd "$repo_root"
-[ -f "$upstream/trafilatura/utils.py" ] || fail "$upstream is not an upstream trafilatura checkout"
+[ -f "$upstream/trafilatura/utils.py" ] || fail "$upstream is not an upstream trafilatura checkout; pass --upstream PATH or set TRAFILATURA_UPSTREAM"
 upstream="$(cd "$upstream" && pwd)"
 git rev-parse --verify --quiet "$base^{commit}" >/dev/null || fail "$base is not a commit"
 
@@ -76,7 +76,7 @@ fixtures="$repo_root/.temp/fixtures/$release"
 base_src=".temp/regression/base-src"
 # A run killed before its trap leaves the worktree registered; prune below drops it when its directory is
 # already gone, so a failed remove is not an error.
-if git worktree list --porcelain | grep -q '^worktree .*/\.temp/regression/base-src$'; then
+if git worktree list --porcelain | grep '^worktree .*/\.temp/regression/base-src$' >/dev/null; then
   git worktree remove --force "$base_src" || true
 fi
 rm -rf .temp/regression
@@ -101,9 +101,14 @@ fi
 # <group>/<bench>/new/estimates.json under CRITERION_HOME instead of the target dir.
 measure_tree() {
   local tree="$1" out="$2"
+  # A run that fails to write the file must not hand back one an earlier run left in the head's .temp
+  rm -f "$tree/.temp/measure/$release-rust-heap-sample.json"
   (
     cd "$tree"
     export CARGO_TARGET_DIR="$repo_root/target" TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_FIXTURES="$fixtures"
+    # cargo goes by file mtimes: the head's sources are older than the base build, so it would reuse the
+    # base binary, which also writes under base-src (CARGO_MANIFEST_DIR). Dependencies stay cached.
+    cargo clean --release --package trafilatura-rust >&2
     echo "== heap sample in $tree ==" >&2
     TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY=@sample \
       cargo test --locked --release --features __internals --test measure_heap -- --nocapture >&2

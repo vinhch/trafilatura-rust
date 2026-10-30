@@ -25,7 +25,8 @@ in the same place as the Rust side: natively on Linux, in one Linux container (s
 elsewhere, so both sides always share a system. Absolute numbers still depend on the machine.
 
   --upstream PATH  Upstream git checkout. Default: \$TRAFILATURA_UPSTREAM, else ../trafilatura.
-  --docker         Run both sides in the container even on Linux.
+  --docker         Run both sides in the container even on Linux. On a Linux host the container runs as root, so
+                   it leaves the .temp/measure outputs owned by root.
   --only SUBSTRING Keep pages whose upstream path contains SUBSTRING.
   -h, --help       Show this message.
 EOF
