@@ -433,9 +433,9 @@ fn loads_checks_call() {
     let call = Call::default().cancel(&token);
     assert!(matches!(loads("", false, &call), Ok(None)));
 
-    // `CHECK_INTERVAL` is 256. The counter starts at 1, so the first tick (at 1) cannot see the
-    // token: only the tick of the 256th value, inside the parse loop, can. The list and each of
-    // its values tick once.
+    // The counter starts at 1, so the first tick cannot see the token: only the tick at
+    // `visited == CHECK_INTERVAL`, inside the parse loop, can. The list and each of its values
+    // tick once.
     let parse_list = |items: usize| {
         let text = format!("[{}]", vec!["0"; items].join(","));
         let mut parser = Parser::new(&text, false);

@@ -92,6 +92,14 @@ def test_run_extract_reports_a_raise_below_the_checks():
         assert run_extract("<html><body></body></html>", "txt", Options()) == ("Ok", None)
 
 
+def test_run_extract_refuses_disabled_logging(clean_logging):
+    from parity.gen_extraction_cases import Options, run_extract
+
+    logging.disable(logging.CRITICAL)
+    with generate.html5_parsers(), pytest.raises(AssertionError, match="warnings are disabled"):
+        run_extract("<html><body></body></html>", "txt", Options())
+
+
 def test_refuses_wrong_commit():
     with pytest.raises(SystemExit) as exc:
         generate.check_pin(UPSTREAM, expected="0" * 40)

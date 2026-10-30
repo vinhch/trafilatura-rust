@@ -935,15 +935,15 @@ def run_extract(html: str, output_format: str, options: Options, trace: Trace | 
     from trafilatura import extract
 
     extractor = make_extractor(output_format, options)
-    try:
-        with discarded_errors() as discarded:
+    with discarded_errors() as discarded:
+        try:
             if trace is None:
                 text = extract(html, options=extractor)
             else:
                 with tracing(trace):
                     text = extract(html, options=extractor)
-    except Exception as error:
-        return "Err", type(error).__name__
+        except Exception as error:
+            return "Err", type(error).__name__
     if text is None:
         for error in discarded:
             if raised_below_checks(error):
