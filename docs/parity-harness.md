@@ -161,6 +161,17 @@ first outputs that differ, outputs with a `port-bug` hunk first.
   text), `data_table_20m` (a table of 3-cell rows, `max_nodes` raised to 2,000,000, `too_large` at the
   output limit) and `recall_rerun_20m` (a 20 MiB script on a page whose recall extraction reverts to its
   pre-cleaning copy, a page that extracts twice once script text is dropped).
+- The sample: `sample` in `tests/measure/mod.rs` picks the smallest corpus page, the median and the
+  three largest, by `(size_bytes, id)`, each once. `TRAFILATURA_MEASURE_ONLY=@sample` makes a target
+  measure only the sample, without the synthetic pages, and write
+  `.temp/measure/<version>-rust-<kind>-sample.json`. `benches/extract.rs` times the sample with
+  criterion (`cargo bench --features __internals --bench extract`): the groups `load_html` and
+  `extract` hold one benchmark per sample page, and the group `synthetic` holds `ordered_list_50k`.
+  Without fixtures it prints a notice and exits.
+- Heap numbers are close to deterministic, not identical: the per-page peak varies by about 1% between
+  runs of the same commit, and the sums of the sample's `extract_alloc_count` and `extract_peak_bytes`
+  by less than 0.3% (five runs: 0.01% and 0.30%). A gate on the sums at 1% sits above that noise; it
+  does not compare per-page numbers.
 - `scripts/oracle.sh 'CODE'` (or `.ps1`) runs one Python snippet with upstream importable at the pin
   and prints its stdout: the way to get an expected value for a ported test. It runs where
   `scripts/fixtures.sh` runs (uv on Linux, Docker elsewhere), so lxml is libxml2 2.14.6 in both.
@@ -171,7 +182,7 @@ first outputs that differ, outputs with a `port-bug` hunk first.
 | `TRAFILATURA_FIXTURES` | tests | fixture directory instead of `.temp/fixtures/<version>` |
 | `PARITY_REQUIRE_FIXTURES` | parity test | missing fixtures fail instead of skip |
 | `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap` | `1` lets the targets run; they skip otherwise |
-| `TRAFILATURA_MEASURE_ONLY` | measure targets | unset: the corpus, then the synthetic pages; `synthetic`: only the synthetic pages, the corpus file untouched; any other text: only the corpus pages whose source path contains it |
+| `TRAFILATURA_MEASURE_ONLY` | measure targets | unset: the corpus, then the synthetic pages; `synthetic`: only the synthetic pages, the corpus file untouched; `@sample`: only the sample of the corpus, into the `-sample` file; any other text: only the corpus pages whose source path contains it |
 | `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure`, measure targets | labels the host of a measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |
 
 ## Generated test data

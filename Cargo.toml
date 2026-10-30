@@ -48,6 +48,7 @@ indexing_slicing = "warn"
 string_slice = "deny"
 
 [dev-dependencies]
+criterion = { version = "0.8", default-features = false }
 dhat = "0.3"
 serde_json = "1"
 similar = "2"
@@ -97,5 +98,15 @@ required-features = ["__internals"]
 
 [[test]]
 name = "measure_heap"
+harness = false
+required-features = ["__internals"]
+
+[[test]]
+name = "measure_sample"
+required-features = ["__internals"]
+
+# Statistics-backed timing of the corpus sample and one synthetic page (scripts/measure and the CI regression job).
+[[bench]]
+name = "extract"
 harness = false
 required-features = ["__internals"]

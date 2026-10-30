@@ -33,7 +33,10 @@ unused-allowed-license = "allow"
 multiple-versions = "deny"
 # Dev-dependencies count: docs/dependencies.md promises one version of each crate in Cargo.lock.
 multiple-versions-include-dev = true
-skip = [{ crate = "miniz_oxide@0.8", reason = "dev-only: dhat -> backtrace pins miniz_oxide 0.8 while flate2 (feature decompress) uses 0.9; drop when backtrace moves to 0.9" }]
+skip = [
+    { crate = "miniz_oxide@0.8", reason = "dev-only: dhat -> backtrace pins miniz_oxide 0.8 while flate2 (feature decompress) uses 0.9; drop when backtrace moves to 0.9" },
+    { crate = "syn@2", reason = "dev-only: criterion -> ciborium -> half -> zerocopy-derive pins syn 2 while serde_derive uses 3; drop when zerocopy-derive moves to 3" },
+]
 wildcards = "deny"
 allow-wildcard-paths = true
 

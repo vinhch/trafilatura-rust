@@ -4,11 +4,12 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Shared by `measure_time.rs` and `measure_heap.rs`: the page list, the `load_html` and `extract`
-//! calls, the synthetic pages and the JSON files. The two targets are separate binaries because the
-//! heap one installs the dhat allocator, which locks on every allocation and would inflate the
-//! timings.
+//! Shared by `measure_time.rs`, `measure_heap.rs`, `measure_sample.rs` and `benches/extract.rs`: the
+//! page list and its sample, the `load_html` and `extract` calls, the synthetic pages and the JSON
+//! files. The two measure targets are separate binaries because the heap one installs the dhat
+//! allocator, which locks on every allocation and would inflate the timings.
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -123,6 +124,17 @@ fn ordered_list(items: usize) -> String {
     out
 }
 
+/// A Markdown page of `items` ordered-list items: Markdown is the only format where the numbering of
+/// `xml::list_marker` runs.
+pub fn ordered_list_page(name: &'static str, items: usize) -> Synthetic {
+    Synthetic {
+        name,
+        html: document(&ordered_list(items)),
+        options: Options::new().format(Format::Markdown),
+        expect: Expect::Ok,
+    }
+}
+
 /// `prefix`, then `unit` repeated until the length reaches `bytes`, then `suffix`.
 fn filled(prefix: &str, unit: &str, suffix: &str, bytes: usize) -> String {
     let mut out = String::with_capacity(bytes + prefix.len() + unit.len() + suffix.len());
@@ -201,18 +213,8 @@ pub fn synthetic() -> Vec<Synthetic> {
             options: Options::new(),
             expect: Expect::TooLarge,
         },
-        Synthetic {
-            name: "ordered_list_50k",
-            html: document(&ordered_list(50_000)),
-            options: Options::new().format(Format::Markdown),
-            expect: Expect::Ok,
-        },
-        Synthetic {
-            name: "ordered_list_200k",
-            html: document(&ordered_list(200_000)),
-            options: Options::new().format(Format::Markdown),
-            expect: Expect::Ok,
-        },
+        ordered_list_page("ordered_list_50k", 50_000),
+        ordered_list_page("ordered_list_200k", 200_000),
     ];
     let inline_script = |bytes: usize| {
         filled(
@@ -270,19 +272,89 @@ pub fn synthetic() -> Vec<Synthetic> {
     pages
 }
 
-/// Runs the corpus with `corpus` and the synthetic pages `include` accepts with `synthetic`, as
+/// One page of the parity corpus, as `index.json` lists it.
+pub struct CorpusPage {
+    pub id: String,
+    /// The path under the upstream checkout.
+    pub source: String,
+    /// The file on disk: the upstream checkout joined with `source`.
+    pub path: PathBuf,
+    pub size_bytes: u64,
+}
+
+/// Every page of `index.json` in index order; `None` when the upstream checkout or the fixture set
+/// is missing.
+pub fn corpus() -> Option<Vec<CorpusPage>> {
+    let upstream = common::upstream_root()?;
+    let fixtures = common::fixture_dir()?;
+    let index: Value =
+        serde_json::from_str(&std::fs::read_to_string(fixtures.join("index.json")).unwrap())
+            .unwrap();
+    let pages = index["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            let source = entry["source"].as_str().unwrap();
+            let path = upstream.join(source);
+            CorpusPage {
+                id: entry["id"].as_str().unwrap().to_owned(),
+                source: source.to_owned(),
+                size_bytes: std::fs::metadata(&path).unwrap().len(),
+                path,
+            }
+        })
+        .collect();
+    Some(pages)
+}
+
+/// Pages the sample takes from the large end of the corpus.
+const SAMPLE_LARGEST: usize = 3;
+
+/// A few pages that stand for the corpus, for the bench and the CI regression job, which cannot run
+/// all of it: the smallest, the median and the `SAMPLE_LARGEST` largest by `(size_bytes, id)`, each
+/// once, in that order.
+pub fn sample(pages: &[CorpusPage]) -> Vec<&CorpusPage> {
+    let mut sorted: Vec<&CorpusPage> = pages.iter().collect();
+    sorted.sort_by(|a, b| (a.size_bytes, &a.id).cmp(&(b.size_bytes, &b.id)));
+    let len = sorted.len();
+    let picked: BTreeSet<usize> = [0, len / 2]
+        .into_iter()
+        .chain(len.saturating_sub(SAMPLE_LARGEST)..len)
+        .collect();
+    picked
+        .into_iter()
+        .filter_map(|index| sorted.get(index).copied())
+        .collect()
+}
+
+/// `$TRAFILATURA_MEASURE_ONLY` value that selects `sample` of the corpus and no synthetic page. The
+/// `@` is in no corpus path, which a plain word such as `sample` would match (`http_sample.html`).
+const ONLY_SAMPLE: &str = "@sample";
+
+/// Runs the corpus with `measure_page` and the synthetic pages `include` accepts with `synthetic`, as
 /// `$TRAFILATURA_MEASURE_ONLY` says: unset, both; `synthetic`, only the synthetic pages (the corpus
-/// file is left alone); anything else, the corpus pages whose source contains it.
+/// file is left alone); `@sample`, only `sample` of the corpus, into the `-sample` file; anything
+/// else, the corpus pages whose source contains it.
 pub fn run_all(
     kind: &str,
     extra: Value,
-    corpus: impl Fn(&[u8]) -> Value,
+    measure_page: impl Fn(&[u8]) -> Value,
     include: impl Fn(&Synthetic) -> bool,
     synthetic: impl Fn(&Synthetic) -> Value,
 ) {
     let only = std::env::var("TRAFILATURA_MEASURE_ONLY").unwrap_or_default();
+    if only == ONLY_SAMPLE {
+        run(&format!("{kind}-sample"), extra, measure_page, sample);
+        return;
+    }
     if only != "synthetic" {
-        run(kind, &only, extra.clone(), corpus);
+        run(kind, extra.clone(), measure_page, |pages| {
+            pages
+                .iter()
+                .filter(|page| page.source.contains(&only))
+                .collect()
+        });
     }
     if only.is_empty() || only == "synthetic" {
         run_synthetic(kind, extra, include, synthetic);
@@ -347,31 +419,30 @@ fn run_synthetic(
     );
 }
 
-/// Calls `measure` on each corpus page whose source contains `only`, then writes
-/// `.temp/measure/<version>-rust-<kind>.json`.
-fn run(kind: &str, only: &str, extra: Value, measure: impl Fn(&[u8]) -> Value) {
-    let upstream = common::upstream_root().expect("upstream checkout not found");
-    let fixtures = common::fixture_dir().expect("fixtures missing: run scripts/fixtures.sh first");
-    let index: Value =
-        serde_json::from_str(&std::fs::read_to_string(fixtures.join("index.json")).unwrap())
-            .unwrap();
-    let pages: Vec<Value> = index["pages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|entry| entry["source"].as_str().unwrap().contains(only))
+/// Calls `measure` on each corpus page `select` keeps, then writes
+/// `.temp/measure/<version>-rust-<file>.json`.
+fn run(
+    file: &str,
+    extra: Value,
+    measure: impl Fn(&[u8]) -> Value,
+    select: impl for<'a> Fn(&'a [CorpusPage]) -> Vec<&'a CorpusPage>,
+) {
+    common::upstream_root().expect("upstream checkout not found");
+    common::fixture_dir().expect("fixtures missing: run scripts/fixtures.sh first");
+    let all = corpus().expect("the upstream checkout and the fixtures were found just above");
+    let pages: Vec<Value> = select(&all)
+        .into_iter()
         .map(|entry| {
-            let source = entry["source"].as_str().unwrap();
-            let bytes = std::fs::read(upstream.join(source)).unwrap();
+            let bytes = std::fs::read(&entry.path).unwrap();
             let mut page = measure(&bytes);
-            page["id"] = entry["id"].clone();
-            page["source"] = entry["source"].clone();
+            page["id"] = json!(entry.id);
+            page["source"] = json!(entry.source);
             page["input_bytes"] = json!(bytes.len());
-            println!("{source}");
+            println!("{}", entry.source);
             page
         })
         .collect();
-    let path = output_path(kind);
+    let path = output_path(file);
     write_document(&path, extra, &pages);
     println!("wrote {} pages to {}", pages.len(), path.display());
 }
