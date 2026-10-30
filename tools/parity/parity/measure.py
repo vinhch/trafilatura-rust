@@ -1,10 +1,11 @@
-"""Time and heap of upstream's decode + parse, and the merged Rust/Python comparison.
+"""Time of upstream's decode + parse and extract, heap of its decode + parse, and the merged Rust/Python comparison.
 
     python -m parity.measure --upstream PATH --out DIR [--only SUBSTRING]
     python -m parity.measure --merge --out DIR [--rows N]
 
-The first form times `trafilatura.utils.load_html(bytes)` (5-run median) and measures its heap with
-tracemalloc, per page of the fixture corpus, into DIR/<version>-python.json. The second form combines
+The first form times `trafilatura.utils.load_html(bytes)` and `extract(bytes)` (TXT, fast mode, dedup off:
+the fixture options; 5-run medians) and measures the heap of `load_html` with tracemalloc, per page of the
+fixture corpus, into DIR/<version>-python.json. The second form combines
 the crate's DIR/<version>-rust-time.json and DIR/<version>-rust-heap.json (tests/measure_time.rs,
 tests/measure_heap.rs) into DIR/<version>-rust.json, merges that with the Python file into
 DIR/<version>.json and prints a Markdown table.
@@ -12,7 +13,7 @@ DIR/<version>.json and prints a Markdown table.
 Time is comparable. Heap is not: tracemalloc sees only memory allocated through Python allocators,
 and lxml builds its tree with the libxml2 C allocator, so the Python heap columns miss the tree itself
 while the Rust columns count every allocation. The table prints the numbers side by side and no
-ratio for them.
+ratio for them. Upstream's extract heap is not measured at all.
 """
 
 import argparse
@@ -30,8 +31,14 @@ RUNS = 5
 HEAP_NOTE = "not comparable: tracemalloc excludes libxml2 C allocations (the lxml tree)"
 
 
-def measure_page(load_html, data: bytes) -> dict:
-    "Median time over RUNS, then one traced run for the heap; the tracer slows loads, so it never overlaps the timing."
+def _median_ns(timings: list[float]) -> int:
+    return round(statistics.median(timings) * 1e9)
+
+
+def measure_page(load_html, extract, data: bytes, clear_caches=lambda: None) -> dict:
+    """Median time of load_html and of extract over RUNS, then one traced load_html run for the heap; the
+    tracer slows loads, so it never overlaps the timing. `clear_caches` runs before each timed extract
+    call, outside the clock."""
     timings = []
     loaded = False
     for _ in range(RUNS):
@@ -41,6 +48,16 @@ def measure_page(load_html, data: bytes) -> dict:
         except Exception:
             loaded = False
         timings.append(time.perf_counter() - start)
+    extract_timings = []
+    extract_ok = False
+    for _ in range(RUNS):
+        clear_caches()
+        start = time.perf_counter()
+        try:
+            extract_ok = extract(data) is not None
+        except Exception:
+            extract_ok = False
+        extract_timings.append(time.perf_counter() - start)
     gc.collect()
     tracemalloc.start(1)
     try:
@@ -60,7 +77,9 @@ def measure_page(load_html, data: bytes) -> dict:
     return {
         "input_bytes": len(data),
         "loaded": loaded,
-        "median_ns": round(statistics.median(timings) * 1e9),
+        "median_ns": _median_ns(timings),
+        "extract_ok": extract_ok,
+        "extract_median_ns": _median_ns(extract_timings),
         "retained_bytes": current - base,
         "retained_blocks": blocks,
         "peak_bytes": peak - base,
@@ -78,12 +97,21 @@ def host() -> dict:
 
 def run(upstream_root: Path, out: Path, only: str) -> None:
     from . import import_path, page_id
-    from .generate import check_pin, corpus, pinned_version, quiet_upstream
+    from .generate import _options, check_pin, corpus, pinned_version, quiet_upstream
 
     pin = check_pin(upstream_root)
     import_path(upstream_root)
     with quiet_upstream():
-        from trafilatura.utils import load_html
+        from trafilatura import extract
+        from trafilatura.settings import DEFAULT_CONFIG
+        from trafilatura.utils import line_processing, load_html, trim
+
+        options = _options("txt", False, DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH"))
+
+        def clear_caches() -> None:
+            # lru_cache on page strings: runs 2 to 5 of one page would hit what a crawl of distinct pages misses
+            trim.cache_clear()
+            line_processing.cache_clear()
 
         pages = []
         for path in corpus(upstream_root):
@@ -91,11 +119,11 @@ def run(upstream_root: Path, out: Path, only: str) -> None:
             if only not in source:
                 continue
             print(source, file=sys.stderr)
-            pages.append({"id": page_id(source), "source": source, **measure_page(load_html, path.read_bytes())})
+            pages.append({"id": page_id(source), "source": source, **measure_page(load_html, lambda data: extract(data, options=options), path.read_bytes(), clear_caches)})
         out.mkdir(parents=True, exist_ok=True)
         version = pinned_version()
         target = out / f"{version}-python.json"
-        document = {"pin": pin, "upstream_version": version, "host": host(), "extra": {"runs": RUNS}, "pages": pages}
+        document = {"pin": pin, "upstream_version": version, "host": host(), "extra": {"runs": RUNS, "extract_options": "txt, fast=True, dedup=False"}, "pages": pages}
         target.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
         print(f"wrote {len(pages)} pages to {target}", file=sys.stderr)
 
@@ -143,21 +171,26 @@ def loaded_pages(pages: list[dict]) -> list[dict]:
     return [p for p in pages if p["rust"]["loaded"] and p["python"]["loaded"]]
 
 
-def _extract_totals(rows: list[dict]) -> dict:
-    "Rust only, when the run measured extraction: summed median time and allocations, the largest peak, pages that gave text."
+def _extract_totals(rows: list[dict], side: str) -> dict:
+    """When every row measured extraction: summed median time and pages that gave text; Rust also the
+    summed allocations and the largest peak (Python's extract heap is not measured)."""
     if not rows or not all("extract_median_ns" in r for r in rows):
         return {}
-    return {
+    result = {
         "extract_median_ms": sum(r["extract_median_ns"] for r in rows) / 1e6,
-        "extract_alloc_bytes": sum(r["extract_alloc_bytes"] for r in rows),
-        "extract_alloc_count": sum(r["extract_alloc_count"] for r in rows),
-        "extract_peak_max_bytes": max(r["extract_peak_bytes"] for r in rows),
         "extract_ok_pages": sum(1 for r in rows if r["extract_ok"]),
     }
+    if side == "rust":
+        result |= {
+            "extract_alloc_bytes": sum(r["extract_alloc_bytes"] for r in rows),
+            "extract_alloc_count": sum(r["extract_alloc_count"] for r in rows),
+            "extract_peak_max_bytes": max(r["extract_peak_bytes"] for r in rows),
+        }
+    return result
 
 
 def totals(pages: list[dict]) -> dict:
-    "Per side over the loaded pages: summed median time and retained heap, summed allocations (Rust only), peaks."
+    "Per side over the loaded pages: summed median time and retained heap, summed allocations (Rust only), peaks, extraction."
     result = {}
     for side in ("rust", "python"):
         rows = [p[side] for p in loaded_pages(pages)]
@@ -170,7 +203,7 @@ def totals(pages: list[dict]) -> dict:
             "retained_blocks": sum(r["retained_blocks"] for r in rows),
             "peak_max_bytes": max(peaks, default=0),
             "peak_mean_bytes": sum(peaks) / len(peaks) if peaks else 0,
-            **(_extract_totals(rows) if side == "rust" else {}),
+            **_extract_totals(rows, side),
         }
     return result
 
@@ -183,6 +216,38 @@ def _where(h: dict) -> str:
     return f"{h['os']}/{h['arch']} ({h['runtime']})"
 
 
+def _extraction_block(r: dict, y: dict, pages: int) -> list[str]:
+    "The extraction totals: two sides when the Python file measured extract, Rust only for an older run."
+    if "extract_median_ms" not in y:
+        return [
+            "",
+            f"Rust extraction (`extract`, TXT, fast mode; it repeats the decode and parse), {r['extract_ok_pages']} of "
+            f"{pages} pages gave text, no Python counterpart:",
+            "",
+            "| metric | Rust |",
+            "| --- | ---: |",
+            f"| extraction median time, sum (ms) | {r['extract_median_ms']:.1f} |",
+            f"| extraction peak heap, largest page (KiB) | {r['extract_peak_max_bytes'] / 1024:.0f} |",
+            f"| extraction allocated, total (KiB) | {r['extract_alloc_bytes'] / 1024:.0f} |",
+            f"| extraction allocation count, total | {r['extract_alloc_count']} |",
+            "",
+        ]
+    return [
+        "",
+        f"Extraction (`extract`, TXT, fast mode; it repeats the decode and parse), {pages} pages, text from "
+        f"{r['extract_ok_pages']} on Rust and {y['extract_ok_pages']} on Python:",
+        "",
+        "| metric | Rust | Python | Python / Rust |",
+        "| --- | ---: | ---: | ---: |",
+        f"| extraction median time, sum (ms) | {r['extract_median_ms']:.1f} | {y['extract_median_ms']:.1f} "
+        f"| {_ratio(y['extract_median_ms'], r['extract_median_ms'])} |",
+        f"| extraction peak heap, largest page (KiB) | {r['extract_peak_max_bytes'] / 1024:.0f} | n/a | n/a |",
+        f"| extraction allocated, total (KiB) | {r['extract_alloc_bytes'] / 1024:.0f} | n/a | n/a |",
+        f"| extraction allocation count, total | {r['extract_alloc_count']} | n/a | n/a |",
+        "",
+    ]
+
+
 def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict | None = None) -> str:
     "Markdown: the first `rows` loaded pages one per line, the totals, then the caveats."
     usable = loaded_pages(pages)
@@ -190,12 +255,18 @@ def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict
     t = totals(pages)
     r, y = t["rust"], t["python"]
     extracted = "extract_median_ms" in r
+    compared = extracted and "extract_median_ms" in y
     if rows:
         header = "| page | input KiB | time ms Rust | time ms Python | Python / Rust | peak KiB Rust | peak KiB Python (*) |"
         rule = "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
         if extracted:
-            header += " extract ms Rust | extract peak KiB Rust |"
-            rule += " ---: | ---: |"
+            header += " extract ms Rust |"
+            rule += " ---: |"
+            if compared:
+                header += " extract ms Python | extract Python / Rust |"
+                rule += " ---: | ---: |"
+            header += " extract peak KiB Rust |"
+            rule += " ---: |"
         lines += [header, rule]
         for p in usable[:rows]:
             pr, py = p["rust"], p["python"]
@@ -204,10 +275,13 @@ def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict
                 f"| {_ratio(py['median_ns'], pr['median_ns'])} | {pr['peak_bytes'] / 1024:.0f} | {py['peak_bytes'] / 1024:.0f} |"
             )
             if extracted:
-                row += f" {pr['extract_median_ns'] / 1e6:.2f} | {pr['extract_peak_bytes'] / 1024:.0f} |"
+                row += f" {pr['extract_median_ns'] / 1e6:.2f} |"
+                if compared:
+                    row += f" {py['extract_median_ns'] / 1e6:.2f} | {_ratio(py['extract_median_ns'], pr['extract_median_ns'])} |"
+                row += f" {pr['extract_peak_bytes'] / 1024:.0f} |"
             lines.append(row)
         if len(usable) > rows:
-            lines.append(f"| ... {len(usable) - rows} more pages | | | | | | |{' | |' if extracted else ''}")
+            lines.append(f"| ... {len(usable) - rows} more pages | | | | | | |{' | |' * (2 if compared else 1) if extracted else ''}")
         lines.append("")
     lines += [
         f"Totals over {len(usable)} pages, decode + parse:",
@@ -223,23 +297,7 @@ def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict
         f"| allocation count, total | {r['alloc_count']} | n/a | n/a |",
         "",
         f"(*) {HEAP_NOTE}.",
-        *(
-            [
-                "",
-                f"Rust extraction (`extract`, TXT, fast mode; it repeats the decode and parse), {r['extract_ok_pages']} of "
-                f"{len(usable)} pages gave text, no Python counterpart:",
-                "",
-                "| metric | Rust |",
-                "| --- | ---: |",
-                f"| extraction median time, sum (ms) | {r['extract_median_ms']:.1f} |",
-                f"| extraction peak heap, largest page (KiB) | {r['extract_peak_max_bytes'] / 1024:.0f} |",
-                f"| extraction allocated, total (KiB) | {r['extract_alloc_bytes'] / 1024:.0f} |",
-                f"| extraction allocation count, total | {r['extract_alloc_count']} |",
-                "",
-            ]
-            if extracted
-            else []
-        ),
+        *(_extraction_block(r, y, len(usable)) if extracted else []),
         f"Pages: {len(usable)} compared, {len(pages) - len(usable)} excluded (not loaded on one side), "
         f"{dropped} dropped (on one side only).",
     ]

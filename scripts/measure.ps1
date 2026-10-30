@@ -1,9 +1,9 @@
 #Requires -Version 7.2
 
 # Measure the parity corpus: time (5-run median) and heap per page. The Rust side covers decode, parse and
-# extraction of every page plus the synthetic pages; the Python side decode + parse only. The Rust targets
-# write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json (and -synthetic.json files),
-# the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
+# extraction of every page plus the synthetic pages; the Python side times decode + parse and extraction.
+# The Rust targets write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json (and
+# -synthetic.json files), the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
 # prints a Markdown table. Needs the fixtures (scripts/fixtures.ps1): their index.json
 # lists the pages. Run it by hand; the numbers depend on the machine. The Rust targets take about 5 minutes
 # and need about 1 GB of heap for the synthetic pages.
@@ -86,7 +86,7 @@ try {
     Remove-Item Env:TRAFILATURA_MEASURE, Env:TRAFILATURA_MEASURE_ONLY -ErrorAction SilentlyContinue
 }
 
-[Console]::Error.WriteLine('== Python: upstream load_html ==')
+[Console]::Error.WriteLine('== Python: upstream load_html and extract ==')
 if (-not $UseDocker -and $IsLinux) {
     uv run --frozen --no-dev --directory tools/parity python -m parity.measure --upstream $Upstream --out "$RepoRoot/.temp/measure" @OnlyArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

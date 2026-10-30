@@ -28,8 +28,8 @@ one ports Python directly:
   are listed in `docs/deviations.md`.
 - Production safety: cancellation, deadlines and input limits in the API, no panics, few dependencies.
 
-Is it better? Not yet shown: extraction is measured on the Rust side only (`docs/parity-harness.md`),
-with no upstream extraction time to compare against.
+Is it better? `scripts/measure` times `extract` per page on both sides and prints the Rust / Python
+comparison (`docs/parity-harness.md`); the numbers depend on the machine, so run it on yours.
 The bet is that staying close to upstream makes each Python release cheaper to follow.
 
 ## Documents

@@ -133,9 +133,11 @@ first outputs that differ, outputs with a `port-bug` hunk first.
   and heap per page of the corpus. The Rust side covers `load_html` (decode plus parse) and `extract`
   (TXT, which repeats both) with the keys `loaded`, `median_ns`, `extract_ok`, `extract_median_ns`,
   `extract_alloc_bytes`, `extract_alloc_count` and `extract_peak_bytes`, and also the synthetic pages
-  below. The Python side covers decode plus parse only: the comparison with upstream is `load_html`
-  alone, and an upstream extraction number is part of Phase 9. Heap is comparable only on the Rust side:
-  tracemalloc misses the lxml tree. Run it by hand; the numbers depend on the machine. A full run of
+  below. The Python side covers `load_html` (keys `loaded`, `median_ns` and the heap) and `extract` with
+  the fixture options (TXT, fast mode, dedup off; keys `extract_ok`, `extract_median_ns`), and clears
+  the two `lru_cache`s of upstream's text helpers before each timed call. Time is comparable on both
+  steps. Heap is comparable only on the Rust side: tracemalloc misses the lxml tree, and upstream's
+  extract heap is not measured. Run it by hand; the numbers depend on the machine. A full run of
   the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
   ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing

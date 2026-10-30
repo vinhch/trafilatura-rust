@@ -159,3 +159,55 @@ def test_combine_rust_ands_extract_ok():
     time_run = {"pin": "p", "upstream_version": "v", "host": HOST, "extra": {}, "pages": [{"id": "a", "loaded": True, "extract_ok": True}]}
     heap_run = {"pin": "p", "host": HOST, "extra": {}, "pages": [{"id": "a", "loaded": True, "extract_ok": False}]}
     assert measure.combine_rust(time_run, heap_run)["pages"][0]["extract_ok"] is False
+
+
+def test_measure_page_times_extract():
+    extract_calls = []
+    cache_clears = []
+    result = measure.measure_page(
+        lambda data: object(),
+        lambda data: extract_calls.append(data) or "text",
+        b"<p>x</p>",
+        clear_caches=lambda: cache_clears.append(1),
+    )
+    assert result["extract_ok"] is True
+    assert isinstance(result["extract_median_ns"], int) and result["extract_median_ns"] >= 0
+    assert len(extract_calls) == measure.RUNS
+    assert len(cache_clears) == measure.RUNS
+
+
+def test_measure_page_records_a_raising_extract():
+    def raising(data):
+        raise ValueError("boom")
+
+    for extract in (raising, lambda data: None):
+        result = measure.measure_page(lambda data: object(), extract, b"<p>x</p>")
+        assert result["extract_ok"] is False
+        assert "extract_median_ns" in result
+
+
+def _python_extracted(page_id, extract_ns):
+    return {**_python(page_id, 1_000_000, 100), "extract_ok": True, "extract_median_ns": extract_ns}
+
+
+def test_totals_add_python_extraction_time():
+    pages, _ = _merged(
+        [_rust_extracted("a", 2_000_000, 1), _rust_extracted("b", 2_000_000, 1)],
+        [_python_extracted("a", 2_000_000), _python_extracted("b", 4_000_000)],
+    )
+    python = measure.totals(pages)["python"]
+    assert python["extract_median_ms"] == 6.0
+    assert "extract_alloc_count" not in python
+
+
+def test_table_shows_python_extract_column_and_ratio():
+    pages, dropped = _merged(
+        [_rust_extracted("a", 2_000_000, 4096), _rust_extracted("b", 2_000_000, 4096)],
+        [_python_extracted("a", 8_000_000), _python_extracted("b", 8_000_000)],
+    )
+    table = measure.format_table(pages, rows=1, dropped=dropped)
+    assert "extract ms Python | extract Python / Rust" in table
+    assert "| a | 2.0 | 1.00 | 1.00 | 1.0x | 0 | 0 | 2.00 | 8.00 | 4.0x | 4 |" in table
+    assert "| ... 1 more pages | | | | | | | | | | |" in table
+    assert "| extraction median time, sum (ms) | 4.0 | 16.0 | 4.0x |" in table
+    assert "no Python counterpart" not in table

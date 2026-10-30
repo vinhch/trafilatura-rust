@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Measure the parity corpus: time (5-run median) and heap per page. The Rust side covers decode, parse and
-# extraction of every page plus the synthetic pages; the Python side decode + parse only. The Rust targets
-# write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json (and -synthetic.json files),
-# the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
+# extraction of every page plus the synthetic pages; the Python side times decode + parse and extraction.
+# The Rust targets write .temp/measure/<version>-rust-time.json and <version>-rust-heap.json (and
+# -synthetic.json files), the Python side <version>-python.json; --merge writes <version>-rust.json and the merged <version>.json and
 # prints a Markdown table. Needs the fixtures (scripts/fixtures.sh): their index.json
 # lists the pages. Run it by hand; the numbers depend on the machine. The Rust targets take about 5 minutes
 # and need about 1 GB of heap for the synthetic pages.
@@ -84,7 +84,7 @@ echo "== Rust: load_html over the corpus (time, then heap) ==" >&2
 TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY="$only" \
   cargo test --release --features __internals --test measure_time --test measure_heap -- --nocapture >&2
 
-echo "== Python: upstream load_html ==" >&2
+echo "== Python: upstream load_html and extract ==" >&2
 if [ "$use_docker" = false ] && [ "$(uname -s)" = "Linux" ]; then
   uv run --frozen --no-dev --directory tools/parity python -m parity.measure \
     --upstream "$upstream" --out "$repo_root/.temp/measure" ${only_args[@]+"${only_args[@]}"}
