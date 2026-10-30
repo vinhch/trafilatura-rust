@@ -1,0 +1,39 @@
+# Reports the change in the sample's extraction heap and bench times on a pull request. It fails only when
+# the summed heap grows by more than the gate; it is not a required check (docs/parity-harness.md).
+name: bench
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # The base commit is built in a worktree, so the history must be there.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Must stay equal to rust-version in Cargo.toml, as in _ci.yml (OI-6 in docs/phase-plan.md).
+      - uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+      - name: Read the upstream pin
+        id: pin
+        run: echo "commit=$(sed -n 's/^commit = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - name: Check out upstream at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: adbar/trafilatura
+          ref: ${{ steps.pin.outputs.commit }}
+          path: upstream
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Unpack the parity fixtures
+        run: scripts/fixtures.sh
+      - name: Compare the sample with the base
+        env:
+          TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
+        run: scripts/regression.sh --base ${{ github.event.pull_request.base.sha }}

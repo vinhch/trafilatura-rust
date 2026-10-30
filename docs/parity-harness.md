@@ -172,6 +172,17 @@ first outputs that differ, outputs with a `port-bug` hunk first.
   runs of the same commit, and the sums of the sample's `extract_alloc_count` and `extract_peak_bytes`
   by less than 0.3% (five runs: 0.01% and 0.30%). A gate on the sums at 1% sits above that noise; it
   does not compare per-page numbers.
+- The regression job: `scripts/regression.sh --base REF` (or `.ps1`; `bench.yml` runs it on pull requests
+  with the base commit) builds REF in a detached worktree at `.temp/regression/base-src`, runs the heap
+  sample and `benches/extract.rs` there and in the working tree, and `parity.measure --compare` prints the
+  Markdown summary (also into `$GITHUB_STEP_SUMMARY`). It exits 1 when the sum over the sample of
+  `extract_alloc_count` or of `extract_peak_bytes` grows by more than 1% (exactly +1.00% passes). Bench
+  times are reported only, because shared runners vary by 10 to 20%. Per-page heap deltas are listed but
+  never gated: a page varies by about 1% between runs of the same commit. When the measuring code
+  (`tests/measure`, `tests/measure_heap.rs`, `tests/common`, `benches`) or the `[package.metadata.upstream]`
+  table differs between REF and the working tree, the base would not measure alike, so the job measures
+  and lists the head only (the summary starts with `Head only:` and the reason) and exits 0. The job is
+  not a required check.
 - `scripts/oracle.sh 'CODE'` (or `.ps1`) runs one Python snippet with upstream importable at the pin
   and prints its stdout: the way to get an expected value for a ported test. It runs where
   `scripts/fixtures.sh` runs (uv on Linux, Docker elsewhere), so lxml is libxml2 2.14.6 in both.

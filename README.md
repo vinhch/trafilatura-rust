@@ -50,6 +50,7 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 | `scripts/fuzz.sh` / `scripts/fuzz.ps1` | runs one fuzz target (`parse_document`, `extract`) for N seconds (default 60) with the libFuzzer limits, or with `--cmin <target>` minimizes that target's corpus; `.sh` needs cargo-fuzz and the `x86_64-unknown-linux-gnuasan` target (Linux x86_64), `.ps1` runs it in a container built from `scripts/fuzz.Dockerfile` (the CI toolchain, cargo-fuzz and the target baked in) and needs an x86_64 Docker host |
 | `scripts/measure.sh` / `scripts/measure.ps1` | time and heap per page for crate and upstream, into `.temp/measure/<version>.json`; run by hand; off Linux both sides run in one container built from `scripts/measure.Dockerfile` (`docs/parity-harness.md`) |
 | `scripts/oracle.sh` / `scripts/oracle.ps1` | runs one Python snippet against upstream at the pin and prints its stdout, for expected values of ported tests (`docs/parity-harness.md`) |
+| `scripts/regression.sh` / `scripts/regression.ps1` | extraction heap and bench times of the sample, `--base REF` (default `main`) against the working tree, with the heap gate; what the `bench.yml` job runs (`docs/parity-harness.md`) |
 | `scripts/upstream.sh` / `scripts/upstream.ps1` | upstream changes since the pin (`--to REF`, `--patch`) |
 | `scripts/version.sh` / `scripts/version.ps1` | prints the crate version; `--check`, `--tag vX.Y.Z` |
 
@@ -57,7 +58,9 @@ CI (`.github/workflows/`): `ci.yml` calls `_ci.yml` on pushes to `main` and pull
 `main`, on Ubuntu and Windows with the toolchain pinned to `rust-version`. `release.yml` checks that
 the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through
 the `crates-io` environment. `quality.yml` re-checks advisories and runs each fuzz target for 15
-minutes with AddressSanitizer and minimizes the corpus cache, weekly and on demand. Actions are pinned by commit
+minutes with AddressSanitizer and minimizes the corpus cache, weekly and on demand. `bench.yml` runs
+`scripts/regression.sh` on pull requests targeting `main` and reports the heap and time change of the
+sample against the base in the job summary; it is not a required check. Actions are pinned by commit
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with
 `rust-version` (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh`, so CI and a
 local run execute the same checks. Which job runs the parity test: `docs/parity-harness.md`.
