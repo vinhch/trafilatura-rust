@@ -89,12 +89,24 @@ if [ "$use_docker" = true ] || [ "$(uname -s)" != "Linux" ]; then
   docker build -f "$(host_path "$repo_root/scripts/measure.Dockerfile")" -t "$docker_image" "$(host_path "$repo_root/scripts")" >&2
   # The target dir, cargo registry and uv cache live in named volumes: they survive --rm and keep a Linux
   # target dir out of the host checkout
-  exec docker run --rm     -v "$(host_path "$repo_root"):/work"     -v "$(host_path "$upstream"):/upstream:ro"     -v trafilatura-measure-target:/work/target     -v trafilatura-measure-cargo:/usr/local/cargo/registry     -v trafilatura-measure-uv:/root/.cache/uv     -e TRAFILATURA_MEASURE_RUNTIME=docker -e TRAFILATURA_UPSTREAM=/upstream     -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy -e PYTHONDONTWRITEBYTECODE=1     -w /work "$docker_image"     scripts/measure.sh ${only_args[@]+"${only_args[@]}"}
+  exec docker run --rm \
+    -v "$(host_path "$repo_root"):/work" \
+    -v "$(host_path "$upstream"):/upstream:ro" \
+    -v trafilatura-measure-target:/work/target \
+    -v trafilatura-measure-cargo:/usr/local/cargo/registry \
+    -v trafilatura-measure-uv:/root/.cache/uv \
+    -e TRAFILATURA_MEASURE_RUNTIME=docker -e TRAFILATURA_UPSTREAM=/upstream \
+    -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy -e PYTHONDONTWRITEBYTECODE=1 \
+    -w /work "$docker_image" \
+    scripts/measure.sh ${only_args[@]+"${only_args[@]}"}
 fi
 
 echo "== Rust: load_html and extract over the corpus (time, then heap) ==" >&2
-TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY="$only"   cargo test --locked --release --features __internals --test measure_time --test measure_heap -- --nocapture >&2
+TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY="$only" \
+  cargo test --locked --release --features __internals --test measure_time --test measure_heap -- --nocapture >&2
 
 echo "== Python: upstream load_html and extract ==" >&2
-uv run --frozen --no-dev --directory tools/parity python -m parity.measure   --upstream "$upstream" --out "$repo_root/.temp/measure" ${only_args[@]+"${only_args[@]}"}
-exec uv run --frozen --no-dev --directory tools/parity python -m parity.measure   --merge --out "$repo_root/.temp/measure" --rows "${rows:-0}"
+uv run --frozen --no-dev --directory tools/parity python -m parity.measure \
+  --upstream "$upstream" --out "$repo_root/.temp/measure" ${only_args[@]+"${only_args[@]}"}
+exec uv run --frozen --no-dev --directory tools/parity python -m parity.measure \
+  --merge --out "$repo_root/.temp/measure" --rows "${rows:-0}"
