@@ -431,12 +431,22 @@ fn loads_checks_call() {
     let token = CancelToken::new();
     token.cancel();
     let call = Call::default().cancel(&token);
-    let list = format!("[{}1]", "1,".repeat(9_999));
-    assert_eq!(
-        loads(&list, false, &call).unwrap_err(),
-        ExtractError::Cancelled
-    );
     assert!(matches!(loads("", false, &call), Ok(None)));
+
+    // `CHECK_INTERVAL` is 256. The counter starts at 1, so the first tick (at 1) cannot see the
+    // token: only the tick of the 256th value, inside the parse loop, can. The list and each of
+    // its values tick once.
+    let parse_list = |items: usize| {
+        let text = format!("[{}]", vec!["0"; items].join(","));
+        let mut parser = Parser::new(&text, false);
+        parser.visited = 1;
+        parser.run(&call)
+    };
+    assert!(matches!(
+        parse_list(300),
+        Err(Stop::Call(ExtractError::Cancelled))
+    ));
+    assert!(matches!(parse_list(200), Ok(())));
 }
 
 #[test]
