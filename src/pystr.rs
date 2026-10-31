@@ -1,5 +1,5 @@
 //! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable`, `isalpha`,
-//! `lower`, `repr`, `\w` and decimal digits.
+//! `lower`, `title`, `isupper`, `repr`, the `unicode_escape` decode, `\w` and decimal digits.
 //!
 //! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py` and
 //! `gen_decimal.py`); the functions only search them.
@@ -8,6 +8,7 @@ mod alpha;
 mod decimal;
 mod lower;
 mod printable;
+mod title;
 
 use std::cmp::Ordering;
 
@@ -17,6 +18,7 @@ use decimal::ND_ZEROS;
 use lower::{CASE_IGNORABLE, CASED, LOWER};
 use printable::{PRINTABLE, SPACE, WORD};
 pub use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
+use title::{CASED_ANY, TITLE, UPPER};
 
 /// Python's `int()` refuses a decimal string of more digits than this
 /// (`sys.int_info.default_max_str_digits`); bases that are powers of two, such as hex, have no
@@ -194,25 +196,60 @@ pub fn is_alpha(c: char) -> bool {
 pub fn lower(s: &str) -> String {
     let mut lowered = String::with_capacity(s.len());
     for (index, c) in s.char_indices() {
-        match u32::from(c) {
-            CAPITAL_SIGMA => lowered.push(if is_final_sigma(s, index) {
-                FINAL_SIGMA
-            } else {
-                SMALL_SIGMA
-            }),
-            CAPITAL_I_WITH_DOT => lowered.push_str("i\u{307}"),
-            code if code < 0x80 => lowered.push(c.to_ascii_lowercase()),
-            code => lowered.push(
-                LOWER
-                    .binary_search_by_key(&code, |&(upper, _)| upper)
-                    .ok()
-                    .and_then(|i| LOWER.get(i))
-                    .and_then(|&(_, lower)| char::from_u32(lower))
-                    .unwrap_or(c),
-            ),
-        }
+        push_lower(&mut lowered, s, index, c);
     }
     lowered
+}
+
+/// Appends the lowercase of `c`, the character of `s` at byte `index`.
+fn push_lower(out: &mut String, s: &str, index: usize, c: char) {
+    match u32::from(c) {
+        CAPITAL_SIGMA => out.push(if is_final_sigma(s, index) {
+            FINAL_SIGMA
+        } else {
+            SMALL_SIGMA
+        }),
+        CAPITAL_I_WITH_DOT => out.push_str("i\u{307}"),
+        code if code < 0x80 => out.push(c.to_ascii_lowercase()),
+        code => out.push(
+            LOWER
+                .binary_search_by_key(&code, |&(upper, _)| upper)
+                .ok()
+                .and_then(|i| LOWER.get(i))
+                .and_then(|&(_, lower)| char::from_u32(lower))
+                .unwrap_or(c),
+        ),
+    }
+}
+
+/// Python `s.title()`: each character after a non-cased one takes its full title mapping (`ß` becomes
+/// `Ss`), every other its lowercase, final sigma included. "Cased" counts the case-ignorable
+/// characters too (U+0345 keeps the next letter lowercase), unlike the class `lower` skips.
+// upstream: cpython Objects/unicodeobject.c::do_title
+pub fn title(s: &str) -> String {
+    let mut titled = String::with_capacity(s.len());
+    let mut previous_is_cased = false;
+    for (index, c) in s.char_indices() {
+        if previous_is_cased {
+            push_lower(&mut titled, s, index, c);
+        } else {
+            match TITLE
+                .binary_search_by_key(&u32::from(c), |&(code, _)| code)
+                .ok()
+                .and_then(|i| TITLE.get(i))
+            {
+                Some(&(_, mapped)) => titled.push_str(mapped),
+                None => titled.push(c),
+            }
+        }
+        previous_is_cased = in_ranges(CASED_ANY, c);
+    }
+    titled
+}
+
+/// Python `str.isupper` for one character.
+pub fn is_upper(c: char) -> bool {
+    in_ranges(UPPER, c)
 }
 
 const CAPITAL_SIGMA: u32 = 0x3A3;
@@ -300,6 +337,80 @@ pub(crate) fn digit_class() -> String {
             Some(format!(r"\x{{{:X}}}-\x{{{nine:X}}}", u32::from(zero)))
         })
         .collect()
+}
+
+/// Python `s.encode().decode("unicode_escape")`: the UTF-8 bytes read as Latin-1 between escapes, so a
+/// non-ASCII character comes out as mojibake, as upstream's does. `None` where Python raises
+/// `UnicodeDecodeError` (a truncated or invalid `\x`, `\u` or `\U`, a trailing backslash, a code point
+/// past U+10FFFF) and for `\N{name}`, which needs the Unicode name database.
+// deviation: D-20 (`\N{name}` is `None`; an escape that yields a surrogate decodes to U+FFFF)
+// upstream: cpython Objects/unicodeobject.c::_PyUnicode_DecodeUnicodeEscapeInternal
+pub fn unicode_escape(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while let Some(&byte) = bytes.get(i) {
+        i += 1;
+        if byte != b'\\' {
+            out.push(char::from(byte));
+            continue;
+        }
+        let escape = *bytes.get(i)?;
+        i += 1;
+        let simple = match escape {
+            b'\n' => Some(None),
+            b'\\' => Some(Some('\\')),
+            b'\'' => Some(Some('\'')),
+            b'"' => Some(Some('"')),
+            b'a' => Some(Some('\x07')),
+            b'b' => Some(Some('\x08')),
+            b'f' => Some(Some('\x0c')),
+            b'n' => Some(Some('\n')),
+            b'r' => Some(Some('\r')),
+            b't' => Some(Some('\t')),
+            b'v' => Some(Some('\x0b')),
+            _ => None,
+        };
+        if let Some(decoded) = simple {
+            out.extend(decoded);
+            continue;
+        }
+        let digits = match escape {
+            b'0'..=b'7' => {
+                let mut value = u32::from(escape - b'0');
+                for _ in 0..2 {
+                    let Some(&d @ b'0'..=b'7') = bytes.get(i) else {
+                        break;
+                    };
+                    value = value * 8 + u32::from(d - b'0');
+                    i += 1;
+                }
+                out.push(char::from_u32(value)?);
+                continue;
+            }
+            b'x' => 2,
+            b'u' => 4,
+            b'U' => 8,
+            b'N' => return None,
+            _ => {
+                // An unknown escape keeps its backslash; the next byte is read as itself.
+                out.push('\\');
+                i -= 1;
+                continue;
+            }
+        };
+        let hex = bytes.get(i..i + digits)?;
+        i += digits;
+        let mut value: u32 = 0;
+        for &d in hex {
+            value = value * 16 + char::from(d).to_digit(16)?;
+        }
+        if value > 0x10FFFF {
+            return None;
+        }
+        out.push(char::from_u32(value).unwrap_or('\u{FFFF}'));
+    }
+    Some(out)
 }
 
 // Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
@@ -464,6 +575,70 @@ mod tests {
         assert!(!is_printable('\u{2028}')); // oracle: chr(0x2028).isprintable()
         assert!(!is_printable('\u{e000}')); // oracle: chr(0xe000).isprintable()
         assert!(!is_printable('\u{e0001}')); // oracle: chr(0xe0001).isprintable()
+    }
+
+    #[test]
+    fn title_matches_python() {
+        for &(input, expected) in title::TITLE_CASES {
+            assert_eq!(title(input), expected, "{input:?}");
+        }
+    }
+
+    #[test]
+    fn is_upper_matches_python() {
+        for &(start, end) in UPPER {
+            for edge in [start, end] {
+                assert!(char::from_u32(edge).is_some_and(is_upper), "U+{edge:04X}");
+            }
+            for outside in [start.checked_sub(1), end.checked_add(1)]
+                .into_iter()
+                .flatten()
+            {
+                assert!(
+                    !char::from_u32(outside).is_some_and(is_upper),
+                    "U+{outside:04X}"
+                );
+            }
+        }
+        // oracle: [c.isupper() for c in ("A", "a", "ǅ", "Ⅻ")]
+        assert!(is_upper('A') && !is_upper('a') && !is_upper('\u{1C5}') && is_upper('\u{216B}'));
+    }
+
+    #[test]
+    fn unicode_escape_matches_python() {
+        // oracle: s.encode().decode("unicode_escape"), or None for the UnicodeDecodeError
+        for (input, expected) in [
+            ("Fran\u{E7}ois", Some("Fran\u{C3}\u{A7}ois")),
+            (r"a\x41\101\n", Some("aAA\n")),
+            (r"\q", Some(r"\q")),
+            (r"\8", Some(r"\8")),
+            ("\u{E9}\\u0041", Some("\u{C3}\u{A9}A")),
+            ("\\\u{E9}", Some("\\\u{C3}\u{A9}")),
+            (r"\400\777", Some("\u{100}\u{1FF}")),
+            (r"\1234", Some("S4")),
+            (r"\0", Some("\0")),
+            (r"\u12", None),
+            (r"\x4", None),
+            (r"\xZ1", None),
+            (r"ab\", None),
+            (r"\U00110000", None),
+        ] {
+            assert_eq!(unicode_escape(input).as_deref(), expected, "{input:?}");
+        }
+        // CPython's rules for these, which the oracle's argument passing cannot carry
+        assert_eq!(unicode_escape("a\\\\b\\\nc").as_deref(), Some("a\\bc"));
+    }
+
+    #[test]
+    fn unicode_escape_unported_escapes() {
+        // D-20: upstream decodes `\N{BULLET}` to U+2022 and `\ud83d` to a lone surrogate
+        assert_eq!(unicode_escape(r"\N{BULLET}"), None);
+        // Built with `concat!` so the source never holds a literal surrogate escape
+        let surrogate_pair = concat!("a", "\\", "ud83d", "\\", "ude00");
+        assert_eq!(
+            unicode_escape(surrogate_pair).as_deref(),
+            Some("a\u{FFFF}\u{FFFF}")
+        );
     }
 
     #[test]
