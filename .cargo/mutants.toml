@@ -1,6 +1,6 @@
 # cargo-mutants config: mutation testing of src/main_extractor.rs against the test suite.
 # Local run: cargo mutants -j 4 --output .work/mutants, with TRAFILATURA_UPSTREAM=D:/codes/trafilatura,
-# TRAFILATURA_FIXTURES=D:/codes/trafilatura-rust/.temp/fixtures/2.3.1 and PARITY_REQUIRE_FIXTURES=1 set.
+# TRAFILATURA_FIXTURES=D:/codes/trafilatura-rust/.temp/fixtures/<pinned version> and PARITY_REQUIRE_FIXTURES=1 set.
 # An equivalent mutant goes in exclude_re as a single-quoted string, with one comment line above it giving the reason.
 # Write it line-free (^<path>:[0-9]+:[0-9]+: <description>$) when its description is unique in the function,
 # and line-anchored otherwise.
@@ -8,4 +8,9 @@ examine_globs = ["src/main_extractor.rs"]
 all_features = true # the integration test targets need the __internals feature
 gitignore = true
 timeout_multiplier = 2.0
-exclude_re = []
+exclude_re = [
+  # A childless ref takes the wraps_inline branch, whose define_newelem builds the same element (name, text, tail, kept attributes) the generic branch builds.
+  '^src/main_extractor\.rs:[0-9]+:[0-9]+: replace > with >= in wraps_inline$',
+  # handle_textnode returns the child itself or None, so the child is what both operators yield.
+  '^src/main_extractor\.rs:731:36: replace && with \|\| in fill_cell$',
+]
