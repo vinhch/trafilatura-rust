@@ -1622,6 +1622,100 @@ fn lb_whitespace_tail_cleared_outside_code() {
 }
 
 #[test]
+fn recovery_gate_runs_on_empty_body() {
+    // oracle: extract_content(...) with min_extracted_size = 0, so only the empty body opens the
+    // recovery gate: the page has no BODY_XPATH frame
+    let options = options_with(|options| options.min_extracted_size = 0);
+    assert_eq!(
+        content_of(
+            "<html><body><div><p>Wild paragraph one outside any frame.</p><p>Wild paragraph two outside any frame.</p></div></body></html>",
+            &options
+        ),
+        (
+            concat!(
+                "<body><p>Wild paragraph one outside any frame.</p>",
+                "<p>Wild paragraph two outside any frame.</p></body>"
+            )
+            .to_string(),
+            "Wild paragraph one outside any frame. Wild paragraph two outside any frame."
+                .to_string()
+        )
+    );
+}
+
+#[test]
+fn recovery_gate_runs_on_short_body_and_not_at_the_minimum() {
+    // oracle: extract_content(...) with min_extracted_size unset, 36 and 37. _extract keeps the two
+    // short paragraphs ("Short first line. Short second line.", 36 characters): recovery runs on a
+    // non-empty body below the minimum, not at it
+    let page = "<html><body><article><p>Short first line.</p><p>Short second line.</p></article><div><p>Wild text after the article frame, long enough to count.</p></div></body></html>";
+    let framed = (
+        "<body><p>Short first line.</p><p>Short second line.</p></body>".to_string(),
+        "Short first line. Short second line.".to_string(),
+    );
+    let recovered = (
+        concat!(
+            "<body><p>Short first line.</p><p>Short second line.</p>",
+            "<p>Wild text after the article frame, long enough to count.</p></body>"
+        )
+        .to_string(),
+        "Short first line. Short second line. Wild text after the article frame, long enough to count."
+            .to_string(),
+    );
+    assert_eq!(body_of(page, &options()).1.chars().count(), 36);
+    assert_eq!(content_of(page, &options()), recovered);
+    let at_minimum = options_with(|options| options.min_extracted_size = 36);
+    assert_eq!(content_of(page, &at_minimum), framed);
+    let above_minimum = options_with(|options| options.min_extracted_size = 37);
+    assert_eq!(content_of(page, &above_minimum), recovered);
+}
+
+#[test]
+fn done_tail_stripped_from_result_body() {
+    // oracle: extract_content(...) with min_extracted_size = 0 and formatting=True. The `post` frame
+    // copies its paragraph (the source becomes `done`); the wider `article` frame then moves the
+    // text-bearing wrapper div whole, `done` source and its tail inside. The returned text is taken
+    // before the cleanup, so it still holds the tail
+    let options = options_with(|options| {
+        options.min_extracted_size = 0;
+        options.formatting = true;
+    });
+    let (body, text) = content_of(
+        "<html><body><article><div>Wrapper text <div class=\"post\"><p>Narrow <b>bold</b> paragraph.</p>Tail text after done.</div></div></article></body></html>",
+        &options,
+    );
+    assert_eq!(
+        body,
+        "<body><p>Narrow <hi rend=\"#b\">bold</hi> paragraph.</p><p>Wrapper text </p></body>"
+    );
+    assert_eq!(
+        text,
+        "Narrow  bold  paragraph. Wrapper text  Narrow  bold  paragraph. Tail text after done."
+    );
+}
+
+#[test]
+fn non_div_frame_with_inline_children_is_walked() {
+    // oracle: _extract(...) with min_extracted_size = 0 and formatting=True; an `article` frame of
+    // inline children is not a single run (only a `div` frame is), so each inline element is walked
+    let options = options_with(|options| {
+        options.min_extracted_size = 0;
+        options.formatting = true;
+    });
+    assert_eq!(
+        body_of(
+            "<html><body><article>Lead text <b>bold</b> text <i>it</i> more</article></body></html>",
+            &options
+        )
+        .0,
+        concat!(
+            "<body><p>Lead text</p><p><hi rend=\"#b\">bold</hi>text</p>",
+            "<p><hi rend=\"#i\">it</hi>more</p></body>"
+        )
+    );
+}
+
+#[test]
 fn adjacent_duplicate_dropped_only_above_min_length() {
     // oracle: extract_content(...) on a frame of the same paragraph twice and a unique one
     let long = "A paragraph repeated twice in a row, longer than fifty characters.";
