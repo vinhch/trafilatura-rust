@@ -215,7 +215,8 @@ writes it byte for byte.
 | `gen_nfc.py` (`cases`) | `src/pyunicodedata/cases.rs` | NFC of every character with a decomposition or combining class (alone and between `a` and U+0301), of every composition pair and of two Hangul jamo sequences |
 | `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
 | `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the NFKC netloc breakers of the image's Python |
-| `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin`, `hostname` and `port`, `quote`, `quote_plus`, `parse_qs`, `urlencode`, the two `courlan` helpers on URL strings, and `validate_url`, `normalize_url`, `clean_query` and `decode_punycode` |
+| `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin`, `hostname` and `port`, `quote`, `quote_plus`, `parse_qs`, `urlencode`, the two `courlan` helpers on URL strings, `validate_url`, `normalize_url`, `clean_query` and `decode_punycode`, and tld's `get_tld` and courlan's `extract_domain` (`TLD_CASES`, `EXTRACT_DOMAIN_CASES`) |
+| `gen_url.py` (`tld_tables`) | `src/courlan/tld_tables.rs` | the nodes tld's trie marks as suffixes for an exception rule (`ck` for `!www.ck`), read off tld's own trie |
 | `gen_html_processing_cases.py` | `src/html_processing/cases.rs` | the tree upstream leaves after `tree_cleaning`, `prune_html`, `convert_tags`, `prune_unwanted_nodes` and `delete_by_link_density` on HTML snippets, with the options each case sets |
 | `gen_main_extractor_cases.py` | `tests/main_extractor_cases/cases.rs` | the seven element handlers on `etree.fromstring` snippets, and `extract_content` or `extract_comments` then `extract_content` on HTML snippets, each with the options it sets and built with `fast=True` (D-1); results are tree dumps and texts |
 | `gen_xml_output_cases.py` | `tests/xml_output_cases/cases.rs` | the TXT, Markdown and HTML output of `etree.fromstring` snippets and of the bodies the html snippets of `gen_main_extractor_cases` extract (imported, not copied), built with `fast=True` (D-1); an output is the text or the exception upstream raises |
@@ -223,7 +224,7 @@ writes it byte for byte.
 | `gen_repeated_output_cases.py` | `tests/repeated_output_tests/cases.rs` | the sets of upstream's `repeated_output_tests.py` re-derived with `fast=True` (D-1) inside the html5 parser swap: the keys of `test_no_repeated_words` whose result is `None` or repeats a word (upstream's reason kept for a key it lists too), and the comment-list triples that repeat; the file is imported by path from the checkout, and the generation fails when one of the three plain upstream assertions does not hold in fast mode |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_url` and `gen_nfc` take `tables` or `cases` in place of `main`, `gen_printable` `alpha` for `alpha.rs` and `lower` for `lower.rs`. The files that hold HTML snippets carry the
+`gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs` and `lower` for `lower.rs`. The files that hold HTML snippets carry the
 `treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
 parse dumps the same: a snippet that parses differently is changed, never the expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized

@@ -4,9 +4,11 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 
     scripts/oracle.sh 'from parity.gen_url import tables; tables()' > src/pyurl/tables.rs
     scripts/oracle.sh 'from parity.gen_url import cases; cases()' > src/pyurl/cases.rs
+    scripts/oracle.sh 'from parity.gen_url import tld_tables; tld_tables()' > src/courlan/tld_tables.rs
 
-The tables come from the interpreter that runs this, so the header records its version. The expected
-values of the cases come from the same interpreter (CPython's own `html`, `urllib.parse` and `encodings.idna`).
+The tables come from the interpreter that runs this, so the header records its version (`tld_tables` also
+records the tld release). The expected values of the cases come from the same interpreter (CPython's own
+`html`, `urllib.parse` and `encodings.idna`) and the courlan and tld releases in `tools/parity/uv.lock`.
 """
 
 import sys
@@ -61,6 +63,46 @@ def tables() -> None:
         "#[rustfmt::skip]",
         "pub(super) static NFKC_NETLOC_BREAKERS: &[char] = &[",
         *[f"    '\\u{{{ord(c):X}}}'," for c in breakers],
+        "];",
+        "",
+    ]
+    sys.stdout.write("\n".join(out))
+
+
+def tld_exception_parents() -> list[str]:
+    """Dotted names of the nodes tld's trie marks as leaves for an exception rule, sorted.
+
+    `Trie.add` sets `leaf` on the parent of every `!rule` (`ck` for `!www.ck`), so the parent counts as a
+    suffix to tld though the Public Suffix List does not list it.
+    """
+    from tld.utils import MozillaTLDSourceParser, get_tld_names
+
+    root = get_tld_names()[MozillaTLDSourceParser.local_path].root
+    parents: list[str] = []
+    stack = [(root, [])]
+    while stack:
+        node, labels = stack.pop()
+        if node.exception is not None:
+            parents.append(".".join(reversed(labels)))
+        for label, child in (node.children or {}).items():
+            stack.append((child, [*labels, label]))
+    return sorted(parents)
+
+
+def tld_tables() -> None:
+    from importlib.metadata import version as package_version
+
+    out = header(
+        "src/courlan/tld_tables.rs",
+        "tld_tables",
+        f"The nodes tld {package_version('tld')} marks as leaves for an exception rule (sorted).",
+    )
+    out += [
+        "/// Dotted names of the nodes tld's trie holds as suffixes only because a `!rule` of the Public Suffix",
+        "/// List sits below them, sorted: `ck` for `!www.ck`.",
+        "#[rustfmt::skip]",
+        "pub(super) static TLD_EXCEPTION_PARENTS: &[&str] = &[",
+        *[f"    {rust_str(name)}," for name in tld_exception_parents()],
         "];",
         "",
     ]
@@ -1111,6 +1153,216 @@ def clean_cases() -> list[str]:
     ]
 
 
+# `metadata.url` values of `.temp/fixtures/2.3.1` that `DOMAIN_REGEX` misses, so `extract_domain` reaches
+# tld for them (`.work/measure-phase4/tld_fallback_urls.txt`): 52 URLs on 50 hosts, 12 without `www.`.
+TLD_CORPUS_URLS = [
+    "https://aoc.media/opinion/2019/12/09/pour-le-neoliberalisme-la-retraite-est-un-archaisme/",
+    "https://djz.de/amoklauf-in-heidelberg-rufe-nach-schneller-aufklaerung/",
+    "https://ga.de/bonn/beuel/mural-in-bonn-graffiti-an-stiftung-gemeindepsychatrie-in-beuel_aid-99369101",
+    "https://gay.ch/news/vatikan-eltern-sollen-queere-kinder-unterstuetzen-sagt-der-papst",
+    "https://hoy.com.do/resaltan-aportes-aird-en-60-anos-de-su-fundacion/",
+    "https://hpd.de/artikel/sie-wissen-nicht-sie-tun-identitaetspolitische-linke-unterschlaegt-den-homosexuellenhass-neuer-21664",
+    "https://jis.gov.jm/wide-range-of-investment-opportunities-at-aice-2022/",
+    "https://omr.com/de/daily/cowboyboots-und-crocs",
+    "https://sw1.news/fussball/fussball-kreisklassen/wenn-man-in-der-heimat-verliert-dann-tuts-in-abwesendheit-vielleicht-ein-bisschen-weniger-weh/",
+    "https://t3n.de/news/apple-eigener-iphone-akku-1587177/",
+    "https://taz.de/!5655255/",
+    "https://www.awo.org/menschenrechte-achten",
+    "https://www.bbc.com/news/world-us-canada-52241221",
+    "https://www.be.ch/de/start/dienstleistungen/medien/medienmitteilungen.html",
+    "https://www.bfn.de/pressemitteilungen/allervielfalt-verden-bringt-natur-die-aller-zurueck",
+    "https://www.bfs.de/SharedDocs/Pressemitteilungen/BfS/DE/2022/001.html",
+    "https://www.bka.de/DE/Presse/Listenseite_Pressemitteilungen/2022/Presse2022/220126_PM_Telegram.html",
+    "https://www.bmz.de/de/aktuelles/aktuelle-meldungen/schulze-deutschland-an-der-der-seite-wfp-im-kampf-gegen-hunger-103026",
+    "https://www.cnn.com/2021/03/08/uk/meghan-harry-oprah-interview-recap-scli-gbr-intl/index.html",
+    "https://www.dhb.de/de/redaktionsbaum/nationalteams/a-frauen/erneuter-verzicht-auf-regionallehrgang-/",
+    "https://www.drk.de/presse/pressemitteilungen/meldung/drk-immer-mehr-menschen-wegen-klimawandel-auf-hilfe-angewiesen/",
+    "https://www.dsv.de/",
+    "https://www.dtb.de/weitere-nachrichten/nachrichten/artikel/massnahmen-umgesetzt-und-kulturwandel-angestossen",
+    "https://www.dw.com/en/berlin-confronts-germanys-colonial-past-with-new-initiative/a-52060881",
+    "https://www.dw.com/en/uncork-the-mystery-of-germanys-fr%C3%BChburgunder/a-16863843",
+    "https://www.dw.com/fr/la-perte-des-terres-fertiles-et-les-%C3%A9l%C3%A9phants-en-guin%C3%A9e-conakry/a-6533123",
+    "https://www.ekd.de/andacht-zur-friedensdekade-in-der-kaiser-wilhelm-69810.htm",
+    "https://www.faz.net/1.6604622",
+    "https://www.fem.com/beauty-lifestyle/warum-wir-anfangen-muessen-mehr-ueber-gehaelter-zu-sprechen",
+    "https://www.fr.de/politik/kim-jong-un-nordkorea-bilder-diktator-donald-trump-zr-13680734.html",
+    "https://www.gdp.de/gdp/gdp.nsf/id/DE_GdP-Vize-Klemmer-Mangelnde-Wertschaetzung-fuer-die-Beschaeftigten-des-oeD",
+    "https://www.hoy.com.py/nacionales/daran-bendicion-a-vehiculos-este-sabado",
+    "https://www.hss.de/news/detail/grosse-aufgaben-fuer-die-neue-regierung-news8123/",
+    "https://www.kas.de/de/laenderberichte/detail/-/content/kommunalwahlen-in-nordmazedonien",
+    "https://www.lbv.de/news/details/lebenszeichen-von-bavaria-nach-zwei-monaten-funkstille/",
+    "https://www.mdr.de/thueringen/corona-lockerung-autohaeuser-werkstatten-100.html",
+    "https://www.ndr.de/nachrichten/info/16-Coronavirus-Update-Wir-brauchen-Abkuerzungen-bei-der-Impfstoffzulassung,podcastcoronavirus140.html",
+    "https://www.nzz.ch/international/der-nervenkrieg-um-den-brexit-geht-in-die-naechste-runde-ld.1516516",
+    "https://www.osw.waw.pl/pl/publikacje/analizy/2021-04-20/rosyjskie-zamachy-w-czechach-kontekst-krajowy-implikacje-perspektywy",
+    "https://www.psl.eu/actualites/luniversite-psl-quand-les-grandes-ecoles-font-universite",
+    "https://www.rnz.de/nachrichten_artikel,-zz-dpa-Schlaglichter-Frank-Witzel-erhaelt-Deutschen-Buchpreis-2015-_arid,133484.html",
+    "https://www.rp.pl/Polityka/305049888-Unijne-fundusze-coraz-blizej-Sejm-zaglosowal-za.html",
+    "https://www.rtl.de/cms/medienbericht-corona-lockdown-steht-vor-4-woechiger-verlaengerung-4723862.html",
+    "https://www.slf.ch/de/lawinenbulletin-und-schneesituation/wochen-und-winterberichte/2021/22/wochenbericht-14-20-januar-2022.html",
+    "https://www.swr.de/sport/mehr-sport/volleyball/mtv-stuttgart/stuttgart-ohne-rivers-im-finale-100.html",
+    "https://www.tdg.ch/suisse/berne-interdit-chlorothalonil/story/18348200",
+    "https://www.thw.de/SharedDocs/Meldungen/DE/Meldungen/national/2021/10/meldung_01_miniserie_frauen_im_thw/meldung_001_startseite_miniserie_frauen_im_thw.html",
+    "https://www.wmn.de/health/body-fitness/staendig-muede-an-diesen-krankheiten-koennte-es-liegen-id459844",
+    "https://www.zdf.de/uri/62c9d964-74a7-4d31-9885-2d13d10da541",
+    "https://www.zdh.de/presse/veroeffentlichungen/pressemitteilungen/kfw-foerderungsstopp-ist-klimapolitisch-fatales-signal/",
+    "https://www.zfk.de/energie/waerme/waermepumpenmarkt-waechst-um-42-prozent-gegenueber-dem-vorjahr",
+    "https://yle.fi/uutiset/3-11212601",
+]
+
+TLD_CORPUS_HOSTS = [
+    "aoc.media", "awo.org", "bbc.com", "be.ch", "bfn.de", "bfs.de", "bka.de", "bmz.de", "cnn.com", "dhb.de",
+    "djz.de", "drk.de", "dsv.de", "dtb.de", "dw.com", "ekd.de", "faz.net", "fem.com", "fr.de", "ga.de",
+    "gay.ch", "gdp.de", "hoy.com.do", "hoy.com.py", "hpd.de", "hss.de", "jis.gov.jm", "kas.de", "lbv.de",
+    "mdr.de", "ndr.de", "nzz.ch", "omr.com", "osw.waw.pl", "psl.eu", "rnz.de", "rp.pl", "rtl.de", "slf.ch",
+    "sw1.news", "swr.de", "t3n.de", "taz.de", "tdg.ch", "thw.de", "wmn.de", "yle.fi", "zdf.de", "zdh.de",
+    "zfk.de",
+]
+
+# "пример" and "рф" (the Russian Federation's suffix), and "个人" (hk's "person" suffix).
+RU_EXAMPLE = uni(
+    "CYRILLIC SMALL LETTER PE", "CYRILLIC SMALL LETTER ER", "CYRILLIC SMALL LETTER I",
+    "CYRILLIC SMALL LETTER EM", "CYRILLIC SMALL LETTER ER",
+)
+RU_RF = uni("CYRILLIC SMALL LETTER ER", "CYRILLIC SMALL LETTER EF")
+HK_PERSON = uni("CJK UNIFIED IDEOGRAPH-4E2A", "CJK UNIFIED IDEOGRAPH-4EBA")
+
+# URLs for `tld.get_tld` and `courlan.extract_domain`: the corpus URLs that reach tld, each corpus host
+# with a `www.` prefix, then one URL per suffix rule shape and per path of `get_tld` and `process_url`
+# (unicode and punycode suffixes, dots, exception and wildcard rules, ports, IP hosts).
+TLD_INPUTS = [
+    *TLD_CORPUS_URLS,
+    *[f"https://www.{host}/x" for host in TLD_CORPUS_HOSTS],
+    f"https://{RU_EXAMPLE}.{RU_RF}/",
+    "https://xn--e1afmkfd.xn--p1ai/",
+    "https://a.xn--e1afmkfd.xn--p1ai/",
+    "https://xn--e1afmkfd.xn--p1ai:8080/",
+    "https://a.xn--ciqpn.hk/",
+    "https://xn--ciqpn.hk/",
+    f"https://a.{HK_PERSON}.hk/",
+    f"https://{HK_PERSON}.hk/",
+    "https://a.xn--b.ck/",
+    "https://a.xn--b.c.ck/",
+    "https://www.dw.com./",
+    "https://www.dw.com.../",
+    "https://a..dw.com/",
+    "https://.dw.com/",
+    "https://dw.com../",
+    "https://co.uk./",
+    "https://.co.uk/",
+    "https://./",
+    "https://.../",
+    "https://user@www.faz.net:8080/",
+    "https://user:secret@www.faz.net:8080/x",
+    "https://www.faz.net:8080",
+    "http://192.168.0.1/",
+    "http://192.168.0.1:8080/x",
+    "http://[2001:db8::1]/",
+    "http://[2001:db8::1]:8080/",
+    "http://[::1]/",
+    "http://[::1",
+    "https://x.blogspot.com/",
+    "https://blogspot.com/",
+    "https://a.b.ck/",
+    "https://b.ck/",
+    "https://www.ck/",
+    "https://x.www.ck/",
+    "https://ck/",
+    "https://ck:8080/",
+    "https://kawasaki.jp/",
+    "https://city.kawasaki.jp/",
+    "https://www.city.kawasaki.jp/",
+    "https://a.b.kawasaki.jp/",
+    "https://b.kawasaki.jp/",
+    "https://a.b.invalidtld/",
+    "https://invalidtld/",
+    "https://co.uk/",
+    "https://uk/",
+    "https://www.co.uk/",
+    "https://www2.example.co.uk/",
+    "https://www.example.co.uk/",
+    "https://www12.example.co.uk/",
+    "https://wwwx.example.co.uk/",
+    "https://WWW.Example.CO.UK/",
+    "https://example.co.uk",
+    "https://example.com?q=1",
+    "https://example.com#f",
+    "dw.com/x",
+    "//dw.com/x",
+    "ftp://ftp.example.org/x",
+    "mailto:a@dw.com",
+    "https://",
+    "",
+]
+
+# `TLD_INPUTS` plus URLs that `DOMAIN_REGEX` matches and the corners of its pattern and of `STRIP_PORT_REGEX`.
+EXTRACT_DOMAIN_INPUTS = [
+    *TLD_INPUTS,
+    "https://www.example.org/",
+    "https://user@sub.example.co.uk:8080/",
+    "https://www.example.org:8080:9090/",
+    "https://www.example.org:80",
+    "https://www.example.org:80/a:81",
+    "https://www.example.org\n",
+    "https://www.example.org\n\n",
+    "https://www.example.org/\n",
+    "https://a.b.c.example.org/x",
+    "http://example.com",
+    "http://abc.de/",
+    "http://abcd.de/",
+    "http://ab.cd/",
+    "http://www.ab.cd/",
+    "http://a@b@abcd.example.org/",
+    f"http://{E_ACUTE}tude.example.org/",
+    "http://1.2.3.4/",
+    "http://1.2.3.4:80/",
+    "http://12.34.56.789/",
+    "http://1234.1.1.1/",
+    f"http://{ARABIC_INDIC_THREE}.{ARABIC_INDIC_THREE}.{ARABIC_INDIC_THREE}.{ARABIC_INDIC_THREE}/",
+    f"http://example.org:{ARABIC_INDIC_THREE}/",
+    "http://0123456789abcdef.x/",
+    "http://0123456789abcdef/",
+    "http://abcdef0123456789abcd/",
+    "http://x:y:0123456789abcdef/",
+    "http://" + "a" * 63 + ".example.org/",
+    "http://" + "a" * 64 + ".example.org/",
+    "http://" + "a" * 64 + ".b.example.org/",
+    "HTTP://WWW.EXAMPLE.ORG/",
+    "ftp://ftp.example.org/",
+    "fttp://ftp.example.org/",
+    "httpss://www.example.org/",
+    "xhttp://www.example.org/",
+    "  https://www.example.org/",
+]
+
+
+def tld_result(url: str) -> str:
+    "The `domain` and `fld` of `get_tld(url, as_object=True, fail_silently=True)` as a Rust `Option`."
+    from tld import get_tld
+
+    info = get_tld(url, as_object=True, fail_silently=True)
+    return "None" if info is None else f"Some(({rust_str(info.domain)}, {rust_str(info.fld)}))"
+
+
+def tld_cases() -> list[str]:
+    from courlan.urlutils import extract_domain
+
+    return [
+        "/// URL and `tld.get_tld(url, as_object=True, fail_silently=True)` as its `domain` and `fld`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const TLD_CASES: &[(&str, Option<(&str, &str)>)] = &[",
+        *[f"    ({rust_str(url)}, {tld_result(url)})," for url in TLD_INPUTS],
+        "];",
+        "",
+        "/// URL and `courlan.urlutils.extract_domain(url, fast=True)`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const EXTRACT_DOMAIN_CASES: &[(&str, Option<&str>)] = &[",
+        *[f"    ({rust_str(url)}, {rust_option(extract_domain(url, fast=True))})," for url in EXTRACT_DOMAIN_INPUTS],
+        "];",
+        "",
+    ]
+
+
 def unescape_or_none(s: str) -> str | None:
     "`html.unescape(s)`, or None where CPython raises ValueError."
     import html
@@ -1129,7 +1381,7 @@ def cases() -> None:
     out = header(
         "src/pyurl/cases.rs",
         "cases",
-        "CPython's `html.unescape`, `urllib.parse` and `idna` codec, and courlan's `validate_url` and `clean`, run on fixed inputs.",
+        "CPython's `html.unescape`, `urllib.parse` and `idna` codec, courlan's `validate_url`, `clean` and `extract_domain`, and tld's `get_tld`, run on fixed inputs.",
     )
     out += [
         "/// Input and `html.unescape` of it; `None` where CPython raises `ValueError`.",
@@ -1144,6 +1396,7 @@ def cases() -> None:
         *courlan_cases(),
         *idna_cases(),
         *clean_cases(),
+        *tld_cases(),
     ]
     sys.stdout.write("\n".join(out))
 

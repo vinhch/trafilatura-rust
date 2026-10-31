@@ -290,6 +290,18 @@ pub fn is_decimal(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| decimal_value(c).is_some())
 }
 
+/// Python `re` `\d` in Unicode mode as the body of a regex class: the characters of
+/// [`decimal_value`], where Rust's `\d` follows a newer Unicode version.
+pub(crate) fn digit_class() -> String {
+    ND_ZEROS
+        .iter()
+        .filter_map(|&zero| {
+            let nine = u32::from(zero).checked_add(9)?;
+            Some(format!(r"\x{{{:X}}}-\x{{{nine:X}}}", u32::from(zero)))
+        })
+        .collect()
+}
+
 // Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
 pub(crate) fn ignore_case_i(pattern: &str) -> String {
     pattern.replace(['i', 'I'], "[iİı]")
@@ -631,6 +643,20 @@ mod tests {
         let rust_word = Regex::new(r"\A\w\z").expect("compiles");
         assert!(re.is_match("\u{b2}") && !rust_word.is_match("\u{b2}"));
         assert!(!re.is_match("\u{301}") && rust_word.is_match("\u{301}"));
+    }
+
+    #[test]
+    fn digit_class_matches_decimal_value() {
+        let re = class_regex(&digit_class());
+        let mut buf = [0u8; 4];
+        for c in every_char() {
+            assert_eq!(
+                re.is_match(c.encode_utf8(&mut buf)),
+                decimal_value(c).is_some(),
+                "U+{:04X}",
+                u32::from(c)
+            );
+        }
     }
 
     #[test]

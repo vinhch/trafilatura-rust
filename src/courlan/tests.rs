@@ -1,7 +1,8 @@
-use super::{clean, is_valid_url, normalize_url, validate_url};
+use super::tld::get_tld;
+use super::{DOMAIN_REGEX, clean, extract_domain, is_valid_url, normalize_url, validate_url};
 use crate::pyurl::cases::{
-    CLEAN_QUERY_CASES, COURLAN_CASES, DECODE_PUNYCODE_CASES, NORMALIZE_URL_CASES,
-    VALIDATE_URL_CASES,
+    CLEAN_QUERY_CASES, COURLAN_CASES, DECODE_PUNYCODE_CASES, EXTRACT_DOMAIN_CASES,
+    NORMALIZE_URL_CASES, TLD_CASES, VALIDATE_URL_CASES,
 };
 use crate::pyurl::urlsplit;
 use crate::utils::{safe_base_url, safe_relative_url};
@@ -90,4 +91,36 @@ fn decode_punycode_matches_upstream() {
             shown(host)
         );
     }
+}
+
+#[test]
+fn tld_matches_upstream() {
+    assert!(!TLD_CASES.is_empty());
+    for &(url, expected) in TLD_CASES {
+        let expected = expected.map(|(domain, fld)| (domain.to_owned(), fld.to_owned()));
+        assert_eq!(
+            get_tld(url).map(|found| (found.domain, found.fld)),
+            expected,
+            "get_tld({:?}..)",
+            shown(url)
+        );
+    }
+}
+
+#[test]
+fn extract_domain_matches_upstream() {
+    assert!(!EXTRACT_DOMAIN_CASES.is_empty());
+    for &(url, expected) in EXTRACT_DOMAIN_CASES {
+        assert_eq!(
+            extract_domain(url).as_deref(),
+            expected,
+            "extract_domain({:?}..)",
+            shown(url)
+        );
+    }
+}
+
+#[test]
+fn domain_regex_compiles() {
+    assert!(DOMAIN_REGEX.is_some());
 }

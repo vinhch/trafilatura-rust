@@ -25,6 +25,7 @@ chardetng = "1"
 encoding_rs = "0.8"
 flate2 = { version = "1.1", optional = true }
 html5ever = "0.40"
+psl = { version = "2", default-features = false }
 regex = "1"
 ruzstd = { version = "0.9", optional = true }
 web_atoms = "0.3"
