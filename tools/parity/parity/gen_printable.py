@@ -142,7 +142,7 @@ def lower() -> None:
     sys.stdout.write(NL.join(out))
 
 
-TITLE_INPUTS = ["hello world", "o'neil mcdonald", "ǆemal", "ßtraße", "ŉx", "ΣΑΣ σας", "1st place", "élan vital", "xͅy", ""]
+TITLE_INPUTS = ["hello world", "o'neil mcdonald", "ǆemal", "ßtraße", "ŉx", "ΣΑΣ σας", "1st place", "élan vital", "xͅy", chr(0x345) + "ab", chr(0x2B0) + "ab", chr(0x1D2C) + "ab", ""]
 
 
 def rust_str(text: str) -> str:
@@ -176,7 +176,7 @@ def title() -> None:
         "#[rustfmt::skip]",
         f"pub(super) const TITLE: &[(u32, &str)] = &[{NL}{body}{NL}];",
         "",
-        table("CASED_ANY", "Code points with the Cased property, case-ignorable ones included, as `str.title()` sees them.", ranges(lambda c: (c + "A").title().endswith("a"))),
+        table("CASED_PROPERTY", "Code points with the Cased property, case-ignorable ones included, as `str.title()` sees them.", ranges(lambda c: (c + "A").title().endswith("a"))),
         table("UPPER", "Code points for which Python's `str.isupper()` is true.", ranges(str.isupper)),
         "/// `(s, s.title())` for the inputs the title test checks.",
         "#[rustfmt::skip]",

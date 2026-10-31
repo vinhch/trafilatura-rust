@@ -373,7 +373,7 @@ pub(super) const TITLE: &[(u32, &str)] = &[
 
 /// Code points with the Cased property, case-ignorable ones included, as `str.title()` sees them.
 #[rustfmt::skip]
-pub(super) const CASED_ANY: &[(u32, u32)] = &[
+pub(super) const CASED_PROPERTY: &[(u32, u32)] = &[
     (0x41, 0x5A), (0x61, 0x7A), (0xAA, 0xAA), (0xB5, 0xB5), (0xBA, 0xBA), (0xC0, 0xD6),
     (0xD8, 0xF6), (0xF8, 0x1BA), (0x1BC, 0x1BF), (0x1C4, 0x293), (0x295, 0x2B8), (0x2C0, 0x2C1),
     (0x2E0, 0x2E4), (0x345, 0x345), (0x370, 0x373), (0x376, 0x377), (0x37A, 0x37D), (0x37F, 0x37F),
@@ -529,5 +529,8 @@ pub(super) const TITLE_CASES: &[(&str, &str)] = &[
     ("1st place", "1St Place"),
     ("\u{E9}lan vital", "\u{C9}lan Vital"),
     ("x\u{345}y", "X\u{345}y"),
+    ("\u{345}ab", "\u{399}ab"),
+    ("\u{2B0}ab", "\u{2B0}ab"),
+    ("\u{1D2C}ab", "\u{1D2C}ab"),
     ("", ""),
 ];
