@@ -1983,3 +1983,14 @@ fn list_item_tail_replaces_whitespace_only_tail_of_last_child() {
         )
     );
 }
+
+#[test]
+fn table_cell_drops_empty_inline_wrapper() {
+    // oracle: etree.tostring(handle_table(etree.fromstring(s), {*TAG_CATALOG, "table"}, Extractor()))
+    // for s = '<table><tr><td>x<hi></hi></td></tr></table>': handle_textnode rejects the empty `hi`,
+    // which adds nothing to the cell
+    assert_eq!(
+        table("<table><tr><td>x<hi></hi></td></tr></table>").as_deref(),
+        Some("<table><row><cell>x</cell></row></table>")
+    );
+}
