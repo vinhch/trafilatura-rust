@@ -110,7 +110,7 @@ jobs:
           {
             echo "### mutants shard ${{ matrix.shard }}/7: exit $status"
             for kind in caught missed timeout unviable; do
-              echo "- $kind: $(wc -l < "$out/$kind.txt" 2>/dev/null || echo 0)"
+              echo "- $kind: $(cat "$out/$kind.txt" 2>/dev/null | wc -l)"
             done
             for kind in missed timeout; do
               if [ -s "$out/$kind.txt" ]; then echo "#### $kind"; echo '```'; cat "$out/$kind.txt"; echo '```'; fi

@@ -1,6 +1,8 @@
 # cargo-mutants config: mutation testing of src/main_extractor.rs against the test suite.
-# Local run: cargo mutants -j 4 --output .work/mutants, with TRAFILATURA_UPSTREAM=D:/codes/trafilatura,
-# TRAFILATURA_FIXTURES=D:/codes/trafilatura-rust/.temp/fixtures/<pinned version> and PARITY_REQUIRE_FIXTURES=1 set.
+# Local run: cargo mutants -j 4 --output .work/mutants, with TRAFILATURA_UPSTREAM=<upstream checkout>,
+# TRAFILATURA_FIXTURES=<absolute repo path>/.temp/fixtures/<pinned version> and PARITY_REQUIRE_FIXTURES=1 set.
+# The fixtures path is absolute because gitignore = true leaves .temp/ out of each scratch copy.
+# A timeout under -j 4 can hide a survivor: rerun each timeout alone with -j 1 and a line-anchored --re.
 # An equivalent mutant goes in exclude_re as a single-quoted string, with one comment line above it giving the reason.
 # Write it line-free (^<path>:[0-9]+:[0-9]+: <description>$) when its description is unique in the function,
 # and line-anchored otherwise.
