@@ -1900,3 +1900,86 @@ fn recall_retry_rejection_keeps_first_pass() {
     );
     assert_eq!(extract_txt(&page), Ok(SHORT_NOTE.to_string()));
 }
+
+/// The elements `recover_wild_text` leaves in a body that starts with one `p` per `existing` text.
+fn recovered_after(page: &str, existing: &[&str]) -> Vec<String> {
+    let mut tree = parse_document(page, &ParseLimits::default(), &Call::default()).unwrap();
+    let root = tree.root();
+    let body = tree.new_element("body");
+    for text in existing {
+        let paragraph = tree.new_element("p");
+        tree.node_mut(paragraph).text = Some(text.to_string());
+        tree.append(body, paragraph);
+    }
+    let options = options();
+    let call = Call::default();
+    recover_wild_text(&mut tree, root, body, &ctx_for(&options, &call), None, None).unwrap();
+    tree.children(body).map(|el| show(&tree, el)).collect()
+}
+
+#[test]
+fn adjacent_duplicate_of_exactly_min_length_is_kept() {
+    // oracle: extract_content(...) with Extractor(fast=True) on a frame of a 50-character paragraph
+    // twice and a unique one: both copies stay
+    let repeated = "Fifty characters exactly, repeated in a row, okay.";
+    assert_eq!(repeated.chars().count(), MIN_DUPLICATE_LENGTH);
+    let page = format!(
+        "<html><body><div class=\"post\"><p>{repeated}</p><p>{repeated}</p><p>Another unique paragraph.</p></div></body></html>"
+    );
+    assert_eq!(
+        content_of(&page, &options()),
+        (
+            format!(
+                "<body><p>{repeated}</p><p>{repeated}</p><p>Another unique paragraph.</p></body>"
+            ),
+            format!("{repeated} {repeated} Another unique paragraph.")
+        )
+    );
+}
+
+#[test]
+fn recovered_substring_of_exactly_min_length_is_kept() {
+    // oracle: recover_wild_text(parse_document(page), etree.Element("body"), Extractor(fast=True))
+    // with page = <html><body><div><p>BIG</p></div><div><p>SUB</p></div></body></html>, SUB a
+    // 50-character substring of BIG: both paragraphs are recovered
+    let big =
+        "The old harbour market opens early and the fishermen carry baskets of fresh herring.";
+    let sub = "harbour market opens early and the fishermen carry";
+    assert_eq!(sub.chars().count(), MIN_DUPLICATE_LENGTH);
+    let page = format!("<html><body><div><p>{big}</p></div><div><p>{sub}</p></div></body></html>");
+    assert_eq!(
+        recovered_after(&page, &[]),
+        [format!("<p>{big}</p>"), format!("<p>{sub}</p>")]
+    );
+}
+
+#[test]
+fn recovered_text_spanning_two_existing_elements_is_kept() {
+    // oracle: recover_wild_text(parse_document(page), body, Extractor(fast=True)) with a body of
+    // <p>A</p><p>B</p> and page = <html><body><div><p>AB</p></div></body></html>: the existing
+    // elements are newline-joined, so AB is no substring of them and is appended
+    let first = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
+    let second = "iiii jjjj kkkk llll mmmm nnnn oooo pppp";
+    let page = format!("<html><body><div><p>{first}{second}</p></div></body></html>");
+    assert_eq!(
+        recovered_after(&page, &[first, second]),
+        [
+            format!("<p>{first}</p>"),
+            format!("<p>{second}</p>"),
+            format!("<p>{first}{second}</p>")
+        ]
+    );
+}
+
+#[test]
+fn list_item_tail_replaces_whitespace_only_tail_of_last_child() {
+    // oracle: handle_lists(etree.fromstring('<list><item><hi>x</hi>  </item>Tail words</list>'),
+    // Extractor()): the item's tail replaces a tail without text characters instead of joining it
+    assert_eq!(
+        list("<list><item><hi>x</hi>  </item>Tail words</list>"),
+        (
+            Some("<list><item><hi>x</hi>Tail words</item></list>".to_string()),
+            "<done><done><done>x</done>  </done>Tail words</done>".to_string()
+        )
+    );
+}
