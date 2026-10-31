@@ -31,7 +31,7 @@ map is in `architecture.md`.
    `courlan/clean.py` between the two versions and rerunning `gen_url`. A new `tld` release changes
    `TLD_CASES` and `courlan/tld_tables.rs` when rerun: run the tests to see whether `psl`, whose suffix
    list is its own release's, still agrees, and update `psl` in `Cargo.toml` when a newer list closes a
-   difference (`docs/dependencies.md`).
+   difference (D-18, `docs/dependencies.md`).
 6. Regenerate the parity fixtures from upstream Python at the new tag: run
    `scripts/fixtures.sh --generate --pack` (details in `parity-harness.md`). The new `version` names
    the new archive and directory (`fixtures-<version>.tar.zst`, `.temp/fixtures/<version>`); `git rm`

@@ -69,24 +69,42 @@ def tables() -> None:
     sys.stdout.write("\n".join(out))
 
 
+def tld_trie_nodes() -> list[tuple[object, list[str]]]:
+    "Every node of tld's trie with its labels in walk order (the rightmost label of the suffix first)."
+    from tld.utils import MozillaTLDSourceParser, get_tld_names
+
+    root = get_tld_names()[MozillaTLDSourceParser.local_path].root
+    nodes = []
+    stack = [(root, [])]
+    while stack:
+        node, labels = stack.pop()
+        nodes.append((node, labels))
+        for label, child in (node.children or {}).items():
+            stack.append((child, [*labels, label]))
+    return nodes
+
+
 def tld_exception_parents() -> list[str]:
     """Dotted names of the nodes tld's trie marks as leaves for an exception rule, sorted.
 
     `Trie.add` sets `leaf` on the parent of every `!rule` (`ck` for `!www.ck`), so the parent counts as a
     suffix to tld though the Public Suffix List does not list it.
     """
-    from tld.utils import MozillaTLDSourceParser, get_tld_names
+    return sorted(".".join(reversed(labels)) for node, labels in tld_trie_nodes() if node.exception is not None)
 
-    root = get_tld_names()[MozillaTLDSourceParser.local_path].root
-    parents: list[str] = []
-    stack = [(root, [])]
-    while stack:
-        node, labels = stack.pop()
-        if node.exception is not None:
-            parents.append(".".join(reversed(labels)))
-        for label, child in (node.children or {}).items():
-            stack.append((child, [*labels, label]))
-    return sorted(parents)
+
+def tld_punycode_rules() -> list[str]:
+    """Dotted names of the suffix rules of tld's trie with an `xn--` label below the top level, sorted.
+
+    The parser adds the `// xn--` comment lines of the list as rules too, and a few of those name a
+    second-level suffix (`xn--9tfky.id`). Names with an empty label (a comment line that ends in a
+    dot) are left out: they match no host, whose trailing dots tld strips.
+    """
+    return sorted(
+        ".".join(reversed(labels))
+        for node, labels in tld_trie_nodes()
+        if node.leaf and "" not in labels and any(label.startswith("xn--") for label in labels[1:])
+    )
 
 
 def tld_tables() -> None:
@@ -95,7 +113,7 @@ def tld_tables() -> None:
     out = header(
         "src/courlan/tld_tables.rs",
         "tld_tables",
-        f"The nodes tld {package_version('tld')} marks as leaves for an exception rule (sorted).",
+        f"Suffix nodes of tld {package_version('tld')}'s trie that the Public Suffix List does not give (sorted).",
     )
     out += [
         "/// Dotted names of the nodes tld's trie holds as suffixes only because a `!rule` of the Public Suffix",
@@ -103,6 +121,13 @@ def tld_tables() -> None:
         "#[rustfmt::skip]",
         "pub(super) static TLD_EXCEPTION_PARENTS: &[&str] = &[",
         *[f"    {rust_str(name)}," for name in tld_exception_parents()],
+        "];",
+        "",
+        "/// Dotted names of the suffix rules of tld's trie that hold an `xn--` label below the top level, sorted:",
+        "/// tld's parser adds the `// xn--` comment lines of its list as rules.",
+        "#[rustfmt::skip]",
+        "pub(super) static TLD_PUNYCODE_RULES: &[&str] = &[",
+        *[f"    {rust_str(name)}," for name in tld_punycode_rules()],
         "];",
         "",
     ]
@@ -1243,6 +1268,17 @@ TLD_INPUTS = [
     f"https://{HK_PERSON}.hk/",
     "https://a.xn--b.ck/",
     "https://a.xn--b.c.ck/",
+    # punycode rules below the top level: tld's parser adds the `// xn--` comment lines of its list
+    "https://xn--9tfky.id/",
+    "https://x.xn--9tfky.id/",
+    "https://a.b.xn--9tfky.id/",
+    "https://xn--c.xn--9tfky.id/",
+    "https://xn--mgba3a4f16a.ir/",
+    "https://x.xn--mgba3a4f16a.ir/",
+    "https://www.xn--mgba3a4f16a.ir/",
+    "https://xn--mgba3a4fra.ir/",
+    "https://x.xn--mgba3a4fra.ir/",
+    "https://a.b.xn--mgba3a4fra.ir/",
     "https://www.dw.com./",
     "https://www.dw.com.../",
     "https://a..dw.com/",

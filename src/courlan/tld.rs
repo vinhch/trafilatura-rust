@@ -5,17 +5,18 @@
 //!
 //! - tld's `Trie.add` marks the parent of every `!exception` rule as a suffix (`ck` for `!www.ck`), so
 //!   the parents of `tld_tables` count as suffixes.
-//! - tld holds the punycode form of a rule only at the top level (the `// xn--` lines of its list);
-//!   `psl` holds both forms at every level. A label below the top that starts with `xn--` matches no
+//! - tld holds a rule with an `xn--` label only where its list has a `// xn--` comment line, which its
+//!   parser reads as a rule: the top-level entries and three second-level ones (`TLD_PUNYCODE_RULES`).
+//!   `psl` holds the punycode form of every rule. Any other `xn--` label below the top level matches no
 //!   rule but a wildcard, so it is masked before the lookup.
 
 use psl::{List, Psl};
 
-use super::tld_tables::TLD_EXCEPTION_PARENTS;
+use super::tld_tables::{TLD_EXCEPTION_PARENTS, TLD_PUNYCODE_RULES};
 use crate::pystr::lower;
 use crate::pyurl::urlsplit;
 
-/// A label no rule holds, standing in for the `xn--` labels below the top level.
+/// A label no rule holds, standing in for the `xn--` labels that match no rule.
 const MASK_LABEL: &str = "-";
 
 /// The two fields of upstream's `tld.result.Result` that courlan reads.
@@ -26,15 +27,34 @@ pub(crate) struct TldResult {
     pub fld: String,
 }
 
+/// The label count of the longest of `rules` that `host` ends with on a label boundary; 0 for none.
+fn longest_rule_suffix(host: &str, rules: &[&str]) -> usize {
+    rules
+        .iter()
+        .filter(|rule| {
+            host.strip_suffix(**rule)
+                .is_some_and(|rest| rest.is_empty() || rest.ends_with('.'))
+        })
+        .map(|rule| rule.split('.').count())
+        .max()
+        .unwrap_or(0)
+}
+
 /// The number of labels of the longest suffix tld finds in `labels`, or `None` when it finds none.
 // upstream: tld/utils.py::process_url (the trie walk)
+// deviation: D-18 (`psl` holds a different release of the Public Suffix List than tld's file)
 fn suffix_length(labels: &[&str]) -> Option<usize> {
     let last = labels.len().checked_sub(1)?;
+    let host = labels.join(".");
+    // the labels a punycode rule of tld's list covers keep their text
+    let unmasked_from = labels
+        .len()
+        .saturating_sub(longest_rule_suffix(&host, TLD_PUNYCODE_RULES));
     let masked: Vec<&str> = labels
         .iter()
         .enumerate()
         .map(|(index, &label)| {
-            if index < last && label.starts_with("xn--") {
+            if index < last && index < unmasked_from && label.starts_with("xn--") {
                 MASK_LABEL
             } else {
                 label
@@ -52,16 +72,7 @@ fn suffix_length(labels: &[&str]) -> Option<usize> {
                 .count()
                 + 1
         });
-    let host = labels.join(".");
-    let parent_length = TLD_EXCEPTION_PARENTS
-        .iter()
-        .filter(|parent| {
-            host.strip_suffix(**parent)
-                .is_some_and(|rest| rest.is_empty() || rest.ends_with('.'))
-        })
-        .map(|parent| parent.split('.').count())
-        .max()
-        .unwrap_or(0);
+    let parent_length = longest_rule_suffix(&host, TLD_EXCEPTION_PARENTS);
     Some(known_length.max(parent_length)).filter(|&length| length > 0)
 }
 
