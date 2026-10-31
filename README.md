@@ -46,6 +46,7 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 | Command | Does |
 | --- | --- |
 | `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests (the parity test when fixtures exist), `cargo deny check` |
+| `cargo mutants -j 4 --output .work/mutants` | mutation testing of `src/main_extractor.rs` with the settings in `.cargo/mutants.toml`; needs `cargo install --locked cargo-mutants@27.1.0` and the environment in the header of `.cargo/mutants.toml`; CI runs it sharded |
 | `scripts/fixtures.sh` / `scripts/fixtures.ps1` | no flags: unpacks the tracked parity fixture archive into `.temp/fixtures/<version>`; `--generate` regenerates the fixtures from upstream, `--pack` writes the archive (`docs/parity-harness.md`) |
 | `scripts/fuzz.sh` / `scripts/fuzz.ps1` | runs one fuzz target (`parse_document`, `extract`) for N seconds (default 60) with the libFuzzer limits, or with `--cmin <target>` minimizes that target's corpus; `.sh` needs cargo-fuzz and the `x86_64-unknown-linux-gnuasan` target (Linux x86_64), `.ps1` runs it in a container built from `scripts/fuzz.Dockerfile` (the CI toolchain, cargo-fuzz and the target baked in) and needs an x86_64 Docker host |
 | `scripts/measure.sh` / `scripts/measure.ps1` | time and heap per page for crate and upstream, into `.temp/measure/<version>.json`; run by hand; off Linux both sides run in one container built from `scripts/measure.Dockerfile` (`docs/parity-harness.md`) |
@@ -58,7 +59,9 @@ CI (`.github/workflows/`): `ci.yml` calls `_ci.yml` on pushes to `main` and pull
 `main`, on Ubuntu and Windows with the toolchain pinned to `rust-version`. `release.yml` checks that
 the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through
 the `crates-io` environment. `quality.yml` re-checks advisories and runs each fuzz target for 15
-minutes with AddressSanitizer and minimizes the corpus cache, weekly and on demand. `bench.yml` runs
+minutes with AddressSanitizer and minimizes the corpus cache, and runs `cargo-mutants` on
+`src/main_extractor.rs` in 7 shards that fail on a surviving mutant not listed in `.cargo/mutants.toml`,
+weekly and on demand. `bench.yml` runs
 `scripts/regression.sh` on pull requests targeting `main` and reports the heap and time change of the
 sample against the base in the job summary; it is not a required check. Actions are pinned by commit
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with

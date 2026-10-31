@@ -68,3 +68,62 @@ jobs:
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts/
+
+  mutants:
+    name: mutants (shard ${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6]
+    runs-on: ubuntu-latest
+    timeout-minutes: 140
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Read the upstream pin
+        id: pin
+        shell: bash
+        run: echo "commit=$(sed -n 's/^commit = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - name: Check out upstream at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: adbar/trafilatura
+          ref: ${{ steps.pin.outputs.commit }}
+          path: upstream
+      # Like the pin in _ci.yml, this one moves with rust-version by hand (OI-6 in docs/phase-plan.md).
+      - uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: cargo-mutants@27.1.0
+      - name: Unpack the parity fixtures
+        run: scripts/fixtures.sh
+      # The verdict reads missed.txt because exit 3 (a timeout) outranks exit 2 (a survivor).
+      - name: Mutate src/main_extractor.rs
+        shell: bash
+        timeout-minutes: 120
+        env:
+          TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
+          PARITY_REQUIRE_FIXTURES: '1'
+        run: |
+          status=0
+          cargo mutants --in-place --shard ${{ matrix.shard }}/7 --sharding round-robin || status=$?
+          out=mutants.out
+          {
+            echo "### mutants shard ${{ matrix.shard }}/7: exit $status"
+            for kind in caught missed timeout unviable; do
+              echo "- $kind: $(wc -l < "$out/$kind.txt" 2>/dev/null || echo 0)"
+            done
+            for kind in missed timeout; do
+              if [ -s "$out/$kind.txt" ]; then echo "#### $kind"; echo '```'; cat "$out/$kind.txt"; echo '```'; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "$status" in 0|2|3) ;; *) echo "::error::cargo mutants exited $status"; exit "$status" ;; esac
+          if [ -s "$out/missed.txt" ]; then
+            echo "::error::surviving mutants: add a test, or list an equivalent one in .cargo/mutants.toml"
+            exit 1
+          fi
+      - name: Upload the mutants output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutants-shard-${{ matrix.shard }}
+          path: mutants.out/

@@ -49,7 +49,7 @@ Phase numbers are ids, not positions: the Order column gives the sequence, and B
 | --- | --- | --- |
 | OI-4 | Language check. Upstream's `target_language` uses the optional `py3langid`. Decide whether the port includes it, behind a feature, and with which model. | Phase 4 |
 | OI-5 | Open upstream changes to watch on each sync: the proposed switch from `lxml.html` to another parser, the Markdown and XML output fixes, and the concurrent `extract()` crash report. A merged one changes Phases 3 and 6; the parser switch also changes the sink rules of Phase 8 and Phase 10. | Each sync |
-| OI-6 | The CI toolchain pins (`dtolnay/rust-toolchain`, 1.98.1, in `_ci.yml`, `bench.yml`, `quality.yml` (the fuzz job) and `release.yml`), the base image in `scripts/fuzz.Dockerfile` and `scripts/measure.Dockerfile` and `rust-version` must move together; Dependabot cannot move the action because its ref is a branch tip. After a bump, repeat the base-against-head check of `scripts/regression` with a base that differs from head in `src/` only: the gated peak must move, because cargo's freshness rules decide whether head reuses a base build. | Each toolchain bump |
+| OI-6 | The CI toolchain pins (`dtolnay/rust-toolchain`, 1.98.1, in `_ci.yml`, `bench.yml`, `quality.yml` (the fuzz and mutants jobs) and `release.yml`), the base image in `scripts/fuzz.Dockerfile` and `scripts/measure.Dockerfile` and `rust-version` must move together; Dependabot cannot move the action because its ref is a branch tip. After a bump, repeat the base-against-head check of `scripts/regression` with a base that differs from head in `src/` only: the gated peak must move, because cargo's freshness rules decide whether head reuses a base build. | Each toolchain bump |
 
 ## Followups
 
