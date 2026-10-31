@@ -53,6 +53,8 @@ mod metadata;
 #[allow(dead_code)]
 mod pyhtml;
 #[allow(dead_code)]
+mod pyidna;
+#[allow(dead_code)]
 mod pyjson;
 #[allow(dead_code)]
 mod pystr;

@@ -1,4 +1,4 @@
-"""Generates the files behind `crate::pyurl`: the netloc table and the cases of `html.unescape` and `urllib.parse`.
+"""Generates the files behind `crate::pyurl` and `crate::pyidna`: the netloc table and the cases of `html.unescape`, `urllib.parse` and the `idna` codec.
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -6,7 +6,7 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
     scripts/oracle.sh 'from parity.gen_url import cases; cases()' > src/pyurl/cases.rs
 
 The tables come from the interpreter that runs this, so the header records its version. The expected
-values of the cases come from the same interpreter (CPython's own `html` and `urllib.parse`).
+values of the cases come from the same interpreter (CPython's own `html`, `urllib.parse` and `encodings.idna`).
 """
 
 import sys
@@ -799,6 +799,113 @@ def courlan_cases() -> list[str]:
     ]
 
 
+def punycode_label(text: str) -> str:
+    "`xn--` and the punycode of `text`, the ACE form with nameprep left out."
+    return "xn--" + text.encode("punycode").decode("ascii")
+
+
+def punycode_of_code_point(code_point: int) -> str:
+    "`xn--` and the punycode of one character, by hand where `chr` cannot make it (above U+10FFFF)."
+    from encodings.punycode import generate_generalized_integer
+
+    return "xn--" + generate_generalized_integer(code_point - 0x80, 72).decode("ascii")
+
+
+U_DIAERESIS = uni("LATIN SMALL LETTER U WITH DIAERESIS")
+
+# Labels whose `label.encode("utf8").decode("idna")` is compared. No decoded text of them is one
+# nameprep changes, so the port agrees with CPython on every one.
+IDNA_INPUTS = [
+    "xn--mnchen-3ya",
+    "xn--e1afmkfd",
+    "xn--p1ai",
+    "XN--P1AI",
+    "xn--",
+    "xn--ls8h",
+    "xn--abc-",
+    "a" * 64,
+    "a" * 2000,
+    "xn--mnchen-3ya" + EURO,
+    "xn--Mnchen-3ya",
+    "xn--xn---3ra",
+    "",
+    "plain",
+    "fooxn--bar",
+    # 1024 bytes is the longest label ToUnicode decodes, but an ASCII label without `xn--` skips it.
+    "a" * 1020 + "xn--",
+    "a" * 1021 + "xn--",
+    "xn--" + "a" * 1020,
+    "xn--" + "a" * 1021,
+    U_DIAERESIS,
+    f"xn--{U_DIAERESIS}-3ya",
+    "xn--" + EURO,
+    "xn---",
+    "xn--a-",
+    "xn--9",
+    "xn--" + "9" * 40,
+    # Deltas of 2**63 and more make CPython raise OverflowError (not UnicodeError), so they are not here.
+    punycode_of_code_point(2**62 + 0x80),
+    "xn--mnchen-3y",
+    "xn--mnchen-3ya-",
+    "xn--mnchen-3yA",
+    # ToASCII refuses 64 bytes: 4 for `xn--`, the base, `-` and the extended part.
+    punycode_label(U_DIAERESIS * 70),
+    punycode_label("a" * 50 + U_DIAERESIS),
+    punycode_label("a" * 53 + U_DIAERESIS),
+    punycode_label("a" * 54 + U_DIAERESIS),
+    punycode_label("a" * 55 + U_DIAERESIS),
+    punycode_label("Xn--" + U_DIAERESIS),
+    punycode_label("-" + U_DIAERESIS),
+    punycode_label(U_DIAERESIS + "-"),
+    punycode_label(uni("CYRILLIC SMALL LETTER A") + "a" + uni("GREEK SMALL LETTER ALPHA")),
+    punycode_of_code_point(0x10FFFF + 1),
+    punycode_of_code_point(0xD800),
+    punycode_of_code_point(0xDFFF),
+]
+
+# Labels nameprep (RFC 3491) maps, prohibits or rejects on the bidi rule: CPython's `idna` codec raises
+# on all of them, the port decodes them (D-16).
+IDNA_NAMEPREP_INPUTS = [
+    "xn--a",
+    punycode_label(uni("LATIN SMALL LIGATURE FF")),
+    punycode_label("a" + uni("SOFT HYPHEN")),
+    punycode_label(uni("HEBREW LETTER ALEF") + "a"),
+    punycode_label(uni("CYRILLIC CAPITAL LETTER DE")),
+    punycode_of_code_point(0x10FFFF),
+]
+
+
+def idna_decode_or_none(label: str) -> str | None:
+    "`label.encode('utf8').decode('idna')`, or None where CPython raises UnicodeError."
+    try:
+        return label.encode("utf8").decode("idna")
+    except UnicodeError:
+        return None
+
+
+def idna_cases() -> list[str]:
+    return [
+        '/// Label and `label.encode("utf8").decode("idna")` of it; `None` where CPython raises',
+        "/// `UnicodeError`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const IDNA_CASES: &[(&str, Option<&str>)] = &[",
+        *[f"    ({rust_str(label)}, {rust_option(idna_decode_or_none(label))})," for label in IDNA_INPUTS],
+        "];",
+        "",
+        '/// Label, `label.encode("utf8").decode("idna")` of it, and the punycode decode of the label',
+        '/// (`label[4:].decode("punycode")`), which is what the port returns without nameprep.',
+        "#[rustfmt::skip]",
+        "pub(crate) const IDNA_NAMEPREP_CASES: &[(&str, Option<&str>, &str)] = &[",
+        *[
+            f"    ({rust_str(label)}, {rust_option(idna_decode_or_none(label))}, "
+            f"{rust_str(label[4:].encode('ascii').decode('punycode'))}),"
+            for label in IDNA_NAMEPREP_INPUTS
+        ],
+        "];",
+        "",
+    ]
+
+
 def unescape_or_none(s: str) -> str | None:
     "`html.unescape(s)`, or None where CPython raises ValueError."
     import html
@@ -817,7 +924,7 @@ def cases() -> None:
     out = header(
         "src/pyurl/cases.rs",
         "cases",
-        "CPython's `html.unescape` and `urllib.parse` run on fixed inputs.",
+        "CPython's `html.unescape`, `urllib.parse` and `idna` codec run on fixed inputs.",
     )
     out += [
         "/// Input and `html.unescape` of it; `None` where CPython raises `ValueError`.",
@@ -830,6 +937,7 @@ def cases() -> None:
         *url_cases(),
         *urlparse_cases(),
         *courlan_cases(),
+        *idna_cases(),
     ]
     sys.stdout.write("\n".join(out))
 
