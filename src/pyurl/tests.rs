@@ -1,7 +1,8 @@
 #![allow(clippy::indexing_slicing)]
 
 use super::cases::{
-    NFKC_COMPOSITION_CASES, UNESCAPE_CASES, URLJOIN_CASES, URLSPLIT_CASES, URLUNSPLIT_CASES,
+    HOSTNAME_CASES, NFKC_COMPOSITION_CASES, PARSE_QS_CASES, QUOTE_CASES, UNESCAPE_CASES,
+    URLENCODE_CASES, URLJOIN_CASES, URLSPLIT_CASES, URLUNSPLIT_CASES,
 };
 use super::tables::NFKC_NETLOC_BREAKERS;
 use super::*;
@@ -132,6 +133,70 @@ fn urlunsplit_matches_python_on_given_parts() {
             urlunsplit(&parts),
             expected,
             "urlunsplit({scheme:?}, {netloc:?}, {path:?}, {query:?}, {fragment:?})"
+        );
+    }
+}
+
+#[test]
+fn hostname_and_port_match_python() {
+    assert!(!HOSTNAME_CASES.is_empty());
+    for &(url, hostname, port) in HOSTNAME_CASES {
+        let split = urlsplit(url, "");
+        assert!(split.is_ok(), "urlsplit({url:?}) raises");
+        let Ok(split) = split else { continue };
+        assert_eq!(
+            split.hostname().as_deref(),
+            hostname,
+            "urlsplit({url:?}).hostname"
+        );
+        let got = match split.port() {
+            Ok(None) => "none".to_owned(),
+            Ok(Some(number)) => number.to_string(),
+            Err(UrlError) => "err".to_owned(),
+        };
+        let shown: String = url.chars().take(40).collect();
+        assert_eq!(got, port, "urlsplit({shown:?}..).port");
+    }
+}
+
+#[test]
+fn quote_matches_python() {
+    assert!(!QUOTE_CASES.is_empty());
+    for &(s, safe, quoted, quoted_plus) in QUOTE_CASES {
+        assert_eq!(quote(s, safe), quoted, "quote({s:?}, {safe:?})");
+        assert_eq!(
+            quote_plus(s, safe),
+            quoted_plus,
+            "quote_plus({s:?}, {safe:?})"
+        );
+    }
+}
+
+#[test]
+fn parse_qs_matches_python() {
+    assert!(!PARSE_QS_CASES.is_empty());
+    for &(qs, expected) in PARSE_QS_CASES {
+        let expected: Vec<(String, Vec<String>)> = expected
+            .iter()
+            .map(|&(key, values)| {
+                (
+                    key.to_owned(),
+                    values.iter().map(|&value| value.to_owned()).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(parse_qs(qs), expected, "parse_qs({qs:?})");
+    }
+}
+
+#[test]
+fn urlencode_matches_python() {
+    assert!(!URLENCODE_CASES.is_empty());
+    for &(qs, expected) in URLENCODE_CASES {
+        assert_eq!(
+            urlencode_doseq(&parse_qs(qs)),
+            expected,
+            "urlencode(parse_qs({qs:?}), doseq=True)"
         );
     }
 }

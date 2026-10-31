@@ -461,6 +461,258 @@ def url_cases() -> list[str]:
         "",
     ]
 
+def uni(*names: str) -> str:
+    "The characters with these Unicode names, joined."
+    return "".join(unicodedata.lookup(name) for name in names)
+
+
+ARABIC_INDIC_THREE = uni("ARABIC-INDIC DIGIT THREE")
+EURO = uni("EURO SIGN")
+GRINNING_FACE = uni("GRINNING FACE")
+# NUL, US, DEL, LF and TAB.
+CONTROLS = "".join(chr(code) for code in (0, 0x1F, 0x7F, 10, 9))
+HOST_SIGMA = uni("GREEK CAPITAL LETTER ALPHA", "GREEK CAPITAL LETTER SIGMA")
+HOST_PE_ER = uni("CYRILLIC CAPITAL LETTER PE", "CYRILLIC SMALL LETTER ER")
+
+# URLs whose `urlsplit(url).hostname` and `.port` are compared. None of them makes `urlsplit` raise.
+HOSTNAME_INPUTS = [
+    "http://Ex.COM/",
+    "http://example.com/a",
+    "http://example.com:8080/a",
+    "http://[::1]:80/",
+    "http://[::1]/",
+    "http://[::1]:",
+    "http://[2001:db8::1]/",
+    "http://[2001:DB8::1]:443/",
+    "http://[fe80::1%tESt]:1234/keys",
+    "http://[fe80::1%eth0]/",
+    "http://h%25zone/",
+    "http://h%41:80/",
+    "http://[v1.FE]/",
+    "http://192.168.0.1/",
+    "http://192.168.0.1:8080/",
+    "https://user@www.faz.net:8080/",
+    "https://user:pw@www.faz.net/",
+    "https://us@er@www.faz.net:81/",
+    "https://us:er@pw:2@www.faz.net:82/",
+    "http://@h/",
+    "http://@h:9/",
+    "http://u:p@[::1]:80/p",
+    "http://u@[::1]/",
+    "//h:1",
+    "//h",
+    "//H:0",
+    "//:80",
+    "//",
+    "///p",
+    "http://:80/",
+    "http://@/",
+    "http://u@:1/",
+    "http://h:/",
+    "http://h:",
+    "http://h:/p",
+    "http://h:0/",
+    "http://h:00080/",
+    "http://h:65535/",
+    "http://h:65536/",
+    "http://h:99999/",
+    "http://h:99999999999999999999/",
+    "http://h:18446744073709551616/",
+    "http://h:4294967296/",
+    "http://h:-1/",
+    "http://h:+1/",
+    "http://h: 1/",
+    "http://h:1 /",
+    "http://h:1_0/",
+    "http://h:0x10/",
+    "http://h:1e2/",
+    "http://h:abc/",
+    "http://h:80:90/",
+    "http://h::80/",
+    f"http://h:{ARABIC_INDIC_THREE}/",
+    f"http://h:80{ARABIC_INDIC_THREE}/",
+    f"http://h:{uni('FULLWIDTH DIGIT ONE')}/",
+    f"http://h:{uni('SUPERSCRIPT TWO')}/",
+    f"http://h:{uni('VULGAR FRACTION ONE HALF')}/",
+    "http://h:" + "0" * 4300 + "/",
+    "http://h:" + "0" * 4301 + "/",
+    "http://h:" + "0" * 4300 + "1/",
+    "http://h:" + "1" * 4301 + "/",
+    f"http://{E_ACUTE}x{uni('LATIN SMALL LETTER A WITH DIAERESIS')}mple.com:80/",
+    f"http://{HOST_SIGMA}{uni('GREEK CAPITAL LETTER SIGMA')}.com/",
+    f"http://{HOST_SIGMA}/",
+    f"http://{uni('LATIN CAPITAL LETTER I WITH DOT ABOVE')}x/",
+    f"http://{uni('LATIN CAPITAL LETTER SHARP S')}/",
+    f"http://{HOST_PE_ER}.{uni('CYRILLIC SMALL LETTER ER', 'CYRILLIC SMALL LETTER EF')}/",
+    "http://h%41/%zz?q#f",
+    "http://H/P?Q#F",
+    "noscheme",
+    "noscheme:80",
+    "NoScheme.COM/path",
+    "mailto:a@B.com",
+    "mailto:a@b.com:25",
+    "/path/only",
+    "",
+    "file:///etc/passwd",
+    "file://HOST/etc/passwd",
+    "ftp://u@h:21/pub/f;type=a",
+    "http://h/a:80",
+    "http://h?x=@y:80",
+    "http://h#a@b:80",
+]
+
+# (string, safe set) handed to `quote` and `quote_plus`.
+QUOTE_STRINGS = [
+    "",
+    "abc",
+    "AZaz09_.-~",
+    "a b",
+    " ",
+    "a+b",
+    "+",
+    "a/b",
+    "/%!=:,-",
+    "100%",
+    "%41",
+    "~",
+    "a&b=c;d",
+    "?#[]@$'()*",
+    CONTROLS,
+    E_ACUTE,
+    EURO,
+    GRINNING_FACE,
+    f"a {E_ACUTE}{EURO} b/c",
+]
+QUOTE_SAFES = ["", "/", "/%!=:,-", "+", " ", E_ACUTE + "/", "abc~"]
+QUOTE_INPUTS = [(s, safe) for s in QUOTE_STRINGS for safe in QUOTE_SAFES]
+
+# Query strings for `parse_qs`, and for `urlencode(parse_qs(q), doseq=True)`.
+PARSE_QS_INPUTS = [
+    "",
+    "a=1",
+    "a=1&a=2",
+    "a=1&b=2&a=3",
+    "b=&a=1",
+    "a=",
+    "a",
+    "a&b",
+    "&&",
+    "&",
+    "=",
+    "=1",
+    "=&=1",
+    "a==1",
+    "a=1=2",
+    "a=1&&b=2",
+    "&a=1&",
+    "a=1;b=2",
+    "x=%E2%82%AC",
+    "x=%e2%82%ac",
+    "x=a+b",
+    "x=a%2Bb",
+    "x=a%20b",
+    "a+b=c+d",
+    "a%3Db=1",
+    "a%26b=1&c=2",
+    "x=%ff",
+    "x=%ff%fe",
+    "x=%E2%82",
+    "x=%E2",
+    "x=%C3%28",
+    "x=%ed%a0%80",
+    "x=%f0%9f%98",
+    "x=%F0%9F%98%80",
+    "x=%00",
+    "x=%",
+    "x=%4",
+    "x=%zz",
+    "x=%4z",
+    "x=%%41",
+    "x=%+41",
+    "x=%2",
+    "%=1",
+    "%ff=%fe",
+    "%41=%42&%41=%43",
+    "A=1&a=2&%61=3",
+    f"x={E_ACUTE}",
+    f"{E_ACUTE}={EURO}",
+    f"x=%E2{E_ACUTE}%82",
+    f"x=%C3{E_ACUTE}",
+    f"x={E_ACUTE}%80",
+    f"x=%C3%{E_ACUTE}9",
+    f"x={GRINNING_FACE}&y=%F0%9F%98%80",
+    "utm_source=a&utm_medium=b&id=7&utm_source=c",
+    "q=a b",
+    "q=a" + chr(9) + "b&r=" + chr(10),
+    "url=http%3A%2F%2Fa.b%2Fc%3Fd%3De%26f",
+    "a=1&a=&a=2",
+    "a=&a=",
+    "1=2&01=3&1=4",
+]
+
+
+def hostname_port(url: str) -> tuple[str | None, str]:
+    "`urlsplit(url).hostname` and the port as `none`, `err` or the number."
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    try:
+        port = parts.port
+    except ValueError:
+        return parts.hostname, "err"
+    return parts.hostname, "none" if port is None else str(port)
+
+
+def rust_str_list(items: list[str]) -> str:
+    return "&[" + ", ".join(rust_str(i) for i in items) + "]"
+
+
+def urlparse_cases() -> list[str]:
+    from urllib.parse import parse_qs, quote, quote_plus, urlencode
+
+    hostname_rows = []
+    for url in HOSTNAME_INPUTS:
+        hostname, port = hostname_port(url)
+        hostname_rows.append(f"    ({rust_str(url)}, {rust_option(hostname)}, {rust_str(port)}),")
+    qs_rows = []
+    for qs in PARSE_QS_INPUTS:
+        pairs = ", ".join(f"({rust_str(k)}, {rust_str_list(v)})" for k, v in parse_qs(qs).items())
+        qs_rows.append(f"    ({rust_str(qs)}, &[{pairs}]),")
+    return [
+        "/// URL, `urlsplit(url).hostname` and `urlsplit(url).port` as `none`, `err` (`ValueError`) or the",
+        "/// number.",
+        "#[rustfmt::skip]",
+        "pub(crate) const HOSTNAME_CASES: &[(&str, Option<&str>, &str)] = &[",
+        *hostname_rows,
+        "];",
+        "",
+        "/// String, safe set, `quote` and `quote_plus` of them.",
+        "#[rustfmt::skip]",
+        "pub(crate) const QUOTE_CASES: &[(&str, &str, &str, &str)] = &[",
+        *[
+            f"    ({rust_str(s)}, {rust_str(safe)}, {rust_str(quote(s, safe))}, {rust_str(quote_plus(s, safe))}),"
+            for s, safe in QUOTE_INPUTS
+        ],
+        "];",
+        "",
+        "/// Query and the `parse_qs` dict of it as pairs in key order.",
+        "#[rustfmt::skip]",
+        "pub(crate) type ParseQsCase = (&'static str, &'static [(&'static str, &'static [&'static str])]);",
+        "",
+        "#[rustfmt::skip]",
+        "pub(crate) const PARSE_QS_CASES: &[ParseQsCase] = &[",
+        *qs_rows,
+        "];",
+        "",
+        "/// Query and `urlencode(parse_qs(query), doseq=True)`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const URLENCODE_CASES: &[(&str, &str)] = &[",
+        *[f"    ({rust_str(qs)}, {rust_str(urlencode(parse_qs(qs), doseq=True))})," for qs in PARSE_QS_INPUTS],
+        "];",
+        "",
+    ]
+
+
 FULLWIDTH_SOLIDUS_HOST = "http://ex" + FULLWIDTH_SOLIDUS + "com/"
 
 # (baseurl, url) handed to the upstream `safe_base_url(url)` and `safe_relative_url(baseurl, url)`.
@@ -560,6 +812,7 @@ def cases() -> None:
         "",
         *composition_cases(),
         *url_cases(),
+        *urlparse_cases(),
         *courlan_cases(),
     ]
     sys.stdout.write("\n".join(out))

@@ -1,12 +1,15 @@
-//! CPython's `html.unescape` (over `pyhtml`) and `urllib.parse.urlsplit`, `urlunsplit` and `urljoin`
-//! (the functions the URL helpers call), ported with generated tables
-//! (`tools/parity/parity/gen_url.py`).
+//! CPython's `html.unescape` (over `pyhtml`) and the `urllib.parse` functions the URL helpers call
+//! (`urlsplit`, `urlunsplit`, `urljoin`, `SplitResult.hostname` and `port`, `quote`, `quote_plus`,
+//! `parse_qs`, `urlencode`), ported with generated tables (`tools/parity/parity/gen_url.py`).
 
 mod tables;
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use tables::NFKC_NETLOC_BREAKERS;
+
+use crate::pystr::MAX_STR_DIGITS;
 
 /// The `ValueError` of the `urllib.parse` and `html` helpers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +38,55 @@ pub struct SplitResult {
     pub query: String,
     /// Fragment, without the `#`.
     pub fragment: String,
+}
+
+impl SplitResult {
+    /// Python `SplitResult.hostname`: the host of the netloc, lowercased except an IPv6 zone id; `None`
+    /// when the host is empty.
+    // upstream: cpython Lib/urllib/parse.py::_NetlocResultMixinBase.hostname
+    pub fn hostname(&self) -> Option<String> {
+        let (hostname, _) = self.hostinfo();
+        if hostname.is_empty() {
+            return None;
+        }
+        Some(match hostname.split_once('%') {
+            Some((host, zone)) => format!("{}%{zone}", host.to_lowercase()),
+            None => hostname.to_lowercase(),
+        })
+    }
+
+    /// Python `SplitResult.port`: `None` when the netloc names no port.
+    ///
+    /// Errors where CPython raises `ValueError`: a port that is not ASCII digits only (more than
+    /// `MAX_STR_DIGITS` of them included, as `int` refuses) or that is above 65535.
+    // upstream: cpython Lib/urllib/parse.py::_NetlocResultMixinBase.port
+    pub fn port(&self) -> Result<Option<u16>, UrlError> {
+        let (_, port) = self.hostinfo();
+        if port.is_empty() {
+            return Ok(None);
+        }
+        if port.len() > MAX_STR_DIGITS || !port.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(UrlError);
+        }
+        port.parse().map(Some).map_err(|_| UrlError)
+    }
+
+    // The port is empty for `None`.
+    // upstream: cpython Lib/urllib/parse.py::_NetlocResultMixinStr._hostinfo
+    fn hostinfo(&self) -> (&str, &str) {
+        let hostinfo = self
+            .netloc
+            .rsplit_once('@')
+            .map_or(self.netloc.as_str(), |(_, hostinfo)| hostinfo);
+        match hostinfo.split_once('[') {
+            Some((_, bracketed)) => {
+                let (hostname, after) = bracketed.split_once(']').unwrap_or((bracketed, ""));
+                let port = after.split_once(':').map_or("", |(_, port)| port);
+                (hostname, port)
+            }
+            None => hostinfo.split_once(':').unwrap_or((hostinfo, "")),
+        }
+    }
 }
 
 // oracle: urllib.parse.uses_relative
@@ -489,6 +541,109 @@ pub fn urljoin(base: &str, url: &str) -> Result<String, UrlError> {
         joined
     };
     Ok(urlunparse(&parsed, &params))
+}
+
+// upstream: cpython Lib/urllib/parse.py::_ALWAYS_SAFE
+fn is_always_safe(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-' | b'~')
+}
+
+/// Python `urllib.parse.quote(s, safe)`: `%XX` (uppercase hex) for each UTF-8 byte of `s` that is not
+/// an ASCII letter, digit or one of `_.-~`, nor an ASCII character of `safe`.
+// upstream: cpython Lib/urllib/parse.py::quote
+pub fn quote(s: &str, safe: &str) -> String {
+    let mut quoted = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        if is_always_safe(byte) || (byte.is_ascii() && safe.as_bytes().contains(&byte)) {
+            quoted.push(char::from(byte));
+        } else {
+            quoted.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    quoted
+}
+
+/// Python `urllib.parse.quote_plus(s, safe)`: like [`quote`], with a space written as `+`.
+// upstream: cpython Lib/urllib/parse.py::quote_plus
+pub fn quote_plus(s: &str, safe: &str) -> String {
+    // Python takes `quote(s, safe)` when `s` has no space; a space in `safe` changes nothing then.
+    quote(s, &format!("{safe} ")).replace(' ', "+")
+}
+
+// A `%` not followed by two hex digits stays as it is.
+// upstream: cpython Lib/urllib/parse.py::_unquote_impl
+fn percent_decode(s: &str) -> Vec<u8> {
+    let mut parts = s.as_bytes().split(|&b| b == b'%');
+    let mut decoded = parts.next().unwrap_or_default().to_vec();
+    for part in parts {
+        let escaped = part
+            .split_first_chunk::<2>()
+            .and_then(|(&[high, low], rest)| {
+                let high = char::from(high).to_digit(16)?;
+                let low = char::from(low).to_digit(16)?;
+                Some((u8::try_from(high * 16 + low).ok()?, rest))
+            });
+        match escaped {
+            Some((byte, rest)) => {
+                decoded.push(byte);
+                decoded.extend_from_slice(rest);
+            }
+            None => {
+                decoded.push(b'%');
+                decoded.extend_from_slice(part);
+            }
+        }
+    }
+    decoded
+}
+
+// upstream: cpython Lib/urllib/parse.py::unquote_plus (`errors="replace"`)
+fn unquote_plus(s: &str) -> String {
+    // CPython decodes each run of ASCII separately and leaves the rest as it is; decoding all bytes
+    // at once gives the same text, because a non-ASCII character is valid UTF-8 on its own and never
+    // continues the bytes before it.
+    String::from_utf8_lossy(&percent_decode(&s.replace('+', " "))).into_owned()
+}
+
+/// Python `urllib.parse.parse_qs(qs)` with the defaults (blank values dropped, `&` as separator): the
+/// decoded names in order of first appearance, each with its values in order.
+// parse_qsl is inlined: its pairs go straight into the dict.
+// upstream: cpython Lib/urllib/parse.py::parse_qs
+// upstream: cpython Lib/urllib/parse.py::parse_qsl
+pub fn parse_qs(qs: &str) -> Vec<(String, Vec<String>)> {
+    let mut parsed: Vec<(String, Vec<String>)> = Vec::new();
+    let mut index_of_name: HashMap<String, usize> = HashMap::new();
+    for name_value in qs.split('&') {
+        let (name, value) = name_value.split_once('=').unwrap_or((name_value, ""));
+        if value.is_empty() {
+            continue;
+        }
+        let (name, value) = (unquote_plus(name), unquote_plus(value));
+        match index_of_name.get(&name).and_then(|&i| parsed.get_mut(i)) {
+            Some((_, values)) => values.push(value),
+            None => {
+                index_of_name.insert(name.clone(), parsed.len());
+                parsed.push((name, vec![value]));
+            }
+        }
+    }
+    parsed
+}
+
+/// Python `urllib.parse.urlencode(query, doseq=True)` over string keys and lists of string values:
+/// one `key=value` per value, both through [`quote_plus`] with no safe characters, joined by `&`.
+// upstream: cpython Lib/urllib/parse.py::urlencode
+pub fn urlencode_doseq(query: &[(String, Vec<String>)]) -> String {
+    let mut pairs: Vec<String> = Vec::new();
+    for (key, values) in query {
+        let key = quote_plus(key, "");
+        pairs.extend(
+            values
+                .iter()
+                .map(|value| format!("{key}={}", quote_plus(value, ""))),
+        );
+    }
+    pairs.join("&")
 }
 
 #[cfg(test)]
