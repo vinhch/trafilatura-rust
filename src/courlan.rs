@@ -6,7 +6,7 @@ mod filters;
 mod tld;
 mod tld_tables;
 
-// No caller until `metadata` (phase 4b) takes them; the tests use them now.
+// Re-exported for the metadata port; unused outside the tests until it lands.
 #[allow(unused_imports)]
 pub use clean::normalize_url;
 #[allow(unused_imports)]
