@@ -1,4 +1,14 @@
-//! The URL helpers upstream takes from the courlan package (`courlan/urlutils.py`).
+//! The URL helpers upstream takes from the courlan package: `urlutils.py` here, `filters.py` in
+//! `filters` and `clean.py` in `clean`.
+
+mod clean;
+mod filters;
+
+// No caller until `metadata` (phase 4b) takes them; the tests use them now.
+#[allow(unused_imports)]
+pub use clean::normalize_url;
+#[allow(unused_imports)]
+pub use filters::{is_valid_url, validate_url};
 
 use crate::pyurl::{UrlError, unescape, urljoin, urlsplit, urlunsplit};
 

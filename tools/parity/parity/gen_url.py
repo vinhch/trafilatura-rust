@@ -906,6 +906,211 @@ def idna_cases() -> list[str]:
     ]
 
 
+COMBINING_ACUTE = uni("COMBINING ACUTE ACCENT")
+SUPERSCRIPT_TWO = uni("SUPERSCRIPT TWO")
+
+# Strings handed to `courlan.filters.validate_url`. Lengths count code points, not bytes.
+VALIDATE_URL_INPUTS = [
+    "http://abcd/",
+    "http://abcde/",
+    "http://abcde",
+    "https://abcde/",
+    "HTTP://ABCDE/",
+    "HTTPS://abcde",
+    "http://www.abc/",
+    "http://www.abcd/",
+    "http://www.abcdef/",
+    "http://www.abcdefg/",
+    "http://WWW.abcdef/",
+    "http://wwww.abc/",
+    "http://www./",
+    "http://www.a",
+    "http://u@ab/",
+    "ftp://abcde/",
+    "ftp:abcde",
+    "abcde.com/path",
+    "//abcde.com/",
+    "http:abcde",
+    "http:///abcde",
+    "http://",
+    "mailto:abcde",
+    "javascript:void(0)",
+    f"http://{uni('LATIN SMALL LETTER U WITH DIAERESIS')}.de",
+    f"http://{uni('LATIN SMALL LETTER U WITH DIAERESIS')}{uni('LATIN SMALL LETTER U WITH DIAERESIS')}.de",
+    f"http://www.{uni('LATIN SMALL LETTER U WITH DIAERESIS')}.d",
+    f"http://www.{uni('LATIN SMALL LETTER U WITH DIAERESIS')}{uni('LATIN SMALL LETTER U WITH DIAERESIS')}.d",
+    "http://[::1",
+    "http://[::1]/",
+    "http://[::]",
+    f"http://ex{FULLWIDTH_SOLIDUS}com/",
+    "",
+]
+
+# Strings split by `urlsplit` (no `ValueError`) and normalized by `courlan.clean.normalize_url`.
+NORMALIZE_URL_INPUTS = [
+    "http://example.com:80/",
+    "https://example.com:443/",
+    "http://example.com:443/",
+    "https://example.com:80/",
+    "http://example.com:80",
+    "https://example.com:443",
+    "http://example.com:8080/",
+    "https://example.com:8443/",
+    "http://example.com:080/",
+    "http://example.com:00080/",
+    "http://example.com:/",
+    "http://example.com:65536/",
+    "http://example.com:99999999999999999999/",
+    "http://example.com:abc/",
+    "http://example.com:80:80/",
+    f"http://example.com:{ARABIC_INDIC_THREE}/",
+    "ftp://example.com:80/",
+    "HTTP://EXAMPLE.COM:80/",
+    "HTTPS://EXAMPLE.COM:443/Path?Q=1#Frag",
+    "http://a:80@b.com:80/",
+    "http://u:8080@h:80/",
+    "http://u:443@h:80/",
+    "http://u:80@h:8080/",
+    "https://u:443@h:443/",
+    "http://[::1]:80/",
+    "http://[::1]:8080/",
+    f"http://{E_ACUTE}:80/",
+    f"http://{SUPERSCRIPT_TWO}:80/",
+    f"http://x{COMBINING_ACUTE}:80/",
+    "//a///b/../c",
+    "/../../x",
+    "/..x",
+    "/..",
+    "/../",
+    "/.././..",
+    "///..///..//x",
+    "/../..x",
+    "/a/../b",
+    "/..\n",
+    "http://e.com/../x",
+    "http://e.com/a//b///c",
+    "http://e.com//",
+    "http://EXAMPLE.com/",
+    f"http://{HOST_SIGMA}.com/",
+    f"http://{uni('LATIN CAPITAL LETTER I WITH DOT ABOVE')}x.com/",
+    "http://xn--mnchen-3ya.de:80/",
+    "https://xn--e1afmkfd.xn--p1ai:443/a",
+    "http://XN--MNCHEN-3YA.DE/",
+    "http://xn--bad--.com/",
+    "http://e.com/?utm_source=a&b=1",
+    "http://e.com/?fbclid=x",
+    "http://e.com/?ref=1&id=2",
+    "http://e.com/?session_id=3&q=4",
+    "http://e.com/?z=1&a=2&m=3",
+    "http://e.com?a=1",
+    "http://e.com?utm_x=1",
+    "http://e.com/?a=1&a=2",
+    "http://e.com/?b=%ff&a=x+y",
+    "http://e.com/?UTM_SOURCE=a&B=1",
+    "http://e.com/?a",
+    "http://e.com/?",
+    "http://e.com/?=1&x=2",
+    "http://e.com/p/?q=1",
+    "http://e.com/#a=1&utm_x=2",
+    "http://e.com/#utm_source=x",
+    "http://e.com/#a=1&b=2",
+    "http://e.com/#b=1&a=2",
+    "http://e.com/#a=b=c",
+    "http://e.com/#ref=1&",
+    "http://e.com/#top",
+    "http://e.com/#",
+    f"http://e.com/{E_ACUTE}/{uni('LATIN SMALL LETTER U WITH DIAERESIS')}?x={E_ACUTE}#{E_ACUTE}",
+    "http://e.com/a b/c%20d/%zz/~x/a;b/a,b:c!d=e'f(g)*h",
+    "http://e.com/a#b c=d",
+    "e.com/x",
+    "e.com:80/x",
+    "mailto:a@b.com",
+    "",
+]
+
+# Query strings (and fragments) for `courlan.clean.clean_query`: the `parse_qs` inputs, then the
+# tracker patterns. `(?:\b|_)` before a keyword is a Python word boundary or an underscore.
+CLEAN_QUERY_INPUTS = PARSE_QS_INPUTS + [
+    *[f"{key}=1&a=2" for key in (
+        "dclid", "fbclid", "gclid", "twclid", "yclid", "ysclid", "xclid", "wclid", "clid",
+        "clickid", "gbraid", "msclkid", "igshid", "partnerid", "wbraid", "partner", "click_id",
+        "ad_x", "ads_x", "adx_y", "mc_cid", "ga_x", "gs_x", "itm_x", "mkt_x", "ml_x", "mtm_x",
+        "oly_x", "pk_x", "utm_x", "vero_x", "xutm_x", "x_utm_x", "UTM_SOURCE", "Utm_Medium",
+        "aff", "affi", "affiliate", "xaff", "my_aff", "my-aff", "my.aff", "campaign", "id", "cid", "eid",
+        "ga", "gl", "kwd", "keyword", "medium", "ref", "refer", "referer", "referrer", "reference",
+        "preference", "session", "session_id", "SessionId", "source", "sources", "uid", "xtor",
+        "xtor-x", "_ref", "a_ref", "1ref", "Ref", "REF", "x%0Aref", "%0Autm_x", "%0Aref", "ref%0A",
+        f"{SUPERSCRIPT_TWO}ref", f"{E_ACUTE}ref", f"e{COMBINING_ACUTE}ref",
+        f"{uni('LATIN CAPITAL LETTER I WITH DOT ABOVE')}ref", f"{uni('GREEK CAPITAL LETTER SIGMA')}ref",
+        f"{ARABIC_INDIC_THREE}ref", f"{uni('FULLWIDTH LATIN SMALL LETTER A')}ref",
+    )],
+    "b=1&a=2&c=3",
+    "b=1&A=2&a=3&%C3%A9=4&z=5",
+    "a=1&utm_source=x&a=2&ref=y",
+    "a%20b=1&c=2",
+    "x=1&utm_source=",
+    "utm_source=1",
+    "ref=1",
+    "a=1&b=2&",
+    f"{E_ACUTE}=1&b=2",
+]
+
+# Hostnames (or any strings) handed to `courlan.clean.decode_punycode`.
+DECODE_PUNYCODE_INPUTS = [
+    "xn--mnchen-3ya.de",
+    "xn--mnchen-3ya.de:8080",
+    "xn--mnchen-3ya:80",
+    "a.xn--p1ai:443",
+    "xn--mnchen-3ya.xn--p1ai",
+    "xn--bad--.com",
+    "xn--.com",
+    "a..xn--p1ai",
+    "Xn--mnchen-3ya.xn--p1ai",
+    "XN--MNCHEN-3YA.xn--p1ai",
+    "XN--MNCHEN-3YA.de",
+    "u@xn--mnchen-3ya.de",
+    "xn--mnchen-3ya.de.",
+    "xn--" + "a" * 1021,
+    "xn--ls8h.xn--abc-",
+    "example.com",
+    "example.com:80",
+    "",
+]
+
+
+def clean_cases() -> list[str]:
+    from courlan.clean import clean_query, decode_punycode, normalize_url
+    from courlan.filters import validate_url
+    from urllib.parse import urlsplit
+
+    return [
+        "/// URL and whether `courlan.filters.validate_url` accepts it.",
+        "#[rustfmt::skip]",
+        "pub(crate) const VALIDATE_URL_CASES: &[(&str, bool)] = &[",
+        *[f"    ({rust_str(url)}, {str(validate_url(url)[0]).lower()})," for url in VALIDATE_URL_INPUTS],
+        "];",
+        "",
+        "/// URL (which `urlsplit` accepts) and `courlan.clean.normalize_url(urlsplit(url))`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const NORMALIZE_URL_CASES: &[(&str, &str)] = &[",
+        *[f"    ({rust_str(url)}, {rust_str(normalize_url(urlsplit(url)))})," for url in NORMALIZE_URL_INPUTS],
+        "];",
+        "",
+        "/// Query and `courlan.clean.clean_query(query)`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const CLEAN_QUERY_CASES: &[(&str, &str)] = &[",
+        *[f"    ({rust_str(query)}, {rust_str(clean_query(query))})," for query in CLEAN_QUERY_INPUTS],
+        "];",
+        "",
+        "/// Host and `courlan.clean.decode_punycode(host)`.",
+        "#[rustfmt::skip]",
+        "pub(crate) const DECODE_PUNYCODE_CASES: &[(&str, &str)] = &[",
+        *[f"    ({rust_str(host)}, {rust_str(decode_punycode(host))})," for host in DECODE_PUNYCODE_INPUTS],
+        "];",
+        "",
+    ]
+
+
 def unescape_or_none(s: str) -> str | None:
     "`html.unescape(s)`, or None where CPython raises ValueError."
     import html
@@ -924,7 +1129,7 @@ def cases() -> None:
     out = header(
         "src/pyurl/cases.rs",
         "cases",
-        "CPython's `html.unescape`, `urllib.parse` and `idna` codec run on fixed inputs.",
+        "CPython's `html.unescape`, `urllib.parse` and `idna` codec, and courlan's `validate_url` and `clean`, run on fixed inputs.",
     )
     out += [
         "/// Input and `html.unescape` of it; `None` where CPython raises `ValueError`.",
@@ -938,6 +1143,7 @@ def cases() -> None:
         *urlparse_cases(),
         *courlan_cases(),
         *idna_cases(),
+        *clean_cases(),
     ]
     sys.stdout.write("\n".join(out))
 

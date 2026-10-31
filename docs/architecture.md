@@ -55,7 +55,7 @@ Upstream's own dependencies carry extraction logic, so the parts trafilatura cal
 | Package | Handling | Status |
 | --- | --- | --- |
 | `htmldate` (date extraction) | ported as a module named `htmldate` | planned |
-| `courlan` (URL normalization and filtering) | ported as a module named `courlan` | partial: `get_base_url` and `fix_relative_urls` (`courlan.rs`) exist; the rest is Phase 4 |
+| `courlan` (URL normalization and filtering) | ported as a module named `courlan` | partial: `get_base_url` and `fix_relative_urls` (`courlan.rs`), `validate_url` and `is_valid_url` (`courlan/filters.rs`) and `normalize_url` (`courlan/clean.rs`) exist; the rest is Phase 4 |
 | `charset_normalizer` | replaced by `chardetng` (D-3) | done |
 | `justext` | not ported: only the `fast=False` fallbacks use it | not ported |
 | `py3langid` (language check, optional upstream) | open item OI-4 in `phase-plan.md` | undecided |
