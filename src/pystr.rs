@@ -1,11 +1,12 @@
 //! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable`, `isalpha`,
-//! `repr`, `\w` and decimal digits.
+//! `lower`, `repr`, `\w` and decimal digits.
 //!
 //! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py` and
 //! `gen_decimal.py`); the functions only search them.
 
 mod alpha;
 mod decimal;
+mod lower;
 mod printable;
 
 use std::cmp::Ordering;
@@ -13,6 +14,7 @@ use std::cmp::Ordering;
 use crate::error::{ExtractError, Rejection};
 use alpha::ALPHA;
 use decimal::ND_ZEROS;
+use lower::{CASE_IGNORABLE, CASED, LOWER};
 use printable::{PRINTABLE, SPACE, WORD};
 pub use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
 
@@ -182,6 +184,52 @@ pub(crate) fn is_all_printable(s: &str) -> bool {
 /// `char::is_alphabetic` also takes `Nl` and `Other_Alphabetic` marks.
 pub fn is_alpha(c: char) -> bool {
     in_ranges(ALPHA, c)
+}
+
+/// Python `str.lower()`, by the Unicode data of the interpreter, not of the Rust standard library:
+/// that follows a newer Unicode version and lowercases characters Python leaves alone. U+0130 becomes
+/// `i` and a combining dot above; a capital sigma becomes a final sigma after a cased letter and before
+/// none, case-ignorable characters skipped.
+// upstream: cpython Objects/unicodeobject.c::do_lower
+pub fn lower(s: &str) -> String {
+    let mut lowered = String::with_capacity(s.len());
+    for (index, c) in s.char_indices() {
+        match u32::from(c) {
+            CAPITAL_SIGMA => lowered.push(if is_final_sigma(s, index) {
+                FINAL_SIGMA
+            } else {
+                SMALL_SIGMA
+            }),
+            CAPITAL_I_WITH_DOT => lowered.push_str("i\u{307}"),
+            code if code < 0x80 => lowered.push(c.to_ascii_lowercase()),
+            code => lowered.push(
+                LOWER
+                    .binary_search_by_key(&code, |&(upper, _)| upper)
+                    .ok()
+                    .and_then(|i| LOWER.get(i))
+                    .and_then(|&(_, lower)| char::from_u32(lower))
+                    .unwrap_or(c),
+            ),
+        }
+    }
+    lowered
+}
+
+const CAPITAL_SIGMA: u32 = 0x3A3;
+const CAPITAL_I_WITH_DOT: u32 = 0x130;
+const SMALL_SIGMA: char = '\u{3C3}';
+const FINAL_SIGMA: char = '\u{3C2}';
+
+// upstream: cpython Objects/unicodeobject.c::handle_capital_sigma
+fn is_final_sigma(s: &str, sigma_index: usize) -> bool {
+    let is_skipped = |c: &char| in_ranges(CASE_IGNORABLE, *c);
+    let before = s
+        .get(..sigma_index)
+        .and_then(|head| head.chars().rev().find(|c| !is_skipped(c)));
+    let after = s
+        .get(sigma_index..)
+        .and_then(|tail| tail.chars().skip(1).find(|c| !is_skipped(c)));
+    before.is_some_and(|c| in_ranges(CASED, c)) && !after.is_some_and(|c| in_ranges(CASED, c))
 }
 
 /// Python `repr(s)` of a `str`: single quotes unless `s` holds a `'` and no `"`, backslash escapes
@@ -404,6 +452,19 @@ mod tests {
         assert!(!is_printable('\u{2028}')); // oracle: chr(0x2028).isprintable()
         assert!(!is_printable('\u{e000}')); // oracle: chr(0xe000).isprintable()
         assert!(!is_printable('\u{e0001}')); // oracle: chr(0xe0001).isprintable()
+    }
+
+    #[test]
+    fn lower_matches_python() {
+        // oracle: [s.lower() for s in ("ABİc", "ΑΣ", "Σ", "Α.ΣΣ", "\U00010d50", "\U00010570")]
+        assert_eq!(lower("AB\u{130}c"), "ab\u{69}\u{307}c");
+        assert_eq!(lower("\u{391}\u{3A3}"), "\u{3B1}\u{3C2}");
+        assert_eq!(lower("\u{3A3}"), "\u{3C3}");
+        assert_eq!(lower("\u{391}.\u{3A3}\u{3A3}"), "\u{3B1}.\u{3C3}\u{3C2}");
+        assert_eq!(lower("\u{10D50}"), "\u{10D50}");
+        assert_eq!(lower("\u{10570}"), "\u{10597}");
+        // oracle: chr(0x10d50).lower() is unchanged, while Rust's `to_lowercase` maps it
+        assert_ne!("\u{10D50}".to_lowercase(), "\u{10D50}");
     }
 
     #[test]

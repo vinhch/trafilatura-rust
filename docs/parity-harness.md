@@ -210,6 +210,7 @@ writes it byte for byte.
 | `gen_printable.py` | `src/pystr/printable.rs` | the `str.isprintable` ranges of the image's Python |
 | `gen_decimal.py` | `src/pystr/decimal.rs` | the run starts of the `Nd` decimal digits of the image's Python |
 | `gen_printable.py` (`alpha`) | `src/pystr/alpha.rs` | the `str.isalpha` ranges of the image's Python |
+| `gen_printable.py` (`lower`) | `src/pystr/lower.rs` | the `str.lower` one-character mappings and the Cased and Case_Ignorable classes of its final-sigma rule, read off the image's Python |
 | `gen_nfc.py` (`tables`) | `src/pyunicodedata/nfc.rs` | decompositions, combining classes, composition pairs and the quick-check sets behind `unicodedata.normalize("NFC", ...)` of the image's Python |
 | `gen_nfc.py` (`cases`) | `src/pyunicodedata/cases.rs` | NFC of every character with a decomposition or combining class (alone and between `a` and U+0301), of every composition pair and of two Hangul jamo sequences |
 | `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
@@ -222,7 +223,7 @@ writes it byte for byte.
 | `gen_repeated_output_cases.py` | `tests/repeated_output_tests/cases.rs` | the sets of upstream's `repeated_output_tests.py` re-derived with `fast=True` (D-1) inside the html5 parser swap: the keys of `test_no_repeated_words` whose result is `None` or repeats a word (upstream's reason kept for a key it lists too), and the comment-list triples that repeat; the file is imported by path from the checkout, and the generation fails when one of the three plain upstream assertions does not hold in fast mode |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_url` and `gen_nfc` take `tables` or `cases` in place of `main`, `gen_printable` `alpha` for `alpha.rs`. The files that hold HTML snippets carry the
+`gen_url` and `gen_nfc` take `tables` or `cases` in place of `main`, `gen_printable` `alpha` for `alpha.rs` and `lower` for `lower.rs`. The files that hold HTML snippets carry the
 `treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
 parse dumps the same: a snippet that parses differently is changed, never the expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized

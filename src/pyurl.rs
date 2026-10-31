@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use tables::NFKC_NETLOC_BREAKERS;
 
-use crate::pystr::MAX_STR_DIGITS;
+use crate::pystr::{MAX_STR_DIGITS, lower};
 
 /// The `ValueError` of the `urllib.parse` and `html` helpers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,8 +50,8 @@ impl SplitResult {
             return None;
         }
         Some(match hostname.split_once('%') {
-            Some((host, zone)) => format!("{}%{zone}", host.to_lowercase()),
-            None => hostname.to_lowercase(),
+            Some((host, zone)) => format!("{}%{zone}", lower(host)),
+            None => lower(hostname),
         })
     }
 
