@@ -813,8 +813,8 @@ def punycode_of_code_point(code_point: int) -> str:
 
 U_DIAERESIS = uni("LATIN SMALL LETTER U WITH DIAERESIS")
 
-# Labels whose `label.encode("utf8").decode("idna")` is compared. No decoded text of them is one
-# nameprep changes, so the port agrees with CPython on every one.
+# Labels whose `label.encode("utf8").decode("idna")` is compared. Nameprep changes at most the ASCII
+# case of the decoded text, which the port reproduces, so it agrees with CPython on every one.
 IDNA_INPUTS = [
     "xn--mnchen-3ya",
     "xn--e1afmkfd",
@@ -843,7 +843,7 @@ IDNA_INPUTS = [
     "xn--a-",
     "xn--9",
     "xn--" + "9" * 40,
-    # Deltas of 2**63 and more make CPython raise OverflowError (not UnicodeError), so they are not here.
+    # Positions of 2**63 and more make CPython raise OverflowError (not UnicodeError): not here, D-17.
     punycode_of_code_point(2**62 + 0x80),
     "xn--mnchen-3y",
     "xn--mnchen-3ya-",

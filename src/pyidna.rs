@@ -24,8 +24,8 @@ const DIGITS: &[u8; 36] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 /// Python `label.encode("utf8").decode("idna")` for one label (no `.`): an `xn--` label decodes through
 /// punycode and must round-trip; any other ASCII label is returned as it is.
 ///
-/// `None` where CPython raises `UnicodeError`. A punycode number of 2**63 or more raises
-/// `OverflowError` upstream, which `decode_punycode` does not catch; this returns `None` for it too.
+/// `None` where CPython raises `UnicodeError`, and where it raises `OverflowError` (a punycode position
+/// of 2**63 or more; D-17).
 // upstream: cpython Lib/encodings/idna.py::ToUnicode
 pub fn decode_label(label: &str) -> Option<String> {
     let lowered = label.to_ascii_lowercase();
@@ -110,9 +110,12 @@ fn punycode_decode(encoded: &[u8]) -> Option<String> {
     let mut start = 0;
     while start < extended.len() {
         let (end, delta) = decode_generalized_number(extended, start, bias)?;
+        // deviation: D-17: upstream raises `OverflowError` for a position of 2**63 or more; every value
+        // that large ends in `None` here, through the checks below and the checked operations
         let pos = next_pos.checked_add(delta)?;
         let slots = count(text.len()) + 1;
         code = code.checked_add(pos / slots)?;
+        // upstream raises `UnicodeDecodeError` here (`OverflowError` from 2**63, D-17)
         if code > MAX_CODE_POINT {
             return None;
         }
@@ -138,10 +141,12 @@ fn decode_generalized_number(extended: &[u8], start: usize, bias: u64) -> Option
             _ => return None,
         };
         let digit_threshold = threshold(j, bias);
+        // deviation: D-17
         value = value.checked_add(digit.checked_mul(weight)?)?;
         if digit < digit_threshold {
             return Some((index + 1, value));
         }
+        // deviation: D-17
         weight = weight.checked_mul(BASE - digit_threshold)?;
     }
     None
