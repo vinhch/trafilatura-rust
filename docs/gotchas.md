@@ -148,6 +148,10 @@ function.
   takes `Nl` and the `Other_Alphabetic` marks. `_yaml_scalar` tests `value[0].isalpha()`, so a value
   starting with U+216B (`Nl`) or U+0345 (`Mn`) is quoted, while one starting with U+01C5 (`Lt`) stays
   plain. `pystr::is_alpha` searches a table generated like the printable one (`gen_printable.py alpha`).
+- `str.lower` follows the Unicode version of the interpreter the fixtures were made with; Rust's
+  `to_lowercase` follows a newer one and maps characters Python leaves alone (U+10D50 stays as it is
+  in Python). `pystr::lower` searches a table generated like the printable one
+  (`gen_printable.py lower`) and reproduces U+0130 and the final sigma.
 - `repr` of a list writes each string by `repr`: single quotes unless the string holds a `'` and no
   `"`, escapes for the quote, backslash, tab, newline, carriage return and every character that is not
   printable (`\x85` for U+0085, never the raw character). The metadata header of the text formats
