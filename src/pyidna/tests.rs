@@ -47,3 +47,22 @@ fn idna_overflowing_position_is_none() {
     assert_eq!(decode_label("xn--e4049608857257578a"), None);
     assert_eq!(decode_label("xn--dn32g").as_deref(), Some("\u{10FFFF}"));
 }
+
+// `ToASCII` refuses an encoded label of 64 bytes or more, so `decode_label` ends in `None` for it
+// without the quadratic decode; a label of 63 bytes still decodes.
+#[test]
+fn idna_label_of_64_bytes_or_more_is_none() {
+    let long_text: String = ('\u{100}'..'\u{1D0}').collect();
+    let cases = [
+        (format!("{}\u{FC}", "a".repeat(55)), 63, true),
+        (format!("{}\u{FC}", "a".repeat(56)), 64, false),
+        (long_text, 0, false),
+    ];
+    for (text, label_len, decodes) in cases {
+        let label = format!("{ACE_PREFIX}{}", punycode_encode(&text));
+        if label_len > 0 {
+            assert_eq!(label.len(), label_len);
+        }
+        assert_eq!(decode_label(&label), decodes.then_some(text));
+    }
+}

@@ -39,6 +39,11 @@ pub fn decode_label(label: &str) -> Option<String> {
     if !lowered.starts_with(ACE_PREFIX) {
         return label.is_ascii().then(|| label.to_owned());
     }
+    // `ToASCII` returns `None` for 64 bytes or more, and an ASCII result must equal `lowered`: skip the
+    // quadratic decode and re-encode, whose result cannot change
+    if label.len() >= MAX_ENCODED_LABEL_BYTES {
+        return None;
+    }
     let decoded = punycode_decode(label.as_bytes().get(ACE_PREFIX.len()..)?)?;
     let encoded = to_ascii(&decoded)?;
     // `lowered` and `encoded` are ASCII here, so ASCII lowercase is `str.lower`. deviation: D-16: nameprep
