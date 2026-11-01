@@ -282,3 +282,464 @@ fn cancelled_call_stops_every_reader() {
         Err(JsonFailure::Stop(ExtractError::Cancelled))
     );
 }
+
+fn document(head: &str, body: &str) -> Tree {
+    parse(&format!(
+        "<html><head>{head}</head><body>{body}</body></html>"
+    ))
+}
+
+fn paragraphs(tree: &Tree, root: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    collect_nodes(tree, root, call, |node| tree.tag(node) == Some("p"))
+}
+
+fn title_of(head: &str, body: &str) -> Option<String> {
+    let mut tree = document(head, body);
+    let root = tree.root();
+    extract_title(&mut tree, root, &Call::default()).unwrap()
+}
+
+fn url_of(head: &str, default_url: Option<&str>) -> Option<String> {
+    let tree = document(head, "");
+    extract_url(&tree, tree.root(), default_url, &Call::default()).unwrap()
+}
+
+fn sitename_of(head: &str) -> Option<String> {
+    let tree = document(head, "");
+    extract_sitename(&tree, tree.root(), &Call::default()).unwrap()
+}
+
+fn catstags_of(metatype: &str, head: &str, body: &str) -> Vec<String> {
+    let mut tree = document(head, body);
+    let root = tree.root();
+    extract_catstags(metatype, &mut tree, root, &Call::default()).unwrap()
+}
+
+fn license_of(body: &str) -> Option<String> {
+    let mut tree = document("", body);
+    let root = tree.root();
+    extract_license(&mut tree, root, &Call::default()).unwrap()
+}
+
+fn owned(items: &[&str]) -> Vec<String> {
+    items.iter().map(|item| (*item).to_owned()).collect()
+}
+
+#[test]
+fn title_single_h1_wins() {
+    // oracle: extract_title(parse_document(html))
+    assert_eq!(
+        title_of(
+            "<title>Site | Page</title>",
+            "<h1>Only  Heading</h1><h2>Two</h2>"
+        )
+        .as_deref(),
+        Some("Only Heading")
+    );
+}
+
+#[test]
+fn title_from_title_element_parts() {
+    // oracle: extract_title(parse_document(html)) and examine_title_element(parse_document(html))
+    for (title, expected) in [
+        ("Some Article - Example.com", "Some Article"),
+        ("Example.com - Fine Title", "Fine Title"),
+        ("A.b - C.d", "A.b - C.d"),
+        ("Plain Title", "Plain Title"),
+    ] {
+        assert_eq!(
+            title_of(&format!("<title>{title}</title>"), "<p>x</p>").as_deref(),
+            Some(expected),
+            "{title}"
+        );
+    }
+    let tree = document("<title>Some Article - Example.com</title>", "");
+    assert_eq!(
+        examine_title_element(&tree, tree.root(), &Call::default()).unwrap(),
+        (
+            "Some Article - Example.com".to_owned(),
+            Some("Some Article".to_owned()),
+            Some("Example.com".to_owned())
+        )
+    );
+    let tree = document("<title>Plain Title</title>", "");
+    assert_eq!(
+        examine_title_element(&tree, tree.root(), &Call::default()).unwrap(),
+        ("Plain Title".to_owned(), None, None)
+    );
+}
+
+#[test]
+fn title_falls_back_to_first_h2() {
+    let head = "<title>x.y - z.w</title>";
+    // oracle: extract_title(parse_document(html))
+    assert_eq!(
+        title_of(
+            head,
+            "<h1></h1><h1> </h1><h2>Second  Head</h2><h2>Other</h2>"
+        )
+        .as_deref(),
+        Some("Second Head")
+    );
+    assert_eq!(title_of(head, "<h1></h1><h1> </h1>"), None);
+    assert_eq!(title_of(head, "<h1></h1>"), None);
+    assert_eq!(
+        title_of(head, "<h1></h1><h1>Second H</h1>").as_deref(),
+        Some("Second H")
+    );
+    assert_eq!(
+        title_of("<title>Ti Tle</title>", "<h1>First H</h1><h1>Second H</h1>").as_deref(),
+        Some("Ti Tle")
+    );
+}
+
+#[test]
+fn metainfo_length_bounds() {
+    // oracle: extract_metainfo(parse_document(html), [XPath(".//p")]) with an 'é' and n-1 'a'
+    for (length, expected) in [(2, false), (3, true), (199, true), (200, false)] {
+        let text = format!("é{}", "a".repeat(length - 1));
+        let tree = document("", &format!("<p>{text}</p>"));
+        let found =
+            extract_metainfo(&tree, tree.root(), &[paragraphs], 200, &Call::default()).unwrap();
+        assert_eq!(found, expected.then_some(text), "length {length}");
+    }
+    // oracle: extract_metainfo(tree, [XPath(".//p")], len_limit=120) for 120 and 119 'a'
+    for (length, expected) in [(120, false), (119, true)] {
+        let text = "a".repeat(length);
+        let tree = document("", &format!("<p>{text}</p>"));
+        let found =
+            extract_metainfo(&tree, tree.root(), &[paragraphs], 120, &Call::default()).unwrap();
+        assert_eq!(
+            found,
+            expected.then_some(text),
+            "limit 120, length {length}"
+        );
+    }
+}
+
+#[test]
+fn metainfo_joins_the_text_pieces_with_spaces() {
+    // oracle: extract_metainfo(parse_document("<p>ab<i></i>c</p>"), [XPath(".//p")])
+    let tree = document("", "<p>ab<i></i>c</p>");
+    assert_eq!(
+        extract_metainfo(&tree, tree.root(), &[paragraphs], 200, &Call::default())
+            .unwrap()
+            .as_deref(),
+        Some("ab c")
+    );
+}
+
+#[test]
+fn author_discards_comment_sections() {
+    let tree = document(
+        "",
+        r#"<div class="comments"><span class="author">Troll Person</span></div>
+        <time class="author">Time Author</time><p class="byline">By Real Author</p>"#,
+    );
+    let (before, size) = (tree.tostring(tree.root(), false, true), tree.len());
+    // oracle: extract_author(tree); tostring(tree) is the same afterwards
+    assert_eq!(
+        extract_author(&tree, tree.root(), &Call::default())
+            .unwrap()
+            .as_deref(),
+        Some("Real Author")
+    );
+    assert_eq!(tree.tostring(tree.root(), false, true), before);
+    assert_eq!(tree.len(), size);
+
+    let tree = document(
+        "",
+        r#"<div class="comments"><span class="author">Troll Person</span></div>
+        <time class="author">Time Author</time>"#,
+    );
+    // oracle: extract_author(tree)
+    assert_eq!(
+        extract_author(&tree, tree.root(), &Call::default()).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn url_canonical_relative_and_protocol_relative() {
+    // oracle: extract_url(parse_document(html), default_url)
+    assert_eq!(
+        url_of(
+            r#"<meta property="og:url" content="https://example.org/base"><link rel="canonical" href="/p">"#,
+            None
+        )
+        .as_deref(),
+        Some("https://example.org/p")
+    );
+    assert_eq!(
+        url_of(
+            r#"<meta name="author" content="https://x.example/a"><meta name="twitter:site" content="https://tw.example/b"><link rel="canonical" href="/p?utm_source=a&b=1">"#,
+            None
+        )
+        .as_deref(),
+        Some("https://tw.example/p?b=1")
+    );
+    assert_eq!(
+        url_of(
+            r#"<link rel="canonical" href="/p">"#,
+            Some("https://dflt.example/d")
+        )
+        .as_deref(),
+        Some("https://dflt.example/d")
+    );
+    assert_eq!(
+        url_of(r#"<link rel="canonical" href="//h.example.org/p">"#, None).as_deref(),
+        Some("https://h.example.org/p")
+    );
+}
+
+#[test]
+fn url_invalid_canonical_returns_the_default_unvalidated() {
+    let head = r#"<link rel="canonical" href="nope">"#;
+    // oracle: extract_url(parse_document(html), default_url)
+    assert_eq!(
+        url_of(head, Some("not valid")).as_deref(),
+        Some("not valid")
+    );
+    assert_eq!(url_of(head, None), None);
+    assert_eq!(url_of("", None), None);
+    assert_eq!(url_of("", Some("")).as_deref(), Some(""));
+}
+
+#[test]
+fn url_selectors_in_order() {
+    // oracle: extract_url(parse_document(html))
+    assert_eq!(
+        url_of(
+            r#"<link rel="canonical" href=""><base href="https://b.example.org/x">
+            <link rel="alternate" hreflang="x-default" href="https://alt.example.org/">"#,
+            None
+        )
+        .as_deref(),
+        Some("https://b.example.org/x")
+    );
+    assert_eq!(
+        url_of(
+            r#"<link rel="alternate" hreflang="x-default" href="https://alt.example.org/y">"#,
+            None
+        )
+        .as_deref(),
+        Some("https://alt.example.org/y")
+    );
+}
+
+#[test]
+fn sitename_needs_a_dot() {
+    // oracle: extract_sitename(parse_document(html))
+    for (title, expected) in [
+        ("Page - example.org", Some("example.org")),
+        ("Page - Example", None),
+        ("example.org: Page", None),
+        ("a.b - c.d", Some("a.b")),
+        ("No separator.com", None),
+    ] {
+        assert_eq!(
+            sitename_of(&format!("<title>{title}</title>")).as_deref(),
+            expected,
+            "{title}"
+        );
+    }
+    assert_eq!(sitename_of(""), None);
+}
+
+#[test]
+fn catstags_href_regex_and_dedupe() {
+    // oracle: extract_catstags(metatype, parse_document(html))
+    let links = r#"<div class="entry-meta"><a href="/category/news">News</a> <a href="/categories/Tech">Tech</a>
+        <a href="/categories/news">News</a> <a href="/tags/x">Tag X</a> <a href="/category/empty"> </a></div>"#;
+    assert_eq!(catstags_of("category", "", links), owned(&["News", "Tech"]));
+    assert_eq!(
+        catstags_of(
+            "category",
+            "",
+            r#"<div class="entry-meta"><a href="/categorys/a">A</a><a href="/categoryies/b">B</a>
+            <a href="/categor/c">C</a><a href="/other/d">D</a></div>"#
+        ),
+        owned(&["C"])
+    );
+    assert_eq!(
+        catstags_of(
+            "tag",
+            "",
+            r#"<div class="meta"><a href="/tag/a">A</a><a href="/tags/b">B</a><a href="/tagy/c">C</a>
+            <a href="/tagies/d">D</a><a href="/tags/b">B</a></div>"#
+        ),
+        owned(&["A", "B", "C", "D"])
+    );
+}
+
+#[test]
+fn catstags_article_section_fallback_is_for_categories_only() {
+    // oracle: extract_catstags(metatype, parse_document(html))
+    let head = r#"<meta property="article:section" content="Sec"><meta name="my-subject" content="Subj">
+        <meta name="subject"><meta property="article:section" content="Sec">"#;
+    assert_eq!(
+        catstags_of("category", head, "<p>x</p>"),
+        owned(&["Sec", "Subj"])
+    );
+    assert_eq!(
+        catstags_of(
+            "tag",
+            r#"<meta property="article:section" content="Sec">"#,
+            "<p>x</p>"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn license_rel_and_footer() {
+    // oracle: extract_license(parse_document(html))
+    for (body, expected) in [
+        (
+            r#"<a rel="nofollow License" href="https://creativecommons.org/licenses/by-nc/4.0/">x</a>"#,
+            Some("CC BY-NC 4.0"),
+        ),
+        (
+            r#"<a rel="license" href="/terms"><b>Our</b> Terms</a>"#,
+            Some("Our Terms"),
+        ),
+        (
+            r#"<a rel="licensed" href="/terms">Nope</a><a rel="license" href="/t"> </a>"#,
+            None,
+        ),
+        (
+            r#"<footer><a href="/licenses/by-sa/3.0/">x</a></footer>"#,
+            Some("CC BY-SA 3.0"),
+        ),
+        (
+            r#"<a rel="license" href="/publicdomain/zero/1.0/">x</a>"#,
+            Some("CC ZERO 1.0"),
+        ),
+        (
+            r#"<footer><a href="/x">Terms</a><a href="/y">Licensed under Creative Commons BY-SA 4.0 here</a></footer>"#,
+            Some("Creative Commons BY-SA 4.0"),
+        ),
+        (
+            r#"<div class="page-footer"><a href="/y">cc by-nc</a></div>"#,
+            Some("cc by-nc"),
+        ),
+        (
+            r#"<div id="myfooter"><a href="/y">CC BY 2.5</a></div>"#,
+            Some("CC BY 2.5"),
+        ),
+        (
+            r#"<footer><a href="/x">Terms</a></footer><div class="foot"><a href="/y">CC BY</a></div>"#,
+            None,
+        ),
+        (
+            r#"<footer><a href="/y">CC BY 2.5</a></footer><a rel="license" href="/t">Plain</a>"#,
+            Some("Plain"),
+        ),
+    ] {
+        assert_eq!(license_of(body).as_deref(), expected, "{body}");
+    }
+}
+
+#[test]
+fn tree_readers_stop_when_cancelled() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let mut tree = document("<title>a</title>", "<h1>Heading</h1><p>x</p>");
+    let root = tree.root();
+    assert_eq!(
+        extract_title(&mut tree, root, &call),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(
+        extract_sitename(&tree, root, &call),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(
+        extract_url(&tree, root, None, &call),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(
+        extract_author(&tree, root, &call),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(
+        extract_catstags("tag", &mut tree, root, &call),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(
+        extract_license(&mut tree, root, &call),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn tree_field_patterns_compile() {
+    assert!(HTMLTITLE_REGEX.is_some());
+    assert!(LICENSE_REGEX.is_some());
+    assert!(TEXT_LICENSE_REGEX.is_some());
+    assert!(META_URL.is_some());
+}
+
+#[test]
+fn title_element_separators() {
+    // oracle: HTMLTITLE_REGEX.pattern class code points; examine_title_element(parse_document(html))[1:]
+    for code in [
+        0x2013, 0x2022, 0xb7, 0x2014, 0x7c, 0x2044, 0x2a, 0x22c6, 0x7e, 0x2039, 0xab, 0x3c, 0x203a,
+        0xbb, 0x3e, 0x3a, 0x2d,
+    ] {
+        let separator = char::from_u32(code).unwrap();
+        let tree = document(&format!("<title>Aa {separator} Bb</title>"), "");
+        assert_eq!(
+            examine_title_element(&tree, tree.root(), &Call::default())
+                .unwrap()
+                .1
+                .as_deref(),
+            Some("Aa"),
+            "{code:x}"
+        );
+    }
+    for code in [0x2f, 0x2b, 0x2c, 0x5f, 0x2212, 0x2015] {
+        let separator = char::from_u32(code).unwrap();
+        let tree = document(&format!("<title>Aa {separator} Bb</title>"), "");
+        assert_eq!(
+            examine_title_element(&tree, tree.root(), &Call::default())
+                .unwrap()
+                .1,
+            None,
+            "{code:x}"
+        );
+    }
+}
+
+#[test]
+fn title_element_parts_follow_the_last_separator_and_need_both_sides() {
+    // oracle: examine_title_element(parse_document(html))
+    for (title, expected) in [
+        (
+            "Aa - Bb - Cc",
+            ("Aa - Bb - Cc", Some("Aa - Bb"), Some("Cc")),
+        ),
+        ("- Bb", ("- Bb", None, None)),
+        ("Aa -", ("Aa -", None, None)),
+    ] {
+        let tree = document(&format!("<title>{title}</title>"), "");
+        let (full, first, second) =
+            examine_title_element(&tree, tree.root(), &Call::default()).unwrap();
+        assert_eq!(
+            (full.as_str(), first.as_deref(), second.as_deref()),
+            expected,
+            "{title}"
+        );
+    }
+}
+
+#[test]
+fn title_element_outside_the_head_is_ignored() {
+    // oracle: examine_title_element(parse_document(html))
+    let tree = document("", "<title>Aa - Bb</title>");
+    assert_eq!(
+        examine_title_element(&tree, tree.root(), &Call::default()).unwrap(),
+        (String::new(), None, None)
+    );
+}
