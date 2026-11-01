@@ -7,6 +7,8 @@ mod utils;
 mod validators;
 
 #[cfg(test)]
+mod examine_cases;
+#[cfg(test)]
 mod extractor_cases;
 #[cfg(test)]
 mod search_cases;

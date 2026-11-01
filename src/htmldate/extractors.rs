@@ -8,13 +8,15 @@ use std::sync::LazyLock;
 use regex::{Captures, Match, Regex};
 
 use crate::cancel::Call;
+use crate::dom::{NodeId, Tree};
 use crate::error::ExtractError;
 use crate::html_processing::tick;
 use crate::pydatetime::DateTime;
 use crate::pystr::{self, compile_py, ignore_case_i};
+use crate::xpaths::select::is_html;
 
 use super::settings::MAX_SEGMENT_LEN;
-use super::utils::{Extractor, Pattern, trim_text};
+use super::utils::{Extractor, Pattern, remove_if_attached, trim_text};
 use super::validators::{
     Format, convert_date, correct_year, int_text, is_valid_date_str, validate_and_convert,
 };
@@ -575,3 +577,141 @@ pub(crate) static TEXT_PATTERNS: LazyLock<Option<Regex>> = LazyLock::new(|| {
         r#"(?:date[^0-9"]{0,20}|updated|last-modified|published|posted|on)[ :]{0,9}?([0-9]{1,4})[./]([0-9]{1,2})[./]([0-9]{2,4})|(?:Datum|Stand|Veröffentlicht am):? ?([0-9]{1,2})\.([0-9]{1,2})\.([0-9]{2,4})|(?:güncellen?me|yayı(?:m|n)lan?ma) {0,9}?(?:tarihi)? {0,9}?:? {0,9}?([0-9]{1,2})[./]([0-9]{1,2})[./]([0-9]{2,4})|([0-9]{1,2})[./]([0-9]{1,2})[./]([0-9]{2,4}) {0,9}?(?:'de|'da|'te|'ta|’de|’da|’te|’ta|tarihinde) {0,9}(?:güncellendi|yayı(?:m|n)landı)"#,
     )
 });
+
+/// Deletes the archive.org banner, the `div` with `id` `wm-ipp-base` or `wm-ipp`, from `root`'s subtree, with the
+/// tail of each. The matches are collected first, then removed.
+// upstream: extractors.py::discard_unwanted
+pub(crate) fn discard_unwanted(
+    tree: &mut Tree,
+    root: NodeId,
+    call: &Call<'_>,
+) -> Result<(), ExtractError> {
+    let mut doomed = Vec::new();
+    let mut visited = 0;
+    for id in tree.iterdescendants(root, &[]) {
+        tick(&mut visited, call)?;
+        if tree.tag(id) == Some("div")
+            && matches!(tree.get(id, "id"), Some("wm-ipp-base" | "wm-ipp"))
+        {
+            doomed.push(id);
+        }
+    }
+    for id in doomed {
+        remove_if_attached(tree, id);
+    }
+    Ok(())
+}
+
+/// The date in the URL of the first `og:image` meta of `root`'s subtree that has a `content` attribute.
+// upstream: extractors.py::img_search
+pub(crate) fn img_search(
+    tree: &Tree,
+    root: NodeId,
+    options: &Extractor,
+    call: &Call<'_>,
+) -> Result<Option<String>, ExtractError> {
+    let mut visited = 0;
+    for elem in tree.iterdescendants(root, &[]) {
+        tick(&mut visited, call)?;
+        if tree.tag(elem) == Some("meta")
+            && tree.get(elem, "property") == Some("og:image")
+            && let Some(content) = tree.get(elem, "content")
+        {
+            return Ok(extract_url_date(Some(content), options));
+        }
+    }
+    Ok(None)
+}
+
+/// The date of the first JSON-LD or settings script of `root`'s subtree whose text the JSON pattern reads:
+/// `datePublished` when `original`, else `dateModified`.
+// upstream: extractors.py::json_search
+pub(crate) fn json_search(
+    tree: &Tree,
+    root: NodeId,
+    options: &Extractor,
+    call: &Call<'_>,
+) -> Result<Option<String>, ExtractError> {
+    let pattern = Pattern {
+        regex: if options.original {
+            &JSON_PUBLISHED
+        } else {
+            &JSON_MODIFIED
+        },
+        not_after: None,
+    };
+    let mut visited = 0;
+    for elem in tree.iterdescendants(root, &[]) {
+        tick(&mut visited, call)?;
+        let is_json = matches!(
+            tree.get(elem, "type"),
+            Some("application/ld+json" | "application/settings+json")
+        );
+        if tree.tag(elem) != Some("script") || !is_json {
+            continue;
+        }
+        // a script without text, or without a `"date` key, is skipped
+        let Some(text) = tree
+            .node(elem)
+            .text
+            .as_deref()
+            .filter(|text| text.contains("\"date"))
+        else {
+            continue;
+        };
+        if let Some(found) = pattern_search(text, &pattern, options, call)? {
+            return Ok(Some(found));
+        }
+    }
+    Ok(None)
+}
+
+/// One step of the walk of `free_text_expressions`: an element is entered before its children and left after them,
+/// where its tail comes.
+enum FreeTextStep {
+    Enter(NodeId),
+    Leave(NodeId),
+}
+
+/// Pushes an `Enter` step for each child of `id`, the last first, so the first child is popped first.
+fn push_enter_children(tree: &Tree, id: NodeId, stack: &mut Vec<FreeTextStep>) {
+    let children: Vec<NodeId> = tree.children(id).collect();
+    stack.extend(children.into_iter().rev().map(FreeTextStep::Enter));
+}
+
+/// The text and tail pieces of `root`'s subtree, in document order: the text of each fast-tag element, and the
+/// tail of each element whose parent is a fast-tag element below `root`.
+// upstream: extractors.py::FREE_TEXT_EXPRESSIONS (`.//*[self::div or ...]/text()`)
+pub(crate) fn free_text_expressions<'t>(
+    tree: &'t Tree,
+    root: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<&'t str>, ExtractError> {
+    let is_fast = |id: NodeId| is_html(tree, id, FAST_TAGS);
+    let mut stack = Vec::new();
+    let mut found = Vec::new();
+    let mut visited = 0;
+    push_enter_children(tree, root, &mut stack);
+    while let Some(step) = stack.pop() {
+        tick(&mut visited, call)?;
+        match step {
+            FreeTextStep::Enter(id) => {
+                if is_fast(id) {
+                    found.extend(tree.node(id).text.as_deref());
+                }
+                stack.push(FreeTextStep::Leave(id));
+                push_enter_children(tree, id, &mut stack);
+            }
+            FreeTextStep::Leave(id) => {
+                if tree
+                    .node(id)
+                    .parent()
+                    .is_some_and(|parent| parent != root && is_fast(parent))
+                {
+                    found.extend(tree.node(id).tail.as_deref());
+                }
+            }
+        }
+    }
+    Ok(found)
+}

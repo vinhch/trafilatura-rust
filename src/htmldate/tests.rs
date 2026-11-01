@@ -6,14 +6,19 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::core::{examine_text, search_page};
+use super::core::{
+    date_candidates, examine_abbr_elements, examine_elements, examine_header, examine_text,
+    examine_time_elements, search_page, title_h1_elements,
+};
+use super::examine_cases::{EXAMINE_CASES, Expected};
 use super::extractor_cases::{
     EXTRACT_URL_DATE_CASES, IDIOSYNCRASIES_CASES, PATTERN_SEARCH_CASES, REGEX_PARSE_CASES,
     TRY_DATE_EXPR_CASES,
 };
 use super::extractors::{
-    JSON_MODIFIED, JSON_PUBLISHED, external_date, extract_url_date, idiosyncrasies_search,
-    pattern_search, regex_parse, try_date_expr,
+    JSON_MODIFIED, JSON_PUBLISHED, discard_unwanted, external_date, extract_url_date,
+    free_text_expressions, idiosyncrasies_search, img_search, json_search, pattern_search,
+    regex_parse, try_date_expr,
 };
 use super::search_cases::{
     EXAMINE_TEXT_CASES, SEARCH_PAGE_CASES, SEARCH_PAGE_MAX_2045_CASES, W3_RUN_CASE,
@@ -468,6 +473,86 @@ fn cancelled_call_stops_search_page() {
     let call = Call::default().cancel(&token);
     assert_eq!(
         search_page("<p>May 12, 2019</p>", &search_options(), &call),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+/// The date the examiner `function` returns on `tree`, as `examine_cases` names it.
+fn examine_date(
+    function: &str,
+    tree: &Tree,
+    options: &Extractor,
+    call: &Call<'_>,
+) -> Result<Option<String>, ExtractError> {
+    let root = tree.root();
+    match function {
+        "header" => examine_header(tree, root, options, call),
+        "json" => json_search(tree, root, options, call),
+        "abbr" => examine_abbr_elements(tree, root, options, call),
+        "time" => examine_time_elements(tree, root, options, call),
+        "elements" => {
+            let candidates = date_candidates(tree, root, options.extensive, call)?;
+            examine_elements(tree, &candidates, options, call)
+        }
+        "title_h1" => {
+            let elements = title_h1_elements(tree, root, call)?;
+            examine_elements(tree, &elements, options, call)
+        }
+        "img" => img_search(tree, root, options, call),
+        other => panic!("no examiner named {other}"),
+    }
+}
+
+#[test]
+fn examine_cases_match_python() {
+    for (index, case) in EXAMINE_CASES.iter().enumerate() {
+        let tree = parse(case.html);
+        let options = Extractor {
+            extensive: case.extensive,
+            original: case.original,
+            ..search_options()
+        };
+        let context = format!(
+            "case {index} {} original {} extensive {}",
+            case.function, case.original, case.extensive
+        );
+        match &case.result {
+            Expected::Texts(expected) => {
+                let got = free_text_expressions(&tree, tree.root(), &Call::default())
+                    .expect("not cancelled");
+                assert_eq!(got.as_slice(), *expected, "{context}");
+            }
+            Expected::Date(expected) => {
+                let got = examine_date(case.function, &tree, &options, &Call::default())
+                    .expect("not cancelled");
+                assert_eq!(got.as_deref(), *expected, "{context}");
+            }
+        }
+    }
+}
+
+#[test]
+fn discard_unwanted_drops_tail() {
+    // oracle: scripts/oracle.sh 'from parity import html5tree; from htmldate.extractors import discard_unwanted;
+    // from lxml.html import tostring; t = html5tree.parse_document(<page>); discard_unwanted(t);
+    // print(tostring(t, encoding="unicode"))', with <page> the div below: the wm-ipp div and its tail "TAIL" go
+    let mut tree = parse(r#"<div><div id="wm-ipp">x</div>TAIL<p>a</p></div>"#);
+    let root = tree.root();
+    discard_unwanted(&mut tree, root, &Call::default()).expect("not cancelled");
+    assert_eq!(
+        tree.tostring_html(root, true),
+        "<html><head></head><body><div><p>a</p></div></body></html>"
+    );
+}
+
+#[test]
+fn cancelled_call_stops_examine_header() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let tree = parse(r#"<html><head><meta name="date" content="2020-01-15"></head></html>"#);
+    assert_eq!(
+        examine_header(&tree, tree.root(), &search_options(), &call),
         Err(ExtractError::Cancelled)
     );
 }

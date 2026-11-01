@@ -2,7 +2,8 @@
 src/dom/html_cases.rs (what lxml.html.tostring returns on fixed pages, `serialize_cases()`) and
 src/htmldate/validator_cases.rs (htmldate's validators on fixed inputs, `validator_cases()`) and
 src/htmldate/extractor_cases.rs (htmldate's string extractors on fixed inputs, `extractor_cases()`) and
-src/htmldate/search_cases.rs (htmldate's page-text search on fixed pages, `search_cases()`).
+src/htmldate/search_cases.rs (htmldate's page-text search on fixed pages, `search_cases()`) and
+src/htmldate/examine_cases.rs (htmldate's tree examiners on fixed pages, `examine_cases()`).
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -926,6 +927,208 @@ def search_cases() -> None:
         "",
         '/// `search_page` of `"w3.org/2020/ "` repeated 20,000 times, then `" 2021 "`, with `original` false.',
         f"pub(super) const W3_RUN_CASE: Option<&str> = {rust_option_str(w3_result)};",
+        "",
+    ]
+    sys.stdout.write("\n".join(out))
+
+
+# htmldate's tree examiners (src/htmldate/examine_cases.rs): each page is one input with one examiner. The header,
+# JSON, abbr and time examiners run with both values of `original`, `elements` with both values of `extensive`.
+# The pages use min_date 1995-01-01 and max_date 2024-01-31.
+EXAMINE_INPUTS = [
+    # examine_header: name, property, itemprop, pubdate and http-equiv metas, the copyright year, og:url
+    ('<meta name="date" content="2020-01-15">', "header"),
+    ('<meta name="Date" content="2020-01-15T10:20:30+01:00">', "header"),
+    ('<meta name="lastmod" content="2020-02-01"><meta name="date" content="2019-12-24">', "header"),
+    ('<meta name="last-modified" content="2020-02-01">', "header"),
+    ('<meta name="modified" content="garbage"><meta name="utime" content="2020-02-02">', "header"),
+    ('<meta name="date" content="2020-01-15"><meta name="date" content="2021-06-01">', "header"),
+    ('<meta property="article:published_time" content="2020-01-15T10:00:00+00:00">', "header"),
+    ('<meta property="og:modified_time" content="2020-02-01"><meta property="article:modified_time" content="2020-03-01">', "header"),
+    ('<meta property="og:updated_time" content="2020-02-01">', "header"),
+    ('<meta itemprop="datePublished" content="2020-01-15">', "header"),
+    ('<meta itemprop="datePublished" datetime="2020-01-15" content="2019-01-01">', "header"),
+    ('<meta itemprop="datePublished" datetime="" content="2019-03-03">', "header"),
+    ('<meta itemprop="datePublished" datetime="2020-01-15">', "header"),
+    ('<meta itemprop="dateModified" content="2020-02-01">', "header"),
+    ('<meta itemprop="copyrightYear" content="2015">', "header"),
+    ('<meta itemprop="copyrightYear" content="15">', "header"),
+    ('<meta itemprop="copyrightYear" content="2015"><meta name="date" content="2020-01-15">', "header"),
+    ('<meta pubdate="pubdate" content="2020-01-15">', "header"),
+    ('<meta pubdate="PubDate" content="2020-01-15">', "header"),
+    ('<meta pubdate="other" content="2020-01-15">', "header"),
+    ('<meta http-equiv="date" content="2020-01-15">', "header"),
+    ('<meta http-equiv="last-modified" content="2020-02-01"><meta http-equiv="date" content="2019-12-24">', "header"),
+    ('<meta name="date">', "header"),
+    ('<meta name="date" datetime="2020-01-15">', "header"),
+    ('<meta name="og:url" content="https://example.com/2019/05/12/post"><meta name="date" content="garbage">', "header"),
+    ('<meta name="og:url" content="https://example.com/2019/05/12/post">', "header"),
+    # examine_header with the same keys on each side of the first date: the first with a date wins
+    ('<meta name="date" content="garbage"><meta name="date" content="2020-01-15">', "header"),
+    # examine_json: the JSON-LD and settings scripts, mixed case, wrong type, out of range, no date key
+    ('<script type="application/ld+json">{"@type": "Article", "datePublished": "2020-01-15T10:00:00+01:00", "dateModified": "2020-02-01"}</script>', "json"),
+    ('<script type="application/settings+json">{"dateModified": "2020-03-01"}</script>', "json"),
+    ('<script type="application/ld+json">{"DATEPUBLISHED": "2019-01-01"}</script>', "json"),
+    ('<script type="text/javascript">{"datePublished": "2020-01-15"}</script>', "json"),
+    ('<script type="application/ld+json">{"datePublished": "2020-01-15"}</script><script type="application/ld+json">{"datePublished": "2021-01-01"}</script>', "json"),
+    ('<script type="application/ld+json">{"datePublished": "2045-12-31"}</script>', "json"),
+    ('<script type="application/ld+json">{"name": "x"}</script>', "json"),
+    ('<script type="application/ld+json"></script>', "json"),
+    ('<script type="application/ld+json">{"datePublished": "2017-9-1"}</script>', "json"),
+    # examine_abbr_elements: data-utime (valid, negative, huge, underscores, a float), class published with a title or text
+    ('<abbr data-utime="1579082400">x</abbr>', "abbr"),
+    ('<abbr data-utime="-86400">x</abbr>', "abbr"),
+    ('<abbr data-utime="99999999999999">x</abbr>', "abbr"),
+    ('<abbr data-utime=" 1_500_000_000 ">x</abbr>', "abbr"),
+    ('<abbr data-utime="1.5">x</abbr>', "abbr"),
+    ('<abbr data-utime="garbage" class="published" title="2020-01-15">x</abbr>', "abbr"),
+    ('<abbr class="published" title="2020-01-15">x</abbr>', "abbr"),
+    ('<abbr class="published" title="15.01.2020">x</abbr><abbr class="published" title="2021-03-03">y</abbr>', "abbr"),
+    ('<abbr class="published">Published 15 January 2020 by admin</abbr>', "abbr"),
+    ('<abbr class="published">15.01.2020</abbr>', "abbr"),
+    ('<abbr class="published">Published 15.01.2020</abbr>', "abbr"),
+    ('<abbr data-utime="1579082400">x</abbr><abbr class="published" title="2021-03-03">y</abbr>', "abbr"),
+    ('<abbr>Posted 15 January 2020 here</abbr>', "abbr"),
+    ('<abbr class="published" title="2020-01-15">x</abbr>' * 1001, "abbr"),
+    # examine_time_elements: datetime attributes, the shortcut flags, bare text, the window bound, equal wall clocks
+    ('<time pubdate="pubdate" datetime="2020-01-15T10:00:00+01:00">15 Jan</time>', "time"),
+    ('<time class="entry-date" datetime="2020-01-15">x</time>', "time"),
+    ('<time class="entry-time-x" datetime="2020-01-15">x</time>', "time"),
+    ('<time class="updated" datetime="2020-02-01">x</time>', "time"),
+    ('<time datetime="2020-01-15T10:00:00">x</time><time datetime="2021-06-01">y</time>', "time"),
+    ('<time datetime="2020-01-15">x</time><time datetime="2019-06-01">y</time>', "time"),
+    ('<time datetime="2024-01-31T23:30:00-05:00">x</time>', "time"),
+    ('<time datetime="2024-01-30T23:30:00+05:00">a</time><time datetime="2024-01-30T23:30:00-05:00">b</time>', "time"),
+    ('<time datetime="2024-01-30T23:30:00-05:00">a</time><time datetime="2024-01-30T23:30:00+05:00">b</time>', "time"),
+    ('<time>2020-01-15 10:00</time>', "time"),
+    ('<time>2020-01</time>', "time"),
+    ('<time datetime="2020">x</time>', "time"),
+    ('<time datetime="2020-01-15">x</time>' * 1000, "time"),
+    ('<time datetime="2020-01-15">x</time>' * 1001, "time"),
+    # examine_elements over date_candidates: the cues of id and class, the first of id and class, itemprop, folding
+    ('<div id="publish_date">15.01.2020</div>', "elements"),
+    ('<div class="byline">Jan 15, 2020</div>', "elements"),
+    ('<div id="x" class="date">2020-01-15</div>', "elements"),
+    ('<div class="date" id="x">2020-01-15</div>', "elements"),
+    ('<div class="Datum">15.01.2020</div>', "elements"),
+    ('<div class="DATE">15.01.2020</div>', "elements"),
+    ('<span itemprop="datePublished">2020-01-15</span>', "elements"),
+    ('<span itemprop="dateModified">2020-01-15</span>', "elements"),
+    ('<div class="x" id="footer-info-lastmod">2020-01-15</div>', "elements"),
+    ('<div id="main" class="byline">2020-01-15</div>', "elements"),
+    ('<div id="entry-Meta">2020-01-15</div>', "elements"),
+    ('<div id="metaX">2020-01-15</div>', "elements"),
+    ('<small>15.01.2020</small>', "elements"),
+    ('<footer>15.01.2020</footer>', "elements"),
+    ('<p class="byline">2020-01-15</p>', "elements"),
+    ('<svg><g id="publish">2020-01-15</g></svg>', "elements"),
+    ('<svg><footer>15.01.2020</footer></svg>', "elements"),
+    ('<div id="publish">2020-01-15</div>' * 1001, "elements"),
+    # examine_elements over the title and h1 elements, in document order
+    ('<html><head><title>Post 15.01.2020</title></head><body><h1 title="2020-01-15">x</h1></body></html>', "title_h1"),
+    ('<html><head><title>x</title></head><body><h1>Post 15.01.2020</h1><h1>other 2019-05-12</h1></body></html>', "title_h1"),
+    ('<svg><title>2020-01-15</title></svg>', "title_h1"),
+    ('<h1 title="garbage">Post</h1><title title="2020-01-15">x</title>', "title_h1"),
+    # FREE_TEXT_EXPRESSIONS: text and tails of the fast tags in document order, not of the others
+    ('<div>Text one<p>para</p>tail after p<span>x</span>tail2</div>', "free_text"),
+    ('<div>a<ul><li>b<em>c</em>d</li></ul>e</div>', "free_text"),
+    ('<b>not fast</b>tail<p>q</p>end', "free_text"),
+    ('<div>x</div><span>y</span>', "free_text"),
+    # img_search: the first og:image with a content attribute
+    ('<meta property="og:image" content="https://example.com/2020/01/15/a.jpg">', "img"),
+    ('<meta property="og:image"><meta property="og:image" content="https://example.com/2020/01/15/a.jpg">', "img"),
+    ('<meta property="og:image" content="https://example.com/x.jpg"><meta property="og:image" content="https://example.com/2020/01/15/a.jpg">', "img"),
+    ('<meta property="og:image" content="https://example.com/2020/01/15/a.jpg?x=1">', "img"),
+]
+
+
+def examine_variants(function: str) -> list[tuple[bool, bool]]:
+    "The (original, extensive) pairs a function is run with."
+    if function == "elements":
+        return [(False, extensive) for extensive in (False, True)]
+    if function in ("header", "json", "abbr", "time"):
+        return [(original, False) for original in (False, True)]
+    return [(False, False)]
+
+
+def run_examine(tree, function: str, original: bool, extensive: bool):
+    from htmldate.core import date_candidates, examine_abbr_elements, examine_elements, examine_header, examine_time_elements
+    from htmldate.extractors import FREE_TEXT_EXPRESSIONS, img_search, json_search
+    from htmldate.utils import Extractor
+
+    options = Extractor(
+        extensive=extensive, max=VALIDATOR_LATEST, min=VALIDATOR_EARLIEST, original=original, format=VALIDATOR_FORMAT
+    )
+    if function == "header":
+        return examine_header(tree, options)
+    if function == "json":
+        return json_search(tree, options)
+    if function == "abbr":
+        return examine_abbr_elements(tree, options)
+    if function == "time":
+        return examine_time_elements(tree, options)
+    if function == "elements":
+        return examine_elements(date_candidates(tree, extensive), options)
+    if function == "title_h1":
+        return examine_elements(tree.xpath(".//title|.//h1"), options)
+    if function == "img":
+        return img_search(tree, options)
+    if function == "free_text":
+        return [str(segment) for segment in FREE_TEXT_EXPRESSIONS(tree)]
+    raise ValueError(function)
+
+
+def examine_result(result) -> str:
+    "An `Expected` literal: a date or None, or the text segments of free_text."
+    if isinstance(result, list):
+        return "Expected::Texts(&[" + ", ".join(rust_str(segment) for segment in result) + "])"
+    return f"Expected::Date({rust_option_str(result)})"
+
+
+def examine_cases() -> None:
+    oracle_setup()
+    from parity import html5tree
+    from parity.generate import html5_parsers
+
+    lines = []
+    with html5_parsers():
+        for html, function in EXAMINE_INPUTS:
+            for original, extensive in examine_variants(function):
+                tree = html5tree.parse_document(html)
+                assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {html[:60]!r}"
+                result = run_examine(tree, function, original, extensive)
+                lines.append(
+                    f"    ExamineCase {{ html: {rust_str(html)}, function: {rust_str(function)}, "
+                    f"original: {str(original).lower()}, extensive: {str(extensive).lower()}, "
+                    f"result: {examine_result(result)} }},"
+                )
+    print(f"examine cases: {len(lines)}", file=sys.stderr)
+    out = [
+        f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}.",
+        "// Do not edit. Regenerate from the repository root with:",
+        "//   scripts/oracle.sh 'from parity.gen_htmldate_cases import examine_cases; examine_cases()' > src/htmldate/examine_cases.rs",
+        "// htmldate 1.11.0's tree examiners on fixed pages, in UTC with D-13 off, min_date 1995-01-01 and max_date 2024-01-31.",
+        "",
+        "/// What an examiner returns: a date or `None`, or the text segments of `free_text`.",
+        "#[derive(Debug, PartialEq, Eq)]",
+        "pub(super) enum Expected {",
+        "    Date(Option<&'static str>),",
+        "    Texts(&'static [&'static str]),",
+        "}",
+        "",
+        "/// A page, the examiner `function`, `original`, `extensive`, then the result.",
+        "pub(super) struct ExamineCase {",
+        "    pub html: &'static str,",
+        "    pub function: &'static str,",
+        "    pub original: bool,",
+        "    pub extensive: bool,",
+        "    pub result: Expected,",
+        "}",
+        "",
+        "#[rustfmt::skip]",
+        "pub(super) const EXAMINE_CASES: &[ExamineCase] = &[",
+        *lines,
+        "];",
         "",
     ]
     sys.stdout.write("\n".join(out))
