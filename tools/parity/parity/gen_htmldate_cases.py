@@ -71,6 +71,11 @@ ISOFORMAT_INPUTS = [
     "2020-01-01T10:20-05Z",
     "2020-01-01T10+05",
     "2020-01-01T10:20:30.5x",
+    # A fraction mark right before a zone: CPython 3.13.13 accepts these, the pinned 3.13.16 oracle rejects them.
+    "2020-01-01T10:20:30.+05:00",
+    "2020-01-01T10:20:30,Z",
+    "2020-01-01T10:20:30.-05:00",
+    "2020-01-01T10.+05:00",
 ]
 
 # A seeded sample of strings over the characters the grammar reads, so the table covers more than the rows above.

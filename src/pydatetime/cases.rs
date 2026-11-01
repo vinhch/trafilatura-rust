@@ -52,6 +52,10 @@ pub(super) const ISOFORMAT_CASES: &[(&str, Option<DateTime>)] = &[
     ("2020-01-01T10:20-05Z", None),
     ("2020-01-01T10+05", Some(DateTime { year: 2020, month: 1, day: 1, hour: 10, minute: 0, second: 0, microsecond: 0, offset: Some(18000000000) })),
     ("2020-01-01T10:20:30.5x", None),
+    ("2020-01-01T10:20:30.+05:00", None),
+    ("2020-01-01T10:20:30,Z", None),
+    ("2020-01-01T10:20:30.-05:00", None),
+    ("2020-01-01T10.+05:00", None),
 ];
 
 /// `datetime.fromisoformat(text)` on the seeded strings of `fuzz_inputs()`.

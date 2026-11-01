@@ -193,7 +193,9 @@ function.
   `"2020-01-011"`). Pure-Python `_pydatetime` accepts those two and parses the time part differently: C takes a
   fraction right after the hour (`"06.8"` is 06:00:00.8), a second `:` before the fraction, and `Z` only as the last
   character. C also reads ISO week dates (`"2020W011"`, `"2020-W53-1"`) and truncates a fraction past six digits.
-  `DateTime::from_isoformat` ports the C parser; its table includes a seeded sample of strings.
+  `DateTime::from_isoformat` ports the C parser; its table includes a seeded sample of strings. The venv runs 3.13.13
+  and the fixture platform runs 3.13.16, and they differ on fraction-before-zone inputs (`"10:20:30.+05:00"`): probe
+  with the pinned image, not the venv.
 
 ## json and unicodedata
 
