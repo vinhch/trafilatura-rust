@@ -435,3 +435,13 @@ fn is_digit_matches_python() {
     assert!(is_digit('\u{b2}') && is_digit('\u{663}'));
     assert!(!is_digit('\u{bd}') && !is_digit('a'));
 }
+
+#[test]
+fn ignore_case_i_dotless() {
+    // oracle: re.fullmatch("yay\u{131}", s, re.I) is true for "yayi", "yayI", "yay\u{131}" and "yay\u{130}"
+    let re = Regex::new(&format!(r"\A(?i:yay{})\z", ignore_case_i("\u{131}"))).expect("compiles");
+    for text in ["yayi", "yayI", "yay\u{131}", "yay\u{130}"] {
+        assert!(re.is_match(text), "{text:?}");
+    }
+    assert!(!re.is_match("yayy"), "a letter that is no i");
+}

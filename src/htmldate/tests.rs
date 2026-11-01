@@ -6,6 +6,14 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::extractor_cases::{
+    EXTRACT_URL_DATE_CASES, IDIOSYNCRASIES_CASES, PATTERN_SEARCH_CASES, REGEX_PARSE_CASES,
+    TRY_DATE_EXPR_CASES,
+};
+use super::extractors::{
+    JSON_MODIFIED, JSON_PUBLISHED, external_date, extract_url_date, idiosyncrasies_search,
+    pattern_search, regex_parse, try_date_expr,
+};
 use super::settings::{CLEANING_LIST, MIN_DATE};
 use super::utils::{Extractor, NotAfter, Pattern, clean_html, remove_if_attached, trim_text};
 use super::validator_cases::{
@@ -15,8 +23,9 @@ use super::validators::{
     Format, check_date_input, compare_values, correct_year, filter_ymd_candidate, get_max_date,
     is_valid_date_str, plausible_year_filter, validate_and_convert,
 };
-use crate::cancel::Call;
+use crate::cancel::{Call, CancelToken};
 use crate::dom::{ParseLimits, Tree, parse_document};
+use crate::error::ExtractError;
 use crate::pydatetime::DateTime;
 
 /// `max_date` "2024-01-31", midnight, naive.
@@ -262,4 +271,134 @@ fn validate_and_convert_matches_python() {
         validate_and_convert(Some(&aware), Format::Reference, &MIN_DATE, &LATEST),
         Some("2020-01-15T10:20:30.000007+0000".to_owned())
     );
+}
+
+/// The options of the string extractors: the bounds of the generated tables, no output format.
+fn search_options() -> Extractor {
+    Extractor {
+        extensive: false,
+        max: LATEST,
+        min: MIN_DATE,
+        original: false,
+    }
+}
+
+#[test]
+fn try_date_expr_matches_python() {
+    for &(text, format, extensive, expected) in TRY_DATE_EXPR_CASES {
+        assert_eq!(
+            try_date_expr(
+                Some(text),
+                format,
+                extensive,
+                &MIN_DATE,
+                &LATEST,
+                &Call::default()
+            ),
+            Ok(expected.map(str::to_owned)),
+            "{text:?} {format:?} extensive {extensive}"
+        );
+    }
+}
+
+#[test]
+fn regex_parse_matches_python() {
+    for &(text, expected) in REGEX_PARSE_CASES {
+        assert_eq!(
+            regex_parse(text, &Call::default()),
+            Ok(expected),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn extract_url_date_matches_python() {
+    for &(testurl, expected) in EXTRACT_URL_DATE_CASES {
+        assert_eq!(
+            extract_url_date(testurl, &search_options()).as_deref(),
+            expected,
+            "{testurl:?}"
+        );
+    }
+}
+
+#[test]
+fn idiosyncrasies_search_matches_python() {
+    for (index, &(text, expected)) in IDIOSYNCRASIES_CASES.iter().enumerate() {
+        assert_eq!(
+            idiosyncrasies_search(text, &search_options(), &Call::default()),
+            Ok(expected.map(str::to_owned)),
+            "case {index}"
+        );
+    }
+}
+
+#[test]
+fn pattern_search_matches_python() {
+    for &(text, published, expected) in PATTERN_SEARCH_CASES {
+        let pattern = Pattern {
+            regex: if published {
+                &JSON_PUBLISHED
+            } else {
+                &JSON_MODIFIED
+            },
+            not_after: None,
+        };
+        assert_eq!(
+            pattern_search(text, &pattern, &search_options(), &Call::default()),
+            Ok(expected.map(str::to_owned)),
+            "{text:?} published {published}"
+        );
+    }
+}
+
+#[test]
+fn regex_parse_long_letter_run_is_linear() {
+    // oracle: regex_parse("a" * 200000 + " 5, 2020") is None, and regex_parse("a" * 200000 + "March 5, 2020")
+    // is datetime(2020, 3, 5): the month word is the longest known suffix of the run
+    let run = "a".repeat(200_000);
+    assert_eq!(
+        regex_parse(&format!("{run} 5, 2020"), &Call::default()),
+        Ok(None)
+    );
+    assert_eq!(
+        regex_parse(&format!("{run}March 5, 2020"), &Call::default()),
+        Ok(DateTime::new(2020, 3, 5))
+    );
+}
+
+#[test]
+fn idiosyncrasies_core_cap() {
+    // oracle: idiosyncrasies_search("01.09.2017 " * 1500 + "date: 02.09.2017") is "2017-09-02": past the
+    // 1,000-core cap the search runs unbounded; "01.09.2017 " * 1500 with no cue is None
+    let cores = "01.09.2017 ".repeat(1500);
+    assert_eq!(
+        idiosyncrasies_search(
+            &format!("{cores}date: 02.09.2017"),
+            &search_options(),
+            &Call::default()
+        ),
+        Ok(Some("2017-09-02".to_owned()))
+    );
+    assert_eq!(
+        idiosyncrasies_search(&cores, &search_options(), &Call::default()),
+        Ok(None)
+    );
+}
+
+#[test]
+fn external_date_gives_none() {
+    // D-13: dateparser is not ported, so no string gives a date from the external parser
+    assert_eq!(external_date("15 de marzo de 2017"), None);
+    assert_eq!(external_date("March 5, 2020"), None);
+}
+
+#[test]
+fn cancelled_call_stops_regex_parse() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let text = "Foo 5, 2020 ".repeat(1000);
+    assert_eq!(regex_parse(&text, &call), Err(ExtractError::Cancelled));
 }

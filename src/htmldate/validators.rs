@@ -93,7 +93,7 @@ pub(crate) fn is_valid_datetime(date: &DateTime, earliest: &DateTime, latest: &D
 }
 
 /// `int(text)` as an `i64`, `None` where `int` or the range refuses the text.
-fn int_text(text: &str) -> Option<i64> {
+pub(super) fn int_text(text: &str) -> Option<i64> {
     pystr::int_str(text).ok()?.parse().ok()
 }
 

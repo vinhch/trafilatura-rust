@@ -1,6 +1,7 @@
 """Generates src/pydatetime/cases.rs (what CPython 3.13's datetime and strptime return on fixed inputs),
 src/dom/html_cases.rs (what lxml.html.tostring returns on fixed pages, `serialize_cases()`) and
-src/htmldate/validator_cases.rs (htmldate's validators on fixed inputs, `validator_cases()`).
+src/htmldate/validator_cases.rs (htmldate's validators on fixed inputs, `validator_cases()`) and
+src/htmldate/extractor_cases.rs (htmldate's string extractors on fixed inputs, `extractor_cases()`).
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -580,6 +581,231 @@ def validator_cases() -> None:
         "#[rustfmt::skip]",
         "pub(super) const CHECK_DATE_INPUT_CASES: &[(Option<&str>, DateTime)] = &[",
         *check_lines,
+        "];",
+        "",
+    ]
+    sys.stdout.write("\n".join(out))
+
+
+# htmldate's string extractors (src/htmldate/extractor_cases.rs): try_date_expr, regex_parse, extract_url_date,
+# idiosyncrasies_search and pattern_search on fixed inputs, with min_date 1995-01-01 and max_date 2024-01-31.
+EXTRACTOR_MIN = datetime(1995, 1, 1)
+EXTRACTOR_MAX = datetime(2024, 1, 31)
+
+TRY_DATE_EXPR_INPUTS = [
+    "2017-09-01",
+    "2017-09-01T10:20:30",
+    "2017-09-01T10:20:30+05:30",
+    "2017-09-01T10:20:30Z",
+    "2017-09-01T10:20:30-0500",
+    "2017-09-01 10:20",
+    "2024-01-31T23:30:00-05:00",
+    "201709011234",
+    "20170901",
+    "2017-9-1",
+    "1.9.17",
+    "01/09/2017",
+    "13/25/2017",
+    "9/2017",
+    "2017/09",
+    "September 1, 2017",
+    "1st of September 2017",
+    "1. September 2017",
+    "SmithMarch 5, 2020",
+    "Şubat 3, 2020",
+    "3 Kasım 2020",
+    "İnce 3, 2020",
+    "12:30",
+    "2017",
+    "$ 2017-09-01",
+    "ABC 2017-09-01",
+    "+49 2017-09-01",
+    "x.com 2017-09-01",
+    "DE89 2017-09-01",
+    "2017-09-01®",
+    # 60 code points, the date starts at 50 and is cut by the 52-code-point segment
+    "a" * 49 + " 2017-09-01",
+    # the date starts after the 52-code-point segment
+    "a" * 52 + " 2017-09-01",
+    # Review Focus 1: digits that `\d`, `isdigit` and `int` read differently
+    "２０２０-01-15",
+    "٢٠٢٠-٠١-١٥",
+    "²⁰²⁰0115",
+    "Veröffentlicht am 1.9.17",
+    # a string only dateparser reads: no date here (D-13)
+    "15 de marzo de 2017",
+]
+
+REGEX_PARSE_INPUTS = [
+    "March 5, 2020",
+    "5 March 2020",
+    "5th of March 2020",
+    "5. März 2020",
+    "March 5 2020",
+    "Mar 5, 2020",
+    "MARCH 5, 2020",
+    "SmithMarch 5, 2020",
+    "xMarch 5, 2020",
+    "Junk1March 5, 2020",
+    "Şubat 3, 2020",
+    "3 Kasım 2020",
+    "ŞUBAT 3, 2020",
+    "mayıs 5, 2020",
+    "1 Ocak 2020",
+    "DEC 31, 2019",
+    "Dezember 31, 2019",
+    "February 30, 2020",
+    "Foo 5, 2020",
+    "abc 5, 2020",
+    "abc 5, 2020 March 5, 2020",
+    "Sept 5, 2020",
+    "5 de March 2020",
+    "İnce 3, 2020",
+    "15 de marzo de 2017",
+    "a" * 50 + " 5, 2020",
+]
+
+EXTRACT_URL_DATE_INPUTS = [
+    "https://example.com/2017/09/01/",
+    "https://example.com/blog_2017-9-1.html",
+    "https://example.com/2017/02/30/",
+    "https://example.com/2017/13/01/",
+    "https://example.com/2045/09/01/",
+    "https://example.com/about",
+    None,
+]
+
+IDIOSYNCRASIES_INPUTS = [
+    "date: 01.09.2017",
+    "DATE: 01.09.2017",
+    "updated 01.09.2017",
+    "last-modified 2017.09.01",
+    "published 01.09.2017",
+    "posted 01/09/17",
+    "on 01.09.2017",
+    "Stand: 1.9.17",
+    "Datum 1.9.17",
+    "Veröffentlicht am 1.9.17",
+    "yayınlanma tarihi: 01.09.2017",
+    "yayinlanma tarihi: 01.09.2017",
+    "Yayımlanma tarihi: 01.09.2017",
+    "güncelleme tarihi: 01.09.2017",
+    "01.09.2017 tarihinde yayInlandi",
+    "01.09.2017'de güncellendi",
+    # the gap after a cue is at most 20 code points
+    "date" + "x" * 19 + " 01.09.2017",
+    "date" + "x" * 20 + " 01.09.2017",
+    # a cue 61 code points before its core: outside the window
+    "on" + " " * 59 + "01.09.2017",
+    # non-ASCII text before the window
+    "ü" * 100 + " date: 01.09.2017",
+    # more than 1,000 cores, the cue after the last one: the unbounded search finds it
+    "01.09.2017 " * 1500 + "date: 02.09.2017",
+    # more than 1,000 cores and no cue
+    "01.09.2017 " * 1500,
+]
+
+PATTERN_SEARCH_INPUTS = [
+    ('{"datePublished": "2017-09-01T10:20:30+05:30"}', True),
+    ('{"dateModified": "2017-09-01"}', False),
+    ('{"dateModified": "2017-09-01"}', True),
+    ('{"datepublished":"2017-09-01"}', True),
+    ('{"DATEPUBLISHED": "2017-09-01"}', True),
+    ('{"datePublıshed": "2017-09-01"}', True),
+    ('{"dateModıfied": "2017-09-01"}', False),
+    ('{"datePublished": "2045-12-31"}', True),
+    ('{"datePublished": "2024-02-01"}', True),
+    ('{"datePublished": "1995-01-01T00:00:00Z"}', True),
+    ('{"datePublished": "2017-9-1"}', True),
+    ('{"datePublished": "2017-09-01T10:20:30.5Z"}', True),
+]
+
+
+def rust_option_str(value: str | None) -> str:
+    return "None" if value is None else f"Some({rust_str(value)})"
+
+
+def extractor_cases() -> None:
+    oracle_setup()
+    from htmldate.extractors import (
+        JSON_MODIFIED,
+        JSON_PUBLISHED,
+        extract_url_date,
+        idiosyncrasies_search,
+        pattern_search,
+        regex_parse,
+        try_date_expr,
+    )
+    from htmldate.validators import REFERENCE_FORMAT
+    from htmldate.utils import Extractor
+
+    def options(extensive: bool = False, original: bool = False) -> Extractor:
+        return Extractor(
+            extensive=extensive, max=EXTRACTOR_MAX, min=EXTRACTOR_MIN, original=original, format=VALIDATOR_FORMAT
+        )
+
+    formats = [("Format::Ymd", VALIDATOR_FORMAT), ("Format::Reference", REFERENCE_FORMAT)]
+    try_lines = []
+    for text in TRY_DATE_EXPR_INPUTS:
+        for variant, fmt in formats:
+            for extensive in (True, False):
+                result = try_date_expr(text, fmt, extensive, EXTRACTOR_MIN, EXTRACTOR_MAX)
+                try_lines.append(
+                    f"    ({rust_str(text)}, {variant}, {str(extensive).lower()}, {rust_option_str(result)}),"
+                )
+    regex_lines = []
+    for text in REGEX_PARSE_INPUTS:
+        regex_lines.append(f"    ({rust_str(text)}, {literal(regex_parse(text))}),")
+    url_lines = []
+    for text in EXTRACT_URL_DATE_INPUTS:
+        result = extract_url_date(text, options())
+        url_lines.append(f"    ({rust_option_str(text)}, {rust_option_str(result)}),")
+    idiosyncrasy_lines = []
+    for text in IDIOSYNCRASIES_INPUTS:
+        result = idiosyncrasies_search(text, options())
+        idiosyncrasy_lines.append(f"    ({rust_str(text)}, {rust_option_str(result)}),")
+    pattern_lines = []
+    for text, published in PATTERN_SEARCH_INPUTS:
+        pattern = JSON_PUBLISHED if published else JSON_MODIFIED
+        result = pattern_search(text, pattern, options())
+        pattern_lines.append(f"    ({rust_str(text)}, {str(published).lower()}, {rust_option_str(result)}),")
+    out = [
+        f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}.",
+        "// Do not edit. Regenerate from the repository root with:",
+        "//   scripts/oracle.sh 'from parity.gen_htmldate_cases import extractor_cases; extractor_cases()' > src/htmldate/extractor_cases.rs",
+        "// htmldate 1.11.0's string extractors on fixed inputs, in UTC with the htmldate calls of D-13 turned off.",
+        "",
+        "use super::validators::Format;",
+        "use crate::pydatetime::DateTime;",
+        "",
+        "/// A string, the output format, `extensive_search`, then `try_date_expr(string, format, extensive, 1995-01-01, 2024-01-31)`.",
+        "#[rustfmt::skip]",
+        "pub(super) const TRY_DATE_EXPR_CASES: &[(&str, Format, bool, Option<&str>)] = &[",
+        *try_lines,
+        "];",
+        "",
+        "/// A string, then `regex_parse(string)`.",
+        "#[rustfmt::skip]",
+        "pub(super) const REGEX_PARSE_CASES: &[(&str, Option<DateTime>)] = &[",
+        *regex_lines,
+        "];",
+        "",
+        "/// A URL, then `extract_url_date(url, options)`.",
+        "#[rustfmt::skip]",
+        "pub(super) const EXTRACT_URL_DATE_CASES: &[(Option<&str>, Option<&str>)] = &[",
+        *url_lines,
+        "];",
+        "",
+        "/// A page text, then `idiosyncrasies_search(text, options)`.",
+        "#[rustfmt::skip]",
+        "pub(super) const IDIOSYNCRASIES_CASES: &[(&str, Option<&str>)] = &[",
+        *idiosyncrasy_lines,
+        "];",
+        "",
+        "/// A text, whether its pattern is JSON_PUBLISHED (else JSON_MODIFIED), then `pattern_search(text, pattern, options)`.",
+        "#[rustfmt::skip]",
+        "pub(super) const PATTERN_SEARCH_CASES: &[(&str, bool, Option<&str>)] = &[",
+        *pattern_lines,
         "];",
         "",
     ]

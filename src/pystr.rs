@@ -422,9 +422,18 @@ pub fn unicode_escape(s: &str) -> Option<String> {
     Some(out)
 }
 
-// Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
+// Python's `re.IGNORECASE` also matches `i` with `İ` and `ı`, and `ı` and `İ` with `i`, `I`, `ı` and `İ`; Rust's
+// `(?i)` does not. Each `i` and each `ı` or `İ` becomes the class of its Python matches.
 pub(crate) fn ignore_case_i(pattern: &str) -> String {
-    pattern.replace(['i', 'I'], "[iİı]")
+    let mut out = String::with_capacity(pattern.len());
+    for c in pattern.chars() {
+        match c {
+            'i' | 'I' => out.push_str("[iİı]"),
+            'ı' | 'İ' => out.push_str("[iIıİ]"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// A pattern of upstream with `\w`, `\s` and `\d` written as `@W@`, `@S@` and `@D@`, which stand for Python's
