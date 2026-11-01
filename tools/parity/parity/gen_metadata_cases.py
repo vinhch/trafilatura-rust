@@ -3,6 +3,7 @@
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
     scripts/oracle.sh 'from parity.gen_metadata_cases import json_cases; json_cases()' > src/json_metadata/cases.rs
+    scripts/oracle.sh 'from parity.gen_metadata_cases import cases; cases()' > tests/metadata_cases/cases.rs
 
 `JSON_CASES` run `extract_json(json.loads(text, strict=False), Document())`. The `Document` is a
 recording document that applies deviation D-19: a value that is neither a string nor `None` is not
