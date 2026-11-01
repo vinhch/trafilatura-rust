@@ -50,7 +50,8 @@ pub fn find_date(
         None => canonical_href(tree, root, call)?,
     };
     let url = url.or(canonical.as_deref());
-    // direct processing of URL info
+    // direct processing of URL info; upstream's deferred_url_extractor is not ported: trafilatura never passes it
+    // (settings.py::set_date_params), so the URL date always wins
     if let Some(date) = extract_url_date(url, &options) {
         return Ok(Some(date));
     }

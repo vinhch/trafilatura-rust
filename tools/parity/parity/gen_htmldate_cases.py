@@ -1181,6 +1181,10 @@ FIND_DATE_PAGES = [
     ("<html><body><p>Veröffentlicht am 1.9.17</p></body></html>", None),
     # free text: the element text is cut at 52 code points before the date, but the tail of the `b` is a short segment
     ("<html><body><div>Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do <b>x</b> 12 May 2019</div></body></html>", None),
+    # free text discriminates: the segments are read in order, and the last one in the window wins over search_page's first
+    ("<html><body><p>Posted 3 March 2018</p><p>Posted 4 April 2017</p></body></html>", None),
+    # free text discriminates in the other direction: a segment with a cue after another with a date in the page string
+    ("<html><body><p>1 April 2017</p><div>updated 3 March 2018 here</div></body></html>", None),
     # search_page: a date with a text cue in the page string
     ("<html><body><div>This article was written on 12 May 2019 by staff</div></body></html>", None),
     # Review Focus 4: audio in object drops nothing, so video survives and its date is found
