@@ -230,3 +230,25 @@ fn author_regexes_stop_on_cancel() {
         Err(ExtractError::Cancelled)
     );
 }
+
+#[test]
+fn list_loops_stop_on_cancel() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let json = try_loads(
+        r#"{"section":["A","B"],"names":["A","B"],"author":["x"]}"#,
+        false,
+        &Call::default(),
+    )
+    .unwrap()
+    .unwrap();
+    let get = |key: &str| json.get(json.root(), key).unwrap();
+    let stop = JsonFailure::Stop(ExtractError::Cancelled);
+    assert_eq!(
+        categories_of(&json, get("section"), &call),
+        Err(stop.clone())
+    );
+    assert_eq!(joined_names(&json, get("names"), &call), Err(stop.clone()));
+    assert_eq!(author_name(&json, get("author"), &call), Err(stop));
+}

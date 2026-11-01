@@ -306,7 +306,11 @@ pub fn is_plausible_sitename(
 
 /// The name an author node gives, `None` where upstream finds none. The node is a string, an object or
 /// a list; every other value raises on `in`.
-fn author_name(json: &Json, author: JsonRef) -> Result<Option<String>, Raised> {
+fn author_name(
+    json: &Json,
+    author: JsonRef,
+    call: &Call<'_>,
+) -> Result<Option<String>, JsonFailure> {
     match json.kind(author) {
         // `{"name": author}`
         Kind::Str => Ok(json.as_str(author).map(str::to_owned)),
@@ -321,7 +325,7 @@ fn author_name(json: &Json, author: JsonRef) -> Result<Option<String>, Raised> {
             }
             if let Some(name) = json.get(author, "name") {
                 return match json.kind(name) {
-                    Kind::List => joined_names(json, name),
+                    Kind::List => joined_names(json, name, call),
                     Kind::Object => Ok(json
                         .get(name, "name")
                         .and_then(|inner| json.as_str(inner))
@@ -343,26 +347,42 @@ fn author_name(json: &Json, author: JsonRef) -> Result<Option<String>, Raised> {
         // `"@type" not in author` is a list membership test; each branch that follows reads the list as
         // an object and raises.
         Kind::List => {
-            let has = |key: &str| {
-                json.items(author)
-                    .any(|item| json.as_str(item) == Some(key))
-            };
-            if has("@type") || has("name") || (has("givenName") && has("familyName")) {
-                Err(Raised)
+            let mut found = [false; 4];
+            let mut visited = 0;
+            for item in json.items(author) {
+                tick(&mut visited, call)?;
+                for (flag, key) in
+                    found
+                        .iter_mut()
+                        .zip(["@type", "name", "givenName", "familyName"])
+                {
+                    *flag |= json.as_str(item) == Some(key);
+                }
+            }
+            let [has_type, has_name, has_given, has_family] = found;
+            if has_type || has_name || (has_given && has_family) {
+                Err(Raised.into())
             } else {
                 Ok(None)
             }
         }
-        _ => Err(Raised),
+        _ => Err(Raised.into()),
     }
 }
 
 /// `"; ".join(names).strip("; ")` over a list of strings; a list item that is no string raises.
-fn joined_names(json: &Json, names: JsonRef) -> Result<Option<String>, Raised> {
-    let names = json
-        .items(names)
-        .map(|item| json.as_str(item).ok_or(Raised))
-        .collect::<Result<Vec<_>, _>>()?;
+fn joined_names(
+    json: &Json,
+    names: JsonRef,
+    call: &Call<'_>,
+) -> Result<Option<String>, JsonFailure> {
+    let mut visited = 0;
+    let mut texts = Vec::new();
+    for item in json.items(names) {
+        tick(&mut visited, call)?;
+        texts.push(json.as_str(item).ok_or(Raised)?);
+    }
+    let names = texts;
     Ok(Some(names.join("; ").trim_matches([';', ' ']).to_owned()))
 }
 
@@ -376,7 +396,7 @@ fn process_authors(
     let mut visited = 0;
     for author in as_list(json, Some(list_authors)) {
         tick(&mut visited, call)?;
-        if let Some(name) = author_name(json, author)? {
+        if let Some(name) = author_name(json, author, call)? {
             metadata.author = normalize_authors(metadata.author.as_deref(), &name, call)?;
         }
     }
@@ -385,25 +405,38 @@ fn process_authors(
 
 /// The `articleSection` of an article as a category list: a string alone, a list's truthy strings, an
 /// object's non-empty keys. A list item that is no string is dropped (D-19); any other value raises.
-fn categories_of(json: &Json, section: JsonRef) -> Result<Vec<String>, Raised> {
+fn categories_of(
+    json: &Json,
+    section: JsonRef,
+    call: &Call<'_>,
+) -> Result<Vec<String>, JsonFailure> {
+    let mut visited = 0;
     match json.kind(section) {
         Kind::Str => Ok(json
             .as_str(section)
             .map(|text| vec![text.to_owned()])
             .unwrap_or_default()),
-        Kind::List => Ok(json
-            .items(section)
-            .filter(|&item| json.is_truthy(item))
-            .filter_map(|item| json.as_str(item))
-            .map(str::to_owned)
-            .collect()),
-        Kind::Object => Ok(json
-            .entries(section)
-            .map(|(key, _)| key)
-            .filter(|key| !key.is_empty())
-            .map(str::to_owned)
-            .collect()),
-        _ => Err(Raised),
+        Kind::List => {
+            let mut categories = Vec::new();
+            for item in json.items(section) {
+                tick(&mut visited, call)?;
+                if let Some(text) = json.as_str(item).filter(|_| json.is_truthy(item)) {
+                    categories.push(text.to_owned());
+                }
+            }
+            Ok(categories)
+        }
+        Kind::Object => {
+            let mut categories = Vec::new();
+            for (key, _) in json.entries(section) {
+                tick(&mut visited, call)?;
+                if !key.is_empty() {
+                    categories.push(key.to_owned());
+                }
+            }
+            Ok(categories)
+        }
+        _ => Err(Raised.into()),
     }
 }
 
@@ -507,7 +540,7 @@ pub fn process_parent(
             if metadata.categories.as_ref().is_none_or(Vec::is_empty)
                 && let Some(section) = json.get(content, "articleSection")
             {
-                metadata.categories = Some(categories_of(json, section)?);
+                metadata.categories = Some(categories_of(json, section, call)?);
             }
 
             // try to extract title

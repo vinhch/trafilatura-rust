@@ -10,6 +10,9 @@ stored in `title`, `author`, `sitename` or `pagetype`, and a list item of `categ
 string is dropped; `d19` says one of those happened. The expected values are what the rest of upstream's
 code then does with that document, so a case holds the D-19 result, not the Python one.
 
+A script with a lone surrogate is left out of the cases because a Rust string cannot hold one, and page text
+decoded from bytes cannot carry one.
+
 A backslash in an input is written `^` in this file and replaced by `bs`, so that no source line holds a
 backslash-u escape that a tool might rewrite.
 """
