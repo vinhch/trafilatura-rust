@@ -46,6 +46,7 @@ mod error;
 mod extraction;
 #[allow(dead_code)]
 mod html_processing;
+#[allow(dead_code)]
 mod htmldate;
 #[allow(dead_code)]
 mod json_metadata;
@@ -53,6 +54,8 @@ mod json_metadata;
 mod main_extractor;
 #[allow(dead_code)]
 mod metadata;
+#[allow(dead_code)]
+mod pydatetime;
 #[allow(dead_code)]
 mod pyhtml;
 #[allow(dead_code)]

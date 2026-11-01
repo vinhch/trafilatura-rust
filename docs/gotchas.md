@@ -185,6 +185,15 @@ function.
   `rend="h 2"` gives `<h2>` and `rend="h9"` gives `<h9>`. It also takes a sign and single `_`
   between digits (`int("1_" * 2500 + "1")` is accepted: only digits count toward the limit of the
   `str.isdecimal` bullet). `pystr::int_str` ports it.
+- `str.isdigit` is wider than `isdecimal` and `int`: `"²"` and `"¹"` are digits for `isdigit` only (`int("²")`
+  raises, `"²".isdecimal()` is false), while `int("٣")` is 3. A check that tests `isdigit` before `int` raises on a
+  superscript. `pystr::is_digit` holds `isdigit`; `decimal_value` holds the digits `int` takes.
+- `datetime.fromisoformat` (CPython 3.13's C parser, which the oracle runs) takes any one character as the date
+  separator (`"2020-01-01X10:20"`, `"2020-01-01é10:20"`) and rejects a separator with no time after it (`"2020-01-01 "`,
+  `"2020-01-011"`). Pure-Python `_pydatetime` accepts those two and parses the time part differently: C takes a
+  fraction right after the hour (`"06.8"` is 06:00:00.8), a second `:` before the fraction, and `Z` only as the last
+  character. C also reads ISO week dates (`"2020W011"`, `"2020-W53-1"`) and truncates a fraction past six digits.
+  `DateTime::from_isoformat` ports the C parser; its table includes a seeded sample of strings.
 
 ## json and unicodedata
 

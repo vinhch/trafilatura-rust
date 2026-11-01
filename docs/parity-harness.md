@@ -209,6 +209,8 @@ writes it byte for byte.
 | --- | --- | --- |
 | `gen_printable.py` | `src/pystr/printable.rs` | the `str.isprintable` ranges of the image's Python |
 | `gen_decimal.py` | `src/pystr/decimal.rs` | the run starts of the `Nd` decimal digits of the image's Python |
+| `gen_decimal.py` (`digit`) | `src/pystr/decimal.rs` | the `str.isdigit` ranges of the image's Python |
+| `gen_htmldate_cases.py` | `src/pydatetime/cases.rs` | `datetime.fromisoformat`, `datetime.strptime(s, "%Y-%m-%d")`, `datetime.fromtimestamp(s, tz=utc)`, `datetime(y, m, d)` and `strftime` on fixed inputs and a seeded sample of strings, under UTC with the two htmldate calls of D-13 turned off |
 | `gen_printable.py` (`alpha`) | `src/pystr/alpha.rs` | the `str.isalpha` ranges of the image's Python |
 | `gen_printable.py` (`lower`) | `src/pystr/lower.rs` | the `str.lower` one-character mappings and the Cased and Case_Ignorable classes of its final-sigma rule, read off the image's Python |
 | `gen_printable.py` (`title`) | `src/pystr/title.rs` | the `str.title` full title mappings, the Cased class its rule reads, the `str.isupper` ranges and the cases of the title test, read off the image's Python |

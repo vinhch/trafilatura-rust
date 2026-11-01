@@ -14,7 +14,7 @@ use std::cmp::Ordering;
 
 use crate::error::{ExtractError, Rejection};
 use alpha::ALPHA;
-use decimal::ND_ZEROS;
+use decimal::{DIGIT, ND_ZEROS};
 use lower::{CASE_IGNORABLE, CASED, LOWER};
 use printable::{PRINTABLE, SPACE, WORD};
 pub use printable::{PY_SPACE_CLASS, PY_WORD_CLASS};
@@ -312,6 +312,13 @@ pub fn repr(s: &str) -> String {
 /// `regex` `\w` adds marks and connector punctuation instead.
 pub(crate) fn is_word(c: char) -> bool {
     in_ranges(WORD, c)
+}
+
+/// Python `str.isdigit` for one character: `Nd` and the digits that `int` refuses, such as the
+/// superscripts `\u{b2}` and `\u{b9}`.
+// upstream: str.isdigit (CPython)
+pub(crate) fn is_digit(c: char) -> bool {
+    in_ranges(DIGIT, c)
 }
 
 /// `unicodedata.decimal(c, None)`: the value of a decimal digit (category `Nd`) of any script.

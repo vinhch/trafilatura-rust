@@ -418,3 +418,20 @@ fn classes_compose_inside_larger_classes() {
     assert!(re.is_match("x- \x1c\u{a0}"));
     assert!(!re.is_match("y"));
 }
+
+#[test]
+fn is_digit_matches_python() {
+    // Every run of `str.isdigit` starts and ends where the table says, and the code point past it is out.
+    for &(first, last) in decimal::DIGIT {
+        for code_point in [first, last] {
+            let c = char::from_u32(code_point).expect("a scalar value");
+            assert!(is_digit(c), "U+{code_point:04X}");
+        }
+        if let Some(after) = char::from_u32(last + 1) {
+            assert!(!is_digit(after), "U+{:04X}", last + 1);
+        }
+    }
+    // oracle: chr(0xb2).isdigit(), chr(0x663).isdigit(), chr(0xbd).isdigit(), chr(0x61).isdigit()
+    assert!(is_digit('\u{b2}') && is_digit('\u{663}'));
+    assert!(!is_digit('\u{bd}') && !is_digit('a'));
+}
