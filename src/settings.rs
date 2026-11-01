@@ -9,7 +9,9 @@ use regex::Regex;
 use crate::cancel::Call;
 use crate::dom::{LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
+use crate::pyhtml::unescape;
 use crate::pystr::ignore_case_i;
+use crate::utils::line_processing;
 use crate::xpaths::Selector;
 use crate::xpaths::select::{attr, descendants, first_attr, is_html, re_test};
 
@@ -229,14 +231,21 @@ impl Extractor {
                 || format == Format::XmlTei,
             only_with_metadata,
             tei_validation: false,
-            date_params: DateParams {
-                original_date: true,
-                extensive_search: config.extensive_date_search,
-                max_date: None,
-            },
+            date_params: set_date_params(config.extensive_date_search),
             author_blacklist,
             url_blacklist,
         }
+    }
+}
+
+/// The default date parameters, preferring the original date.
+// upstream: settings.py::set_date_params
+pub fn set_date_params(extensive: bool) -> DateParams {
+    DateParams {
+        original_date: true,
+        extensive_search: extensive,
+        // todo(phase 4d): max_date default (D-15)
+        max_date: None,
     }
 }
 
@@ -349,6 +358,47 @@ impl Document {
     #[cfg(feature = "__internals")]
     pub fn comments_body(&self) -> NodeId {
         self.comments_body
+    }
+
+    /// Cuts a text field over 10,000 code points to its first 9,999 and an ellipsis, unescapes it and trims its lines; a field that
+    /// ends up empty becomes `None`. Fails with `InvalidValue` on a character reference of more than
+    /// 4300 digits.
+    // upstream: settings.py::Document.clean_and_trim
+    pub(crate) fn clean_and_trim(&mut self) -> Result<(), ExtractError> {
+        fn clean(slot: &mut Option<String>) -> Result<(), ExtractError> {
+            let Some(value) = slot.as_deref() else {
+                return Ok(());
+            };
+            let limited = if value.chars().nth(10_000).is_some() {
+                value.chars().take(9_999).chain(['…']).collect()
+            } else {
+                value.to_owned()
+            };
+            *slot = line_processing(&unescape(&limited)?, false, false);
+            Ok(())
+        }
+        for slot in [
+            &mut self.title,
+            &mut self.author,
+            &mut self.url,
+            &mut self.hostname,
+            &mut self.description,
+            &mut self.sitename,
+            &mut self.date,
+            &mut self.fingerprint,
+            &mut self.id,
+            &mut self.license,
+            &mut self.comments,
+            &mut self.raw_text,
+            &mut self.text,
+            &mut self.language,
+            &mut self.image,
+            &mut self.pagetype,
+            &mut self.filedate,
+        ] {
+            clean(slot)?;
+        }
+        Ok(())
     }
 
     /// The metadata field `name` as upstream's `getattr(document, name, None)` followed by a truth
@@ -542,3 +592,6 @@ fn basic_clean_xpath(
             || re_test(attr(tree, id, "id"), &COOKIE_CONSENT)
     })
 }
+
+#[cfg(test)]
+mod tests;

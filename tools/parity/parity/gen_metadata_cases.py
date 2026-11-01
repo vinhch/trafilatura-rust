@@ -1,4 +1,4 @@
-"""Generates `src/json_metadata/cases.rs`: what upstream's `json_metadata.py` returns on fixed inputs.
+"""Generates `src/json_metadata/cases.rs` (`json_cases`) and `tests/metadata_cases/cases.rs` (`cases`): what upstream returns on fixed inputs.
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -732,6 +732,139 @@ def json_cases() -> None:
         "#[rustfmt::skip]",
         "pub(super) const NORMALIZE_JSON_CASES: &[(&str, &str)] = &[",
         *normalize_json_lines(),
+        "];",
+        "",
+    ]
+    sys.stdout.write("\n".join(out))
+
+
+# The `Document` fields a `MetadataCase` holds, in upstream slot order; `date` (htmldate, phase 4c) and
+# `filedate` (copied from the config) are left out.
+CASE_STRING_FIELDS = (
+    "title", "author", "url", "hostname", "description", "sitename", "fingerprint", "id", "license",
+    "comments", "raw_text", "text", "language", "image", "pagetype",
+)
+MAX_DATE = "2024-01-31"
+
+
+def page(head: str = "", body: str = "") -> str:
+    return f"<html><head>{head}</head><body>{body}</body></html>"
+
+
+def ld(**fields) -> str:
+    return f'<script type="application/ld+json">{dumps(fields)}</script>'
+
+
+def metadata_snippets() -> list[tuple[str, str | None, tuple[str, ...]]]:
+    "Pages with a default URL and an author blacklist, one for each branch of `extract_metadata`."
+    long_title = "a" * 30000
+    long_description = "\N{LATIN SMALL LETTER E WITH ACUTE}" * 10001
+    author = lambda name: f'<meta name="author" content="{name}">'  # noqa: E731
+    cats = (
+        '<div class="postinfo"><a href="/category/news">News</a></div>'
+        '<div class="tags"><a href="/tag/rust">Rust</a> <a href="/tags/web">Web</a> <a href="/tag/rust">Rust</a></div>'
+    )
+    raising = (
+        '<script type="application/ld+json">{"@context": "https://schema.org", "@graph": '
+        '[{"@type": "NewsArticle", "headline": "Wrapped Headline", "author": {"name": "Jane Doe"}}, 1]}</script>'
+    )
+    article_json = ld(**article(author={"name": "Json Author"}, headline="Json Title"))
+    return [
+        (page(), None, ()),
+        (page(), "https://www.example.org/start", ()),
+        (page(author("Jane")), None, ()),
+        (page(author("Jane Doe")), None, ()),
+        (page(author("Jane Doe")), None, ("Jane Doe",)),
+        (page(author("Jane Doe; John Smith")), None, ("Jane Doe",)),
+        (page(author("Jane Doe"), '<a rel="author">John Smith</a>'), None, ("Jane Doe",)),
+        (page("", '<a rel="author">Jane Doe</a>'), None, ("Jane Doe",)),
+        (page("", '<a rel="author">Jane Doe</a>'), None, ("Other Person",)),
+        (page("", '<a rel="author">Jane</a>'), None, ()),
+        (page('<meta property="og:url" content="https://example.org/og">'), "https://default.example/x", ()),
+        (page('<link rel="canonical" href="https://www.example.co.uk/canonical/page">'), "https://default.example/x", ()),
+        (page(), "https://default.example/x", ()),
+        (page(), "default.example.co.uk/page", ()),
+        (page(), "example.org", ()),
+        (page(), "http://localhost/page", ()),
+        (page(), "http://192.168.0.1/page", ()),
+        (page(), "https://w3.example.org/page", ()),
+        (page('<meta property="og:site_name" content="@x">'), None, ()),
+        (page('<meta property="og:site_name" content="@">'), "https://www.example.org/a", ()),
+        (page('<meta property="og:site_name" content="mysite">'), None, ()),
+        (page('<meta property="og:site_name" content="mySITE name">'), None, ()),
+        (page('<meta property="og:site_name" content="my-site.com">'), None, ()),
+        (page('<meta property="og:site_name" content="Already Upper">'), None, ()),
+        (page('<meta property="og:site_name" content="\N{LATIN SMALL LETTER SHARP S}ite">'), None, ()),
+        (page("<title>Some headline | example.com</title>"), "https://www.example.org/a", ()),
+        (page("<title>Some headline</title>"), "https://www.example.org/a", ()),
+        (page(ld(**article(articleSection="Sports")), cats), None, ()),
+        (page(ld(**article(articleSection=["Sports", "Golf"])), cats), None, ()),
+        (page("", cats), None, ()),
+        (page('<meta property="article:section" content="Politics">'), None, ()),
+        (page('<meta property="article:section" content="Politics">', cats), None, ()),
+        (page("", '<a href="/tag/">empty</a>'), None, ()),
+        (page(f'<meta property="og:title" content="{long_title}">'), None, ()),
+        (page(f"<title>{long_title}</title>"), None, ()),
+        (page(f'<meta name="description" content="{long_description}">'), None, ()),
+        (page('<meta name="description" content="Tom &amp;amp; Jerry &#233; &amp;nbsp;">'), None, ()),
+        (page('<meta name="description" content="  &amp;nbsp;  ">'), None, ()),
+        (page('<meta property="og:title" content="A &amp;amp; B">'), None, ()),
+        (page(raising), None, ()),
+        (page(raising + '<meta name="author" content="Meta Author">'), None, ()),
+        (page(article_json), None, ()),
+        (page('<meta property="og:title" content="Meta Title">' + ld(**article(headline="Json Title"))), None, ()),
+        (page("", '<footer><a href="https://creativecommons.org/licenses/by-nc/4.0/">x</a></footer>'), None, ()),
+        (page('<link rel="license" href="https://creativecommons.org/licenses/by/4.0/">'), None, ()),
+        (page("", '<a rel="license" href="https://creativecommons.org/licenses/by-sa/4.0/">CC</a>'), None, ()),
+        (page('<meta property="og:image" content="https://example.org/i.png"><meta property="og:type" content="article"><meta name="description" content="Desc">'), None, ()),
+    ]
+
+
+def run_metadata(html: str, default_url: str | None, blacklist: tuple[str, ...]):
+    from parity import html5tree
+    from trafilatura.metadata import extract_metadata
+
+    tree = html5tree.parse_document(html)
+    assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {html[:80]!r}"
+    date_config = {"original_date": True, "extensive_search": False, "max_date": MAX_DATE}
+    return extract_metadata(tree, default_url, date_config, author_blacklist=set(blacklist))
+
+
+def cases() -> None:
+    from parity.generate import html5_parsers
+
+    lines = []
+    with html5_parsers():
+        for html, default_url, blacklist in metadata_snippets():
+            document = run_metadata(html, default_url, blacklist)
+            strings = ", ".join(f"{name}: {option(getattr(document, name))}" for name in CASE_STRING_FIELDS)
+            blacklisted = ", ".join(rust_str(name) for name in blacklist)
+            lines.append(
+                f"    MetadataCase {{ html: {rust_str(html)}, default_url: {option(default_url)}, author_blacklist: &[{blacklisted}], "
+                f"{strings}, categories: {categories(document.categories)}, tags: {categories(document.tags)} }},"
+            )
+    print(f"metadata cases: {len(lines)}", file=sys.stderr)
+    fields = [f"    pub {name}: Option<&'static str>," for name in CASE_STRING_FIELDS]
+    out = [
+        f"// @generated by tools/parity/parity/gen_metadata_cases.py with {version()}.",
+        "// Do not edit. Regenerate from the repository root with:",
+        "//   scripts/oracle.sh 'from parity.gen_metadata_cases import cases; cases()' > tests/metadata_cases/cases.rs",
+        "// Upstream's `extract_metadata` on pages: the metadata it returns.",
+        "",
+        "/// A page parsed by html5lib and the `Document` fields upstream's `extract_metadata` returns for it with the default",
+        "/// URL and the author blacklist; `date` and `filedate` are not compared.",
+        "pub struct MetadataCase {",
+        "    pub html: &'static str,",
+        "    pub default_url: Option<&'static str>,",
+        "    pub author_blacklist: &'static [&'static str],",
+        *fields,
+        "    pub categories: Option<&'static [&'static str]>,",
+        "    pub tags: Option<&'static [&'static str]>,",
+        "}",
+        "",
+        "#[rustfmt::skip]",
+        "pub const METADATA_CASES: &[MetadataCase] = &[",
+        *lines,
         "];",
         "",
     ]

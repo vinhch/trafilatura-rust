@@ -46,6 +46,7 @@ mod error;
 mod extraction;
 #[allow(dead_code)]
 mod html_processing;
+mod htmldate;
 #[allow(dead_code)]
 mod json_metadata;
 #[allow(dead_code)]
@@ -108,14 +109,15 @@ pub mod __internals {
         handle_textelem, handle_titles, process_nested_elements, prune_unwanted_sections,
         recover_wild_text, span,
     };
+    pub use crate::metadata::extract_metadata;
     pub use crate::pyhtml::unescape;
     pub use crate::pyjson::{Json, JsonRef, Kind, dumps_str, loads};
     pub use crate::pystr::{PY_WORD_CLASS, is_alpha, repr, splitlines};
     pub use crate::pyunicodedata::normalize_nfc;
     pub use crate::settings::{
-        Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Document, Extractor, Focus, Format,
+        Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, DateParams, Document, Extractor, Focus, Format,
         MANUALLY_CLEANED, MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, MIN_FILE_SIZE,
-        TAG_CATALOG,
+        TAG_CATALOG, set_date_params,
     };
     pub use crate::utils::{
         HtmlInput, decode_file, detect_encoding, load_html, normalize_unicode, safe_base_url,

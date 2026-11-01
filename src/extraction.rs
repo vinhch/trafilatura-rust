@@ -501,16 +501,16 @@ pub fn bare_extraction(
     }
 
     let mut document = if options.with_metadata {
-        // todo(phase 4): metadata
         // deviation: D-1 (upstream passes `options.fast` as `extensive`)
         let document = extract_metadata(
-            &tree,
+            &mut tree,
             root,
             options.url.as_deref(),
-            &options.date_params,
+            Some(&options.date_params),
             true,
             &options.author_blacklist,
-        );
+            call,
+        )?;
         if document
             .url
             .as_ref()

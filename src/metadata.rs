@@ -1,5 +1,5 @@
-//! Metadata extraction of upstream `metadata.py`: the meta tag and JSON-LD readers, and the entry point
-//! `core.py` calls.
+//! Metadata extraction of upstream `metadata.py`: the meta tag and JSON-LD readers and `extract_metadata`,
+//! the entry point `core.py` calls.
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -8,17 +8,18 @@ use regex::{Captures, Regex};
 
 use crate::baseline::block_text;
 use crate::cancel::Call;
-use crate::courlan::{is_valid_url, normalize_url, validate_url};
+use crate::courlan::{extract_domain, is_valid_url, normalize_url, validate_url};
 use crate::dom::{LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
 use crate::html_processing::{prune_unwanted_nodes, tick};
+use crate::htmldate::find_date;
 use crate::json_metadata::{
     JsonFailure, extract_json, extract_json_parse_error, normalize_authors, normalize_json,
 };
 use crate::pyhtml::unescape;
 use crate::pyjson::{Invalid, try_loads};
 use crate::pystr::{self, PY_SPACE_CLASS, ignore_case_i};
-use crate::settings::{DateParams, Document};
+use crate::settings::{DateParams, Document, set_date_params};
 use crate::utils::{HTML_STRIP_TAGS, line_processing, safe_base_url, trim};
 use crate::xpaths::{
     AUTHOR_DISCARD_XPATHS, AUTHOR_XPATHS, CATEGORIES_XPATHS, Selector, TAGS_XPATHS, TITLE_XPATHS,
@@ -134,19 +135,132 @@ const OG_PROPERTIES: &[(&str, &str)] = &[
 // upstream: metadata.py::OG_AUTHOR
 const OG_AUTHOR: &[&str] = &["og:author", "og:article:author"];
 
-/// The metadata of the page at `root`, as a [`Document`] with empty body and comments. Every field is
-/// unset until phase 4.
-// upstream: metadata.py::extract_metadata
+/// The metadata of the page at `root`, as a [`Document`] with empty body and comments. `date_config`
+/// is the date parameters, `extensive` builds the default ones when it is `None`; `filedate` is its
+/// `max_date`. Fails with `InvalidValue` on a character reference of more than 4300 digits and with
+/// the call's error when `call` stops.
+// upstream: metadata.py::extract_metadata (`filecontent` is always a tree here, so `load_html` is not ported)
 pub fn extract_metadata(
-    _tree: &Tree,
-    _root: NodeId,
-    _default_url: Option<&str>,
-    _date_config: &DateParams,
-    _extensive: bool,
-    _author_blacklist: &HashSet<String>,
-) -> Document {
-    // todo(phase 4): metadata
-    Document::new()
+    tree: &mut Tree,
+    root: NodeId,
+    default_url: Option<&str>,
+    date_config: Option<&DateParams>,
+    extensive: bool,
+    author_blacklist: &HashSet<String>,
+    call: &Call<'_>,
+) -> Result<Document, ExtractError> {
+    let date_config = date_config
+        .cloned()
+        .unwrap_or_else(|| set_date_params(extensive));
+
+    // initialize dict and try to strip meta tags
+    let mut metadata = examine_meta(tree, root, call)?;
+
+    // to check: remove it and replace with author_blacklist in test case
+    if metadata
+        .author
+        .as_deref()
+        .is_some_and(|author| !author.is_empty() && !author.contains(' '))
+    {
+        metadata.author = None;
+    }
+
+    // fix: try json-ld metadata and override
+    match extract_meta_json(tree, root, &mut metadata, call) {
+        Ok(()) | Err(JsonFailure::Raised) => {}
+        Err(JsonFailure::Stop(error)) => return Err(error),
+    }
+
+    // title
+    if is_unset(&metadata.title) {
+        metadata.title = extract_title(tree, root, call)?;
+    }
+
+    // check author in blacklist
+    if !is_unset(&metadata.author) && !author_blacklist.is_empty() {
+        metadata.author = metadata
+            .author
+            .as_deref()
+            .and_then(|author| check_authors(author, author_blacklist));
+    }
+    // author
+    if is_unset(&metadata.author) {
+        metadata.author = extract_author(tree, root, call)?;
+    }
+    // recheck author in blacklist
+    if !is_unset(&metadata.author) && !author_blacklist.is_empty() {
+        metadata.author = metadata
+            .author
+            .as_deref()
+            .and_then(|author| check_authors(author, author_blacklist));
+    }
+
+    // url
+    if is_unset(&metadata.url) {
+        metadata.url = extract_url(tree, root, default_url, call)?;
+    }
+
+    // hostname
+    if let Some(url) = metadata.url.as_deref().filter(|url| !url.is_empty()) {
+        metadata.hostname = extract_domain(url);
+    }
+
+    // extract date with external module htmldate
+    metadata.date = find_date(tree, root, &date_config, metadata.url.as_deref(), call)?;
+
+    // sitename
+    if is_unset(&metadata.sitename) {
+        metadata.sitename = extract_sitename(tree, root, call)?;
+    }
+    if let Some(sitename) = metadata.sitename.as_deref().filter(|name| !name.is_empty()) {
+        // scrap Twitter ID
+        let sitename = sitename.trim_start_matches('@');
+        // capitalize
+        let lowercase_start = sitename
+            .chars()
+            .next()
+            .is_some_and(|first| !pystr::is_upper(first));
+        metadata.sitename = Some(if lowercase_start && !sitename.contains('.') {
+            pystr::title(sitename)
+        } else {
+            sitename.to_owned()
+        });
+    } else if let Some(url) = metadata.url.as_deref().filter(|url| !url.is_empty()) {
+        // use URL
+        metadata.sitename = META_URL
+            .as_ref()
+            .and_then(|regex| regex.captures(url))
+            .and_then(|found| found.get(1))
+            .map(|host| host.as_str().to_owned());
+    }
+
+    // categories
+    if metadata
+        .categories
+        .as_deref()
+        .is_none_or(<[String]>::is_empty)
+    {
+        metadata.categories = Some(extract_catstags("category", tree, root, call)?);
+    }
+
+    // tags
+    if metadata.tags.as_deref().is_none_or(<[String]>::is_empty) {
+        metadata.tags = Some(extract_catstags("tag", tree, root, call)?);
+    }
+
+    // license
+    metadata.license = extract_license(tree, root, call)?;
+
+    // safety checks
+    metadata.filedate = date_config.max_date;
+    metadata.clean_and_trim()?;
+
+    Ok(metadata)
+}
+
+/// Python `not value` of an optional string.
+fn is_unset(value: &Option<String>) -> bool {
+    value.as_deref().is_none_or(str::is_empty)
 }
 
 /// `tags` unescaped, trimmed, without quote characters and without empty items; items are separated

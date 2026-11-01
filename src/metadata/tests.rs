@@ -743,3 +743,51 @@ fn title_element_outside_the_head_is_ignored() {
         (String::new(), None, None)
     );
 }
+
+fn run_extract(html: &str, date_config: Option<&DateParams>) -> Document {
+    let mut tree = parse(html);
+    let root = tree.root();
+    extract_metadata(
+        &mut tree,
+        root,
+        None,
+        date_config,
+        false,
+        &HashSet::new(),
+        &Call::default(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn extract_metadata_sets_filedate_from_max_date() {
+    let config = DateParams {
+        original_date: true,
+        extensive_search: false,
+        max_date: Some("2024-01-31".to_owned()),
+    };
+    // oracle: extract_metadata(tree, date_config={"max_date": "2024-01-31", ...}).filedate
+    let document = run_extract("<html><head></head><body></body></html>", Some(&config));
+    assert_eq!(document.filedate.as_deref(), Some("2024-01-31"));
+}
+
+#[test]
+fn extract_metadata_without_date_config_has_no_filedate() {
+    // oracle: set_date_params has no max_date here (D-15 lands in phase 4d)
+    let document = run_extract("<html><head></head><body></body></html>", None);
+    assert_eq!(document.filedate, None);
+}
+
+#[test]
+fn extract_metadata_stops_on_cancellation() {
+    let token = CancelToken::new();
+    token.cancel();
+    let mut tree =
+        parse(r#"<html><head><script type="application/ld+json">{}</script></head></html>"#);
+    let root = tree.root();
+    let call = Call::default().cancel(&token);
+    assert_eq!(
+        extract_metadata(&mut tree, root, None, None, false, &HashSet::new(), &call).err(),
+        Some(ExtractError::Cancelled)
+    );
+}

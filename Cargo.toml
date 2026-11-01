@@ -79,6 +79,10 @@ name = "main_extractor_cases"
 required-features = ["__internals"]
 
 [[test]]
+name = "metadata_cases"
+required-features = ["__internals"]
+
+[[test]]
 name = "xml_output_cases"
 required-features = ["__internals"]
 

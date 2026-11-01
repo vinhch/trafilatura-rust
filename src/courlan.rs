@@ -6,10 +6,7 @@ mod filters;
 mod tld;
 mod tld_tables;
 
-// Re-exported for the metadata port; unused outside the tests until it lands.
-#[allow(unused_imports)]
 pub use clean::normalize_url;
-#[allow(unused_imports)]
 pub use filters::{is_valid_url, validate_url};
 
 use std::sync::LazyLock;
