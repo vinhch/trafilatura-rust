@@ -46,6 +46,11 @@ pub static FAULTY_HTML: LazyLock<Option<Regex>> = LazyLock::new(|| compile(r"(?i
 pub static INVALID_XML_CHARS: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x{fffe}\x{ffff}]"));
 
+/// Matches an HTML comment (not across a newline) or a tag.
+// upstream: utils.py::HTML_STRIP_TAGS
+pub static HTML_STRIP_TAGS: LazyLock<Option<Regex>> =
+    LazyLock::new(|| compile(r"(<!--.*?-->|<[^>]*>)"));
+
 // lxml's `fromstring` keeps the whole document when the input starts like one.
 static LOOKS_LIKE_FULL_HTML: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile(r"(?i)^\s*<(?:html|!doctype)"));

@@ -496,3 +496,28 @@ fn dumps_str_matches_python() {
         assert_eq!(dumps_str(text), bs(expected), "{text:?}");
     }
 }
+
+#[test]
+fn try_loads_tells_raised_from_decode() {
+    let call = Call::default();
+    let deep = format!("{}{}", "[".repeat(9999), "]".repeat(9999));
+    let long_integer = format!("[{}]", "1".repeat(4301));
+    let outcome = |text: &str| try_loads(text, true, &call).unwrap().map(|_| ());
+    assert_eq!(outcome(&deep), Err(Invalid::Raised));
+    assert_eq!(outcome(&long_integer), Err(Invalid::Raised));
+    assert_eq!(outcome("[1,"), Err(Invalid::Decode));
+    assert_eq!(outcome("[1]"), Ok(()));
+}
+
+// oracle: bool(json.loads(text)) over the elements of the list
+#[test]
+fn is_truthy_follows_python() {
+    let text = "[null,false,true,0,-0,0.0,0e5,1e-400,1,-1,0.5,NaN,Infinity,-Infinity,\"\",\"a\",[],[0],{},{\"a\":0}]";
+    let expected = [
+        false, false, true, false, false, false, false, false, true, true, true, true, true, true,
+        false, true, false, true, false, true,
+    ];
+    let json = parse(text, true).unwrap();
+    let truthy: Vec<bool> = json.items(json.root()).map(|r| json.is_truthy(r)).collect();
+    assert_eq!(truthy, expected);
+}

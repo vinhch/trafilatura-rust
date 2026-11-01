@@ -47,6 +47,8 @@ mod extraction;
 #[allow(dead_code)]
 mod html_processing;
 #[allow(dead_code)]
+mod json_metadata;
+#[allow(dead_code)]
 mod main_extractor;
 #[allow(dead_code)]
 mod metadata;

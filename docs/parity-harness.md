@@ -214,6 +214,7 @@ writes it byte for byte.
 | `gen_printable.py` (`title`) | `src/pystr/title.rs` | the `str.title` full title mappings, the Cased class its rule reads, the `str.isupper` ranges and the cases of the title test, read off the image's Python |
 | `gen_nfc.py` (`tables`) | `src/pyunicodedata/nfc.rs` | decompositions, combining classes, composition pairs and the quick-check sets behind `unicodedata.normalize("NFC", ...)` of the image's Python |
 | `gen_nfc.py` (`cases`) | `src/pyunicodedata/cases.rs` | NFC of every character with a decomposition or combining class (alone and between `a` and U+0301), of every composition pair and of two Hangul jamo sequences |
+| `gen_metadata_cases.py` (`json_cases`) | `src/json_metadata/cases.rs` | `extract_json` on the JSON-LD scripts of upstream's `json_metadata_tests.py` and on shapes of every branch of `process_parent` (wrappers, `@context` forms, author, publisher, type, `articleSection`, title values), `extract_json_parse_error` on truncated scripts and text shapes, `normalize_authors` and `normalize_json`; the document is built with deviation D-19 applied, and a row says when it was (`d19`) |
 | `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector (content, comment, discard and metadata lists) on HTML snippets |
 | `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the NFKC netloc breakers of the image's Python |
 | `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin`, `hostname` and `port`, `quote`, `quote_plus`, `parse_qs`, `urlencode`, the two `courlan` helpers on URL strings, `validate_url`, `normalize_url`, `clean_query` and `decode_punycode`, and tld's `get_tld` and courlan's `extract_domain` (`TLD_CASES`, `EXTRACT_DOMAIN_CASES`) |
@@ -225,7 +226,7 @@ writes it byte for byte.
 | `gen_repeated_output_cases.py` | `tests/repeated_output_tests/cases.rs` | the sets of upstream's `repeated_output_tests.py` re-derived with `fast=True` (D-1) inside the html5 parser swap: the keys of `test_no_repeated_words` whose result is `None` or repeats a word (upstream's reason kept for a key it lists too), and the comment-list triples that repeat; the file is imported by path from the checkout, and the generation fails when one of the three plain upstream assertions does not hold in fast mode |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs`, `lower` for `lower.rs` and `title` for `title.rs`. The files that hold HTML snippets carry the
+`gen_metadata_cases` takes `json_cases` in place of `main`, `gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs`, `lower` for `lower.rs` and `title` for `title.rs`. The files that hold HTML snippets carry the
 `treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
 parse dumps the same: a snippet that parses differently is changed, never the expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized

@@ -27,9 +27,9 @@ const LINEAR_SCAN_LIMIT: usize = 16;
 pub enum Kind {
     /// `null`.
     Null,
-    /// `true` or `false`; the value is not kept.
+    /// `true` or `false`, read with [`Json::is_truthy`].
     Bool,
-    /// Any number, `NaN` and `Infinity` included; the value is not kept.
+    /// Any number, `NaN` and `Infinity` included, read with [`Json::is_truthy`].
     Number,
     /// A string, read with [`Json::as_str`].
     Str,
@@ -44,7 +44,8 @@ pub enum Kind {
 pub struct JsonRef(u32);
 
 /// `start` and `len` select a range of `strings` for a string, of `children` for a list and of
-/// `entries` for an object; they are zero for the other kinds.
+/// `entries` for an object. For a `true` or a number `start` is 1 when Python reads the value as
+/// truthy; the other fields are zero for those kinds and for `null` and `false`.
 #[derive(Clone, Copy, Debug)]
 struct Node {
     kind: Kind,
@@ -132,6 +133,16 @@ impl Json {
             .find_map(|(entry_key, value)| (entry_key == key).then_some(value))
     }
 
+    /// Python's truthiness of the value: `null`, `false`, a number that reads as zero (`0`, `-0`,
+    /// `0.0`, `1e-400`), an empty string, list or object are falsy; `NaN` and `Infinity` are truthy.
+    pub fn is_truthy(&self, r: JsonRef) -> bool {
+        self.node(r).is_some_and(|node| match node.kind {
+            Kind::Null => false,
+            Kind::Bool | Kind::Number => node.start == 1,
+            Kind::Str | Kind::List | Kind::Object => node.len > 0,
+        })
+    }
+
     fn node(&self, r: JsonRef) -> Option<Node> {
         self.nodes.get(r.0 as usize).copied()
     }
@@ -139,8 +150,11 @@ impl Json {
 
 /// Why a parse stopped.
 enum Stop {
-    /// Python raises `JSONDecodeError` or `RecursionError`: the text is no document.
-    Invalid,
+    /// Python raises `JSONDecodeError`: the text is no document.
+    Decode,
+    /// Python raises another exception: `RecursionError` past `MAX_DEPTH`, `ValueError` for an
+    /// integer of more than `MAX_STR_DIGITS` digits.
+    Raised,
     /// The call was cancelled, or a size limit of this port was reached.
     Call(ExtractError),
 }
@@ -244,7 +258,7 @@ fn number_len(rest: &[u8]) -> Result<usize, Stop> {
     let integer_digits = match rest.get(end) {
         Some(b'1'..=b'9') => digits_from(end),
         Some(b'0') => 1,
-        _ => return Err(Stop::Invalid),
+        _ => return Err(Stop::Decode),
     };
     end += integer_digits;
     let mut is_float = false;
@@ -261,9 +275,15 @@ fn number_len(rest: &[u8]) -> Result<usize, Stop> {
         }
     }
     if !is_float && integer_digits > MAX_STR_DIGITS {
-        return Err(Stop::Invalid);
+        return Err(Stop::Raised);
     }
     Ok(end)
+}
+
+/// Whether the number `text` (a scanned JSON number) reads as zero: `int("-0")` and `float` of
+/// `0.0` or an exponent that underflows, `1e-400`.
+fn is_zero(text: &[u8]) -> bool {
+    std::str::from_utf8(text).is_ok_and(|text| text.parse::<f64>() == Ok(0.0))
 }
 
 impl<'a> Parser<'a> {
@@ -315,7 +335,7 @@ impl<'a> Parser<'a> {
         loop {
             self.skip_space();
             let Some(first) = self.peek() else {
-                return Err(Stop::Invalid);
+                return Err(Stop::Decode);
             };
             tick(&mut self.visited, call)?;
             let value = match first {
@@ -336,7 +356,7 @@ impl<'a> Parser<'a> {
                     None => {
                         self.skip_space();
                         if self.pos < self.text.len() {
-                            return Err(Stop::Invalid);
+                            return Err(Stop::Decode);
                         }
                         self.out.root = node;
                         return Ok(());
@@ -358,13 +378,13 @@ impl<'a> Parser<'a> {
                                 self.pos += 1;
                                 break;
                             }
-                            _ => return Err(Stop::Invalid),
+                            _ => return Err(Stop::Decode),
                         }
                     }
                     Some(Frame::Object { start, current, .. }) => {
                         let (start, current) = (*start, *current);
                         let (entry, _) =
-                            self.pending_entries.get_mut(current).ok_or(Stop::Invalid)?;
+                            self.pending_entries.get_mut(current).ok_or(Stop::Decode)?;
                         entry.value = node;
                         self.skip_space();
                         match self.peek() {
@@ -383,7 +403,7 @@ impl<'a> Parser<'a> {
                                 self.read_key()?;
                                 break;
                             }
-                            _ => return Err(Stop::Invalid),
+                            _ => return Err(Stop::Decode),
                         }
                     }
                 }
@@ -394,7 +414,7 @@ impl<'a> Parser<'a> {
     /// Consumes `[` or `{` and the whitespace after it, within the nesting cap.
     fn enter(&mut self) -> Result<(), Stop> {
         if self.frames.len() >= MAX_DEPTH {
-            return Err(Stop::Invalid);
+            return Err(Stop::Raised);
         }
         self.pos += 1;
         self.skip_space();
@@ -436,13 +456,13 @@ impl<'a> Parser<'a> {
     /// Reads `"key" :` and registers the entry in the open object.
     fn read_key(&mut self) -> Result<(), Stop> {
         if self.peek() != Some(b'"') {
-            return Err(Stop::Invalid);
+            return Err(Stop::Decode);
         }
         self.pos += 1;
         let (key_start, units) = self.string(true)?;
         self.skip_space();
         if self.peek() != Some(b':') {
-            return Err(Stop::Invalid);
+            return Err(Stop::Decode);
         }
         self.pos += 1;
         self.add_entry(key_start, units)
@@ -457,10 +477,10 @@ impl<'a> Parser<'a> {
             index,
         }) = self.frames.last_mut()
         else {
-            return Err(Stop::Invalid);
+            return Err(Stop::Decode);
         };
         let strings = &self.out.strings;
-        let key = strings.get(key_start..).ok_or(Stop::Invalid)?;
+        let key = strings.get(key_start..).ok_or(Stop::Decode)?;
         let existing = match index {
             Some(index) => index.find(key, units.as_deref()),
             None => self
@@ -511,11 +531,11 @@ impl<'a> Parser<'a> {
         let mut units: Option<Vec<u16>> = None;
         let text = self.text;
         loop {
-            let rest = text.get(self.pos..).ok_or(Stop::Invalid)?;
-            let end = rest.find(['"', '\\']).ok_or(Stop::Invalid)?;
+            let rest = text.get(self.pos..).ok_or(Stop::Decode)?;
+            let end = rest.find(['"', '\\']).ok_or(Stop::Decode)?;
             let run = rest.get(..end).unwrap_or_default();
             if self.strict && run.bytes().any(|byte| byte < 0x20) {
-                return Err(Stop::Invalid);
+                return Err(Stop::Decode);
             }
             append(&mut self.out.strings, &mut units, run);
             let delimiter = rest.as_bytes().get(end).copied();
@@ -523,7 +543,7 @@ impl<'a> Parser<'a> {
             if delimiter == Some(b'"') {
                 break;
             }
-            let escape = self.peek().ok_or(Stop::Invalid)?;
+            let escape = self.peek().ok_or(Stop::Decode)?;
             self.pos += 1;
             let plain = match escape {
                 b'"' => '"',
@@ -538,7 +558,7 @@ impl<'a> Parser<'a> {
                     self.unicode_escape(start, is_key, &mut units)?;
                     continue;
                 }
-                _ => return Err(Stop::Invalid),
+                _ => return Err(Stop::Decode),
             };
             append(
                 &mut self.out.strings,
@@ -559,14 +579,14 @@ impl<'a> Parser<'a> {
         units: &mut Option<Vec<u16>>,
     ) -> Result<(), Stop> {
         let bytes = self.text.as_bytes();
-        let mut code = hex4(bytes, self.pos).ok_or(Stop::Invalid)?;
+        let mut code = hex4(bytes, self.pos).ok_or(Stop::Decode)?;
         self.pos += 4;
         let next_is_escape = bytes
             .get(self.pos..)
             .is_some_and(|rest| rest.starts_with(b"\\u"));
         if (0xD800..0xDC00).contains(&code) && next_is_escape {
             // CPython reads the second escape whether or not it joins, so a malformed one fails.
-            let low = hex4(bytes, self.pos + 2).ok_or(Stop::Invalid)?;
+            let low = hex4(bytes, self.pos + 2).ok_or(Stop::Decode)?;
             if (0xDC00..0xE000).contains(&low) {
                 code = 0x10000 + ((code - 0xD800) << 10 | (low - 0xDC00));
                 self.pos += 6;
@@ -590,17 +610,24 @@ impl<'a> Parser<'a> {
     /// Parses a literal or a number at `pos`, whose first byte is `first`.
     fn scalar(&mut self, first: u8) -> Result<u32, Stop> {
         let rest = self.text.as_bytes().get(self.pos..).unwrap_or_default();
-        let (kind, len) = match first {
-            b'n' if rest.starts_with(b"null") => (Kind::Null, 4),
-            b't' if rest.starts_with(b"true") => (Kind::Bool, 4),
-            b'f' if rest.starts_with(b"false") => (Kind::Bool, 5),
-            b'N' if rest.starts_with(b"NaN") => (Kind::Number, 3),
-            b'I' if rest.starts_with(b"Infinity") => (Kind::Number, 8),
-            b'-' if rest.starts_with(b"-Infinity") => (Kind::Number, 9),
-            _ => (Kind::Number, number_len(rest)?),
+        let (kind, len, truthy) = match first {
+            b'n' if rest.starts_with(b"null") => (Kind::Null, 4, false),
+            b't' if rest.starts_with(b"true") => (Kind::Bool, 4, true),
+            b'f' if rest.starts_with(b"false") => (Kind::Bool, 5, false),
+            b'N' if rest.starts_with(b"NaN") => (Kind::Number, 3, true),
+            b'I' if rest.starts_with(b"Infinity") => (Kind::Number, 8, true),
+            b'-' if rest.starts_with(b"-Infinity") => (Kind::Number, 9, true),
+            _ => {
+                let len = number_len(rest)?;
+                (
+                    Kind::Number,
+                    len,
+                    !is_zero(rest.get(..len).unwrap_or_default()),
+                )
+            }
         };
         self.pos += len;
-        self.push_node(kind, 0, 0)
+        self.push_node(kind, usize::from(truthy), 0)
     }
 }
 
@@ -612,10 +639,31 @@ impl<'a> Parser<'a> {
 /// 4 GiB).
 // upstream: json.loads (CPython)
 pub fn loads(text: &str, strict: bool, call: &Call<'_>) -> Result<Option<Json>, ExtractError> {
+    try_loads(text, strict, call).map(Result::ok)
+}
+
+/// Why [`try_loads`] gave no document.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Invalid {
+    /// `json.JSONDecodeError`.
+    Decode,
+    /// Any other exception of the parse: nesting past 9998 levels (`RecursionError`) or an integer
+    /// of more than 4300 digits (`ValueError`).
+    Raised,
+}
+
+/// [`loads`] that tells a `JSONDecodeError` from every other Python exception of the parse.
+// upstream: json.loads (CPython)
+pub fn try_loads(
+    text: &str,
+    strict: bool,
+    call: &Call<'_>,
+) -> Result<Result<Json, Invalid>, ExtractError> {
     let mut parser = Parser::new(text, strict);
     match parser.run(call) {
-        Ok(()) => Ok(Some(parser.out)),
-        Err(Stop::Invalid) => Ok(None),
+        Ok(()) => Ok(Ok(parser.out)),
+        Err(Stop::Decode) => Ok(Err(Invalid::Decode)),
+        Err(Stop::Raised) => Ok(Err(Invalid::Raised)),
         Err(Stop::Call(error)) => Err(error),
     }
 }
