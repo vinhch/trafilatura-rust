@@ -253,6 +253,11 @@ function.
 - Serializing a foreign element. `Tree::tostring` writes an SVG or MathML element by its local name,
   as a libxml2 tree does; lxml on the oracle's html5 tree writes `ns0:` prefixes under an
   `xmlns:ns0` declaration, so a comparison with that output strips them (D-2).
+- htmldate searches `lxml.html.tostring` output, which differs from `etree.tostring`: the HTML method
+  writes void elements and an empty `li` with no end tag, `script` and `style` text raw, `href`,
+  `action` and `src` (and `name` on `a`) percent-escaped, boolean attributes bare, foreign elements
+  under `ns0:` with `xmlns:ns0` on the outermost one, and drops every `<meta http-equiv="Content-Type">`.
+  `Tree::tostring_html` follows these rules; its rows are in `src/dom/html_cases.rs`.
 - A dict built by inversion keeps the last key. `HTML_TAG_MAPPING` inverts `REND_TAG_MAPPING`, so
   `#i` gives `i` (not `em`), `#b` gives `strong` and `#t` gives `var`.
 

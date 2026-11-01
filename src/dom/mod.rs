@@ -5,6 +5,8 @@
 //! `__internals` module.
 
 mod dump;
+#[cfg(test)]
+mod html_cases;
 mod mutate;
 mod parse;
 mod scan;

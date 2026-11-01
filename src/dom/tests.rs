@@ -1,5 +1,8 @@
 use std::time::{Duration, Instant};
 
+use super::html_cases::{
+    TOSTRING_HTML_CASES, TOSTRING_HTML_ELEMENT_CASES, TOSTRING_HTML_TAIL_CASES,
+};
 use super::*;
 use crate::cancel::{Call, CancelToken};
 use crate::error::{ExtractError, Rejection};
@@ -1273,6 +1276,43 @@ fn tostring_matches_lxml() {
     add(&mut tree, root, "c", Some(""), Some(""));
     add(&mut tree, root, "d", None, Some("z"));
     assert_eq!(tree.tostring(root, false, true), "<x>t<c></c><d/>z</x>");
+}
+
+#[test]
+fn tostring_html_matches_lxml() {
+    // Each page is `lxml.html.tostring(html, encoding="unicode")` of the page parsed by html5lib.
+    for &(page, expected) in TOSTRING_HTML_CASES {
+        let tree = parse(page);
+        assert_eq!(
+            tree.tostring_html(tree.root(), true),
+            expected,
+            "page {page:?}"
+        );
+    }
+}
+
+#[test]
+fn tostring_html_elements_match_lxml() {
+    // Each row is `lxml.html.tostring` of `etree.Element(name)` with the given text.
+    for &(name, text, expected) in TOSTRING_HTML_ELEMENT_CASES {
+        let tree = root_named(name, text);
+        assert_eq!(
+            tree.tostring_html(tree.root(), true),
+            expected,
+            "element {name}"
+        );
+    }
+}
+
+#[test]
+fn tostring_html_tail() {
+    // `with_tail` decides whether the first `p` writes its own tail.
+    for &(page, with_tail, without_tail) in TOSTRING_HTML_TAIL_CASES {
+        let tree = parse(page);
+        let p = find(&tree, "p");
+        assert_eq!(tree.tostring_html(p, true), with_tail, "page {page:?}");
+        assert_eq!(tree.tostring_html(p, false), without_tail, "page {page:?}");
+    }
 }
 
 #[test]
