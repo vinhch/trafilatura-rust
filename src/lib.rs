@@ -103,13 +103,20 @@ pub mod __internals {
         process_node, prune_html, prune_unwanted_nodes, recover_math, tree_cleaning,
         tree_cleaning_with,
     };
+    pub use crate::json_metadata::{
+        JSON_AUTHOR_1, JSON_AUTHOR_2, extract_json, extract_json_author, extract_json_parse_error,
+        normalize_authors, normalize_json, process_parent,
+    };
     pub use crate::main_extractor::{
         extract_comments, extract_content, handle_code_blocks, handle_formatting, handle_image,
         handle_lists, handle_other_elements, handle_paragraphs, handle_quotes, handle_table,
         handle_textelem, handle_titles, process_nested_elements, prune_unwanted_sections,
         recover_wild_text, span,
     };
-    pub use crate::metadata::extract_metadata;
+    pub use crate::metadata::{
+        JSON_MINIFY, check_authors, extract_meta_json, extract_metadata, extract_metainfo,
+        extract_title, extract_url, normalize_tags,
+    };
     pub use crate::pyhtml::unescape;
     pub use crate::pyjson::{Json, JsonRef, Kind, dumps_str, loads};
     pub use crate::pystr::{PY_WORD_CLASS, is_alpha, repr, splitlines};

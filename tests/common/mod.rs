@@ -6,7 +6,50 @@
 )]
 //! Helpers shared by the integration tests: where the upstream checkout and the fixtures live.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+use trafilatura_rust::__internals::{
+    HtmlInput, MAX_FILE_SIZE, ParseLimits, extract_metadata, load_html,
+};
+use trafilatura_rust::{Call, Document};
+
+/// `extract_metadata` as upstream's tests call it: `html` parsed with `load_html` and default
+/// limits, `date_config` `None`. `None` where `load_html` gives no tree; upstream returns an empty
+/// `Document()` there, which a test cannot build.
+#[allow(dead_code)] // used by the metadata test binaries; the other binaries include this module too
+pub fn metadata(
+    html: &str,
+    default_url: Option<&str>,
+    extensive: bool,
+    author_blacklist: &[&str],
+) -> Option<Document> {
+    let call = Call::default();
+    let mut tree = load_html(
+        HtmlInput::Str(html),
+        MAX_FILE_SIZE,
+        &ParseLimits::default(),
+        &call,
+    )
+    .ok()?;
+    let root = tree.root();
+    let blacklist: HashSet<String> = author_blacklist
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
+    Some(
+        extract_metadata(
+            &mut tree,
+            root,
+            default_url,
+            None,
+            extensive,
+            &blacklist,
+            &call,
+        )
+        .expect("extract_metadata fails only on cancellation or a huge character reference"),
+    )
+}
 
 fn manifest_dir() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))

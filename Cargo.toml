@@ -91,6 +91,14 @@ name = "xml_tei_tests"
 required-features = ["__internals"]
 
 [[test]]
+name = "metadata_tests"
+required-features = ["__internals"]
+
+[[test]]
+name = "json_metadata_tests"
+required-features = ["__internals"]
+
+[[test]]
 name = "realworld_tests"
 required-features = ["__internals"]
 
