@@ -420,6 +420,7 @@ fn categories_of(
             let mut categories = Vec::new();
             for item in json.items(section) {
                 tick(&mut visited, call)?;
+                // deviation: D-19 (a list item that is no string is dropped)
                 if let Some(text) = json.as_str(item).filter(|_| json.is_truthy(item)) {
                     categories.push(text.to_owned());
                 }

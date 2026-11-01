@@ -587,12 +587,11 @@ pub fn extract_metainfo(
     len_limit: usize,
     call: &Call<'_>,
 ) -> Result<Option<String>, ExtractError> {
-    let mut visited = 0;
-    // try all XPath expressions
     for expression in expressions {
         // examine all results
         for elem in expression(tree, root, call)? {
-            tick(&mut visited, call)?;
+            // Checked per match: each join reads a whole subtree, and matches nest.
+            call.check()?;
             // `" ".join` keeps the empty pieces
             let pieces: Vec<&str> = tree.itertext_lxml(elem).collect();
             let content = trim(&pieces.join(" "));

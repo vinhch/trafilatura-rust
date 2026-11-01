@@ -57,6 +57,20 @@ pub(crate) fn is_html(tree: &Tree, id: NodeId, names: &[&str]) -> bool {
     tree.tag(id).is_some_and(|name| names.contains(&name))
 }
 
+/// Whether the string value of `id` (its text, descendants included) is `expected`. It reads the
+/// text piece by piece and stops at the first piece that does not continue `expected`, so a long
+/// text is never joined.
+pub(crate) fn string_value_is(tree: &Tree, id: NodeId, expected: &str) -> bool {
+    let mut rest = expected;
+    for piece in tree.itertext(id) {
+        let Some(tail) = rest.strip_prefix(piece) else {
+            return false;
+        };
+        rest = tail;
+    }
+    rest.is_empty()
+}
+
 /// XPath `translate(value, from, to)`: each char of `from` becomes the char of `to` at the same
 /// index, or is dropped when `to` is shorter; other chars stay.
 pub(crate) fn translate<'s>(value: &'s str, from: &str, to: &str) -> Cow<'s, str> {

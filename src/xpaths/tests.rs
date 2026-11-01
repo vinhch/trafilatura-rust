@@ -68,6 +68,25 @@ fn translate_maps_listed_chars_only() {
 }
 
 #[test]
+fn author_rel_me_is_the_whole_string_value_of_a_rel_child() {
+    // oracle: len(AUTHOR_XPATHS[0](html.fromstring(page))) for each page
+    let long = format!("<a><rel>{}</rel></a>", "x".repeat(3000));
+    let cases = [
+        ("<a><rel>me</rel></a>", 1),
+        ("<a><rel>m<b>e</b></rel></a>", 1),
+        ("<a><rel>m</rel><rel>me</rel></a>", 1),
+        ("<a><rel>me </rel></a>", 0),
+        ("<a><rel>me<b>xyz</b></rel></a>", 0),
+        (long.as_str(), 0),
+    ];
+    for (page, hits) in cases {
+        let tree = parse(page);
+        let found = author_xpaths_0(&tree, tree.root(), &Call::default()).unwrap();
+        assert_eq!(found.len(), hits, "{page}");
+    }
+}
+
+#[test]
 fn is_html_rejects_svg() {
     let tree = parse("<svg></svg><p></p>");
     let svg = tree

@@ -429,6 +429,40 @@ fn metainfo_joins_the_text_pieces_with_spaces() {
     );
 }
 
+fn short_bold(tree: &Tree, root: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    collect_nodes(tree, root, call, |node| tree.tag(node) == Some("b"))
+}
+
+/// Selects the paragraphs, then takes longer than the test's deadline before returning them.
+fn slow_paragraphs(
+    tree: &Tree,
+    root: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    let found = paragraphs(tree, root, call)?;
+    std::thread::sleep(std::time::Duration::from_millis(60));
+    Ok(found)
+}
+
+#[test]
+fn metainfo_checks_the_call_before_each_match_is_joined() {
+    // The first match is too short, so the loop reaches the second expression's match with a deadline
+    // that has passed; a check only every CHECK_INTERVAL matches would return its text.
+    let tree = document("", "<b>a</b><p>valid text</p>");
+    let call =
+        Call::default().deadline(std::time::Instant::now() + std::time::Duration::from_millis(20));
+    assert_eq!(
+        extract_metainfo(
+            &tree,
+            tree.root(),
+            &[short_bold, slow_paragraphs],
+            200,
+            &call
+        ),
+        Err(ExtractError::DeadlineExceeded)
+    );
+}
+
 #[test]
 fn author_discards_comment_sections() {
     let tree = document(

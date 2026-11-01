@@ -15,7 +15,7 @@ use crate::error::ExtractError;
 use crate::pystr::PY_SPACE_CLASS;
 use select::{
     attr, descendants, first_among_siblings, first_attr, first_descendant, has_attr, is_html,
-    re_test, subtree, translate, union,
+    re_test, string_value_is, subtree, translate, union,
 };
 
 /// Evaluates one XPath expression against a context node: the matches in document order. An
@@ -678,7 +678,7 @@ fn author_xpaths_0(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<Node
                 || attr(tree, id, "itemprop") == "author name"
                 // `rel='me'` compares a child element named `rel`, not the attribute.
                 || tree.children(id).any(|child| {
-                    is_html(tree, child, &["rel"]) && tree.text_content(child) == "me"
+                    is_html(tree, child, &["rel"]) && string_value_is(tree, child, "me")
                 })
                 || ["AuthorCard", "AuthorURL"].contains(&attr(tree, id, "data-testid"))
                 || re_test(attr(tree, id, "class"), &AUTHOR_NAME_CLASS)))
