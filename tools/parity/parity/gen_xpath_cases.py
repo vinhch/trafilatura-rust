@@ -4,8 +4,8 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 
     scripts/oracle.sh 'from parity.gen_xpath_cases import main; main()' > src/xpaths/cases.rs
 
-Each snippet is parsed with `parity.html5tree.parse_document`; every `XPath` of the content, comment and
-discard lists and `BASIC_CLEAN_XPATH` runs on the context element, and the matches are written as
+Each snippet is parsed with `parity.html5tree.parse_document`; every `XPath` of the content, comment,
+discard and metadata lists and `BASIC_CLEAN_XPATH` runs on the context element, and the matches are written as
 positions in `root.iter()` order. A snippet carries the `treedump.dump_tree` of its tree, so the Rust
 test can tell a parser difference from a selector difference.
 
@@ -57,6 +57,20 @@ def tokens_snippets(selector: str, attr: str, tokens, values: dict, tag: str = "
 def plain(selector: str, attr: str, values, tag: str = "div", hit: bool = True) -> list[Snippet]:
     "Snippets for the values of an exact or substring test; `hit` says whether the selector must match."
     return [Snippet(page(element(tag, attr, value)), **{"hit" if hit else "miss": (selector,)}) for value in values]
+
+
+LINK = '<a href="/c">c</a>'
+
+
+def under(selector: str, tag: str, attr: str, values, hit: bool = True) -> list[Snippet]:
+    "Snippets with a link inside an element `tag` carrying `attr`=value, for the `//holder//a[@href]` selectors."
+    return [Snippet(page(element(tag, attr, value, LINK)), **{"hit" if hit else "miss": (selector,)}) for value in values]
+
+
+def by_tag(selector: str, attr: str, value: str, hits, misses, text: str = "x") -> list[Snippet]:
+    "One snippet per tag: `selector` must match an element of a tag in `hits` and none of a tag in `misses`."
+    return ([Snippet(page(element(t, attr, value, text)), hit=(selector,)) for t in hits]
+            + [Snippet(page(element(t, attr, value, text)), miss=(selector,)) for t in misses])
 
 
 def snippets() -> list[Snippet]:
@@ -546,6 +560,226 @@ def snippets() -> list[Snippet]:
         Snippet(page('<svg class="signin"><title class="message">t</title></svg>'), hit=(cd(2),)),
     ]
 
+    # ---- METADATA: `//` selectors start at the document root, so the root element can match
+    a0, a1, a2 = (f"AUTHOR_XPATHS[{i}]" for i in range(3))
+    out += plain(a0, "rel", ["author"])
+    out += plain(a0, "rel", ["Author", "author x", "authors"], hit=False)
+    out += plain(a0, "id", ["author"])
+    out += plain(a0, "id", ["Author", "author-x"], hit=False)
+    out += plain(a0, "class", ["author"])
+    out += plain(a0, "class", ["authors", "my author"], hit=False)
+    out += plain(a0, "itemprop", ["author name"])
+    out += plain(a0, "itemprop", ["name author", "author", "Author name", "author  name"], hit=False)
+    out += plain(a0, "data-testid", ["AuthorCard", "AuthorURL"])
+    out += plain(a0, "data-testid", ["authorcard", "AuthorCard2", "AuthorUrl"], hit=False)
+    out += plain(a0, "class", ["author-name", "authorname", "AuthorName", "authorName", "x-author-name-y", "my-AuthorName"])
+    out += plain(a0, "class", ["author--name", "authorNam", "author name", "Authorname", "author_name"], hit=False)
+    out += [
+        # `rel='me'` is a child element named rel whose string value is 'me', not an attribute
+        Snippet(page("<a><rel>me</rel></a>"), hit=(a0,)),
+        Snippet(page("<div><rel>me</rel><rel>no</rel></div>"), hit=(a0,)),
+        Snippet(page("<div><rel>no</rel><rel>me</rel></div>"), hit=(a0,)),
+        Snippet(page("<span><rel>m<b>e</b></rel></span>"), hit=(a0,)),
+        Snippet(page("<p><rel>me</rel>x</p>"), hit=(a0,)),
+        Snippet(page("<a><rel>Me</rel></a>"), miss=(a0,)),
+        Snippet(page("<a><rel> me</rel></a>"), miss=(a0,)),
+        Snippet(page("<a><rel>me </rel></a>"), miss=(a0,)),
+        Snippet(page("<a><rel>mee</rel></a>"), miss=(a0,)),
+        Snippet(page("<a><rel></rel></a>"), miss=(a0,)),
+        Snippet(page("<a><b><rel>me</rel></b></a>"), miss=(a0,)),
+        Snippet(page("<h3><rel>me</rel></h3>"), miss=(a0,)),
+        Snippet(page('<a rel="me">x</a>'), miss=(a0,)),
+        Snippet(page('<a me="rel">x</a><a rel="x"><me>rel</me></a>'), miss=(a0,)),
+        Snippet(page("<div><svg><rel>me</rel></svg></div>"), miss=(a0,)),
+        Snippet(page("<author>a</author>"), hit=(a0,)),
+        Snippet(page("<div><author>a</author></div><p>x</p><author>b</author>"), hit=(a0,)),
+        Snippet(page("<authors>a</authors><auth>b</auth><div class='Author'>c</div>"), miss=(a0,)),
+        Snippet(page("<svg><author>a</author></svg>"), miss=(a0,)),
+        # a union is in document order, whichever operand finds the node
+        Snippet(page('<author>a<div class="author">b</div><author>c</author></author><p id="author">d</p>'), hit=(a0, a1, a2)),
+        Snippet(page('<div class="author"><author>x</author></div><author>y</author>'), hit=(a0, a1, a2)),
+        Snippet(page('<div class="author"><span class="author-name">a</span></div><p id="author">b</p>'), hit=(a0, a1, a2)),
+    ]
+    out += by_tag(a0, "class", "author", ("a", "address", "div", "link", "p", "span", "strong"), ("h3", "h4", "li", "article", "section", "ul", "svg"))
+    out += by_tag(a0, "rel", "author", ("a", "address", "div", "p", "span", "strong"), ("h3", "li", "article", "svg", "header"))
+    # the root element is not one of a0's tags
+    out += [
+        Snippet('<html class="author"><body><p>x</p></body></html>', hit=(a2,), miss=(a0, a1)),
+        Snippet('<html id="author"><body><p>x</p></body></html>', hit=(a2,), miss=(a0, a1)),
+        Snippet('<html itemprop="author name"><body><p>x</p></body></html>', hit=(a2,), miss=(a0,)),
+        Snippet('<html rel="author"><body><p>x</p></body></html>', miss=(a0, a1, a2)),
+        Snippet('<html><body class="author"><p>x</p></body></html>', hit=(a2,), miss=(a0, a1)),
+        Snippet('<html><body itemprop="name author"><p>x</p></body></html>', hit=(a2,), miss=(a0, a1)),
+        Snippet('<html><body><div itemprop="author name">a</div><div itemprop="name author">b</div></body></html>', hit=(a0, a1, a2)),
+    ]
+
+    out += plain(a1, "class", ["byline", "username", "byl", "BBL"])
+    out += plain(a1, "class", ["Byline", "bylines", "user name", "bbl", "Username", "byl x", "BBL1"], hit=False)
+    out += plain(a1, "itemprop", ["author", "x-author-y", "author name", "name author", "authors"])
+    out += plain(a1, "itemprop", ["Author", "auth", "writer"], hit=False)
+    out += plain(a1, "id", ["author", "zuozhe", "bianji", "xiaobian", "x-author-y", "my-bianji", "authors"])
+    out += plain(a1, "id", ["Author", "xiao bian", "Zuozhe", "xiao-bian", "auth"], hit=False)
+    out += plain(a1, "class", ["author", "channel-name", "zuozhe", "bianji", "xiaobian", "submitted-by", "posted-by", "journalist-name", "my-author", "x posted-by y"])
+    out += plain(a1, "class", ["channelname", "Channel-name", "submitted by", "posted_by", "journalist name", "Author", "submitted_by", "xiao bian"], hit=False)
+    out += by_tag(a1, "class", "channel-name", ("a", "div", "h3", "h4", "p", "span"), ("h1", "h2", "address", "strong", "li", "link", "article", "svg"))
+    out += by_tag(a1, "id", "author", ("a", "div", "h3", "h4", "p", "span"), ("h1", "li", "article"))
+    out += by_tag(a1, "itemprop", "author", ("a", "div", "h3", "h4", "p", "span"), ("h2", "li", "strong"))
+    out += by_tag(a1, "class", "byline", ("a", "div", "h3", "h4", "p", "span"), ("h1", "li", "address"))
+
+    out += plain(a2, "data-component", ["Byline", "x-Byline-y", "Bylines"])
+    out += plain(a2, "data-component", ["byline", "BYLINE", "By line"], hit=False)
+    out += plain(a2, "itemprop", ["author", "x-author", "author name", "authors"])
+    out += plain(a2, "itemprop", ["Author", "auth", "writer"], hit=False)
+    out += plain(a2, "id", ["author", "Author", "x-Author-y", "authors"])
+    out += plain(a2, "id", ["AUTHOR", "auth or", "uthor", "writer", "byline"], hit=False)
+    out += plain(a2, "class", ["author", "Author", "screenname", "writer", "byline", "Byline", "my-writer-x", "x-screenname"])
+    out += plain(a2, "class", ["AUTHOR", "screen name", "Writer", "BYLINE", "screenName", "writ er", "by line", "auth"], hit=False)
+    out += plain(a2, "data-x", ["author", "Byline", "writer"], hit=False)
+    out += by_tag(a2, "class", "author", ("li", "h1", "article", "ul", "svg", "header", "strong"), ())
+    out.append(Snippet(page('<svg><title class="writer">t</title></svg>'), hit=(a2,)))
+
+    ad0 = "AUTHOR_DISCARD_XPATHS[0]"
+    out += plain(ad0, "class", ["comments", "title", "date"])
+    out += plain(ad0, "class", ["Title", "titles", "x title", "dates", "Date", "date x"], hit=False)
+    out += plain(ad0, "id", ["comments", "comments-x", "commentsx", "comment-list", "commentlist", "x-commentlist-y", "ProductReviews", "x-ProductReviews-y"])
+    out += plain(ad0, "id", ["Comments", "xcomments", "x-comments", "productreviews", "comment_list", "comment list", "comment--list", "Comment"], hit=False)
+    out += plain(ad0, "class", ["comments", "Comments", "comments-x", "Commentsx", "commentlist", "x commentlist y", "comments-list", "x comments-list y",
+                                "sidebar", "my-sidebar-x", "is-hidden", "quote", "blockquote", "embedly-instagram", "article-share", "article-support",
+                                "x article-share", "print", "print-only", "category", "my-category", "meta-date", "meta-reviewer"])
+    out += plain(ad0, "class", ["Comment", "Comment-x", "xcomments", "x comments", "comment list", "Sidebar", "is hidden", "Quote",
+                                "embedly instagram", "article-other", "article_share", "articleshare", "Print", "categories", "Category", "meta date"], hit=False)
+    out += plain(ad0, "data-component", ["Figure", "x-Figure-y", "Figures"])
+    out += plain(ad0, "data-component", ["figure", "FIGURE", "Fig ure"], hit=False)
+    out += by_tag(ad0, "class", "comments", ("a", "div", "section", "span"), ("p", "li", "article", "h3", "svg"))
+    out += [
+        # `.//`: the context node is never a match, its descendants are
+        Snippet(page('<div id="out" class="comments"><span data-context class="comments" id="ctx"><span class="comments" id="in">a</span></span></div>'), hit=(ad0,)),
+        Snippet(page('<div id="out" class="comments"><span data-context id="ctx"><p class="comments">a</p></span></div>'), miss=(ad0,)),
+        Snippet(page('<div class="comments"><div class="title"><span id="comments">a</span></div></div><a class="date">b</a>'), hit=(ad0,)),
+    ]
+    ad1 = "AUTHOR_DISCARD_XPATHS[1]"
+    out += [
+        Snippet(page("<time>a</time>"), hit=(ad1,)),
+        Snippet(page("<figure>a</figure>"), hit=(ad1,)),
+        Snippet(page("<figure><time>a</time></figure><p>b</p><time>c</time>"), hit=(ad1,)),
+        Snippet(page("<time><figure>a</figure></time>"), hit=(ad1,)),
+        Snippet(page("<div><figure><figure>a</figure></figure></div>"), hit=(ad1,)),
+        Snippet(page("<times>a</times><figcaption>b</figcaption><div class='time'>c</div>"), miss=(ad1,)),
+        Snippet(page("<svg><time>a</time><figure>b</figure></svg>"), miss=(ad1,)),
+        Snippet(page("<svg><time>a</time></svg><figure>b</figure>"), hit=(ad1,)),
+    ]
+
+    # ---- CATEGORIES_XPATHS and TAGS_XPATHS: `//holder//a[@href]`; a link under several holders is one match
+    c0, c1, c2, c3, c4, c5 = (f"CATEGORIES_XPATHS[{i}]" for i in range(6))
+    t0, t1, t2, t3 = (f"TAGS_XPATHS[{i}]" for i in range(4))
+    out += under(c0, "div", "class", ["post-info", "postinfo", "post-meta", "postmeta", "meta", "entry-meta", "entry-info", "entry-utility",
+                                      "meta-x", "postinfo x", "post-meta-data", "metadata", "entry-utility x"])
+    out += under(c0, "div", "class", ["x meta", "Meta", "entry_meta", "post--info", "info", "Post-info", "postin fo", "my-entry-meta", "entry meta"], hit=False)
+    out += under(c0, "div", "id", ["postpath", "postpath-x", "postpathx"])
+    out += under(c0, "div", "id", ["Postpath", "x-postpath", "post-path"], hit=False)
+    out += under(c0, "span", "class", ["meta", "postinfo"], hit=False)
+    out += under(c0, "section", "id", ["postpath"], hit=False)
+    out += [
+        Snippet(page('<div class="meta"><p><span><a href="/c">c</a></span></p></div>'), hit=(c0,)),
+        Snippet(page('<div class="meta"><a href="">c</a></div>'), hit=(c0,)),
+        Snippet(page('<div class="meta"><a>c</a></div>'), miss=(c0,)),
+        Snippet(page('<div class="meta"><a name="x">c</a></div>'), miss=(c0,)),
+        Snippet(page('<div class="meta"><a HREF="/c">c</a></div>'), hit=(c0,)),
+        Snippet(page('<div class="meta"><span href="/c">c</span></div>'), miss=(c0,)),
+        Snippet(page('<div class="meta"></div><a href="/c">c</a>'), miss=(c0,)),
+        Snippet(page('<a href="/c">c</a><div class="meta">x</div>'), miss=(c0,)),
+        Snippet(page('<div class="meta"><svg><a href="/c">c</a></svg></div>'), miss=(c0,)),
+        Snippet(page('<div class="meta"><a href="/1">a</a><div class="postmeta"><a href="/2">b</a><a href="/3">c</a></div><a href="/4">d</a></div><a href="/5">e</a>'), hit=(c0,)),
+        Snippet(page('<div id="postpath"><div class="x"><a href="/1">a</a></div></div><div class="meta"><a href="/2">b</a></div>'), hit=(c0,)),
+        Snippet(page('<div class="meta" id="postpath"><a href="/1">a</a></div>'), hit=(c0,)),
+    ]
+    out += under(c1, "p", "class", ["postmeta", "postmeta-x", "entry-categories", "entry-categories-x", "postinfo", "postmetas"])
+    out += under(c1, "p", "class", ["Postmeta", "x postmeta", "postinfo x", "postinfos", "entry-category", "Postinfo", "post-meta", "entry_categories"], hit=False)
+    out += under(c1, "p", "id", ["filedunder"])
+    out += under(c1, "p", "id", ["filedunder2", "Filedunder", "filed-under"], hit=False)
+    out += under(c1, "div", "class", ["postmeta", "postinfo"], hit=False)
+    out += under(c1, "span", "id", ["filedunder"], hit=False)
+    out += under(c2, "footer", "class", ["entry-meta", "entry-meta-x", "entry-footer", "entry-footer-y"])
+    out += under(c2, "footer", "class", ["x entry-meta", "Entry-meta", "entry_meta", "entry footer", "meta"], hit=False)
+    out += under(c2, "footer", "id", ["entry-meta", "entry-footer"], hit=False)
+    out += under(c2, "div", "class", ["entry-meta"], hit=False)
+    out += under(c2, "header", "class", ["entry-footer"], hit=False)
+    for tag in ("li", "span"):
+        out += under(c3, tag, "class", ["post-category", "postcategory", "entry-category", "cat-links", "x cat-links y", "cat-links-2", "mycat-links"])
+        out += under(c3, tag, "class", ["post-categories", "Post-category", "post-category x", "cat-link", "cat_links", "entry-categories", "cat links"], hit=False)
+    out += under(c3, "li", "id", ["post-category", "cat-links"], hit=False)
+    out += [Snippet(page(element(t, "class", "post-category", LINK)), miss=(c3,)) for t in ("p", "div", "ul", "h3", "section")]
+    out += under(c4, "header", "class", ["entry-header"])
+    out += under(c4, "header", "class", ["entry-header x", "Entry-header", "entry-headers", "x entry-header", "header"], hit=False)
+    out += under(c4, "header", "id", ["entry-header"], hit=False)
+    out += under(c4, "div", "class", ["entry-header"], hit=False)
+    out += under(c5, "div", "class", ["row", "tags"])
+    out += under(c5, "div", "class", ["rows", "row x", "Tags", "tag", "x tags", "Row"], hit=False)
+    out += under(c5, "div", "id", ["row", "tags"], hit=False)
+    out += under(c5, "span", "class", ["row", "tags"], hit=False)
+    out += under(t0, "div", "class", ["tags"])
+    out += under(t0, "div", "class", ["tags x", "row", "Tags", "x tags", "tag"], hit=False)
+    out += under(t0, "span", "class", ["tags"], hit=False)
+    out += under(t1, "p", "class", ["entry-tags", "entry-tags-x"])
+    out += under(t1, "p", "class", ["x entry-tags", "entry-tag", "Entry-tags", "entry_tags"], hit=False)
+    out += under(t1, "div", "class", ["entry-tags"], hit=False)
+    out += under(t2, "div", "class", ["row", "jp-relatedposts", "entry-utility", "tag", "tags x", "tag-list", "postmeta", "postmeta-x", "meta", "metadata"])
+    out += under(t2, "div", "class", ["rows", "x tag", "Tag", "post-meta", "entry-meta", "jp-relatedposts x", "entry-utility x", "row x", "relatedposts", "x meta"], hit=False)
+    out += under(t2, "div", "id", ["row", "tag", "meta"], hit=False)
+    out += under(t2, "span", "class", ["tag", "row"], hit=False)
+    for tag in ("div", "span", "li", "section", "p", "ul"):
+        out += under(t3, tag, "class", ["entry-meta", "topics", "related-topics-x", "tags-links", "x tags-links y"])
+    out += under(t3, "div", "class", ["entry-meta x", "Topics", "tag-links", "tags_links", "entry meta", "topic", "x entry-meta", "tags-link"], hit=False)
+    out += under(t3, "div", "id", ["entry-meta", "topics", "tags-links"], hit=False)
+    out += [
+        # the root element can be a holder
+        Snippet('<html class="entry-meta"><body><a href="/c">c</a></body></html>', hit=(t3,)),
+        Snippet('<html class="topics"><body><p>x</p></body></html>', miss=(t3,)),
+        Snippet('<html><body class="tags-links"><a href="/c">c</a></body></html>', hit=(t3,)),
+        Snippet(page('<div class="tags"><svg><a href="/c">c</a></svg></div>'), miss=(t0, t3)),
+        Snippet(page('<div class="tags"><a href="/1">a</a></div><div class="tags"><p><a href="/2">b</a></p><a>c</a></div>'), hit=(c5, t0)),
+        Snippet(page('<div class="row"><div class="tags"><a href="/1">a</a></div><a href="/2">b</a></div>'), hit=(c5, t0, t2)),
+        Snippet(page('<div class="tags"><a href="/1">a</a></div><a href="/2">b</a>'), hit=(c5, t0, t2), miss=(t1,)),
+        Snippet(page('<div class="entry-meta"><a href="/1">a</a></div><footer class="entry-meta"><a href="/2">b</a></footer>'), hit=(t3, c2), miss=(t2,)),
+        Snippet(page('<p class="topics"><a href="/1">a</a></p><span class="entry-meta"><b><a href="/2">b</a></b></span>'), hit=(t3,)),
+    ]
+
+    ti0, ti1, ti2 = (f"TITLE_XPATHS[{i}]" for i in range(3))
+    out += plain(ti0, "class", ["post-title", "entry-title", "article-title", "post__title", "headline", "x-headline-y", "my-post-title", "xpost-title",
+                                "post-titles"], tag="h1")
+    out += plain(ti0, "class", ["posttitle", "entry_title", "Headline", "post_title", "article--title", "title", "post-_title", "Post-title", "post--title",
+                                "post__ title", "head line", "HEADLINE"], tag="h1", hit=False)
+    out += plain(ti0, "id", ["headline", "x-headline", "headlines"], tag="h2")
+    out += plain(ti0, "id", ["Headline", "head-line", "title"], tag="h2", hit=False)
+    out += plain(ti0, "itemprop", ["headline", "x headline", "headlines"], tag="h1")
+    out += plain(ti0, "itemprop", ["Headline", "head line", "name"], tag="h1", hit=False)
+    out += by_tag(ti0, "class", "post-title", ("h1", "h2"), ("h3", "h4", "div", "p", "span", "header", "article", "svg"))
+    out += by_tag(ti0, "itemprop", "headline", ("h1", "h2"), ("h3", "div", "span"))
+    out += by_tag(ti0, "id", "headline", ("h1", "h2"), ("h3", "div", "p"))
+    out += plain(ti1, "class", ["entry-title", "post-title"], tag="h1")
+    out += plain(ti1, "class", ["entry-title x", "Entry-title", "post-titles", "x post-title", "article-title", "entry_title", "title", "post title"], tag="h1", hit=False)
+    out += plain(ti1, "id", ["entry-title", "post-title"], tag="h1", hit=False)
+    out += by_tag(ti1, "class", "entry-title", ("h1", "div", "span", "p", "li", "a", "article", "h4", "svg"), ())
+    out += by_tag(ti1, "class", "post-title", ("h2", "section", "header"), ())
+    out += [
+        Snippet(page('<div class="entry-title"><span class="post-title">a</span></div><p class="entry-title">b</p>'), hit=(ti1,)),
+        Snippet('<html class="entry-title"><body><p>x</p></body></html>', hit=(ti1,)),
+        Snippet('<html class="post-title"><body><p>x</p></body></html>', hit=(ti1,), miss=(ti0, ti2)),
+        Snippet('<html itemprop="headline"><body><p>x</p></body></html>', miss=(ti0, ti1, ti2)),
+        Snippet('<html class="title"><body><p>x</p></body></html>', miss=(ti0, ti1, ti2)),
+        Snippet(page('<h1 class="post-title">a</h1><h2 class="entry-title">b</h2><h3 class="title">c</h3>'), hit=(ti0, ti1, ti2)),
+        Snippet(page('<div class="entry-title">a</div><div class="x">b</div>'), hit=(ti1,), miss=(ti0, ti2)),
+    ]
+    out += plain(ti2, "class", ["title", "my-title-x", "subtitle", "titles"], tag="h1")
+    out += plain(ti2, "class", ["Title-x", "Titles", "ti-tle"], tag="h1", hit=False)
+    out += plain(ti2, "id", ["title", "page-title", "x-title-y", "subtitle"], tag="h2")
+    out += plain(ti2, "id", ["Title", "ti tle", "headline"], tag="h2", hit=False)
+    out += by_tag(ti2, "class", "title", ("h1", "h2", "h3"), ("h4", "div", "p", "span", "header", "svg"))
+    out += by_tag(ti2, "id", "title", ("h1", "h2", "h3"), ("h4", "div", "span"))
+    out += [
+        Snippet(page('<h1 id="a" class="title">a</h1><h2 class="b" id="title">b</h2>'), hit=(ti2,)),
+    ]
+
     # ---- BASIC_CLEAN_XPATH
     out += [
         Snippet(page("<aside>a</aside><p>b</p>"), hit=(clean,)),
@@ -649,7 +883,8 @@ def selectors() -> list[tuple[str, object]]:
     names = (
         "BODY_XPATH", "COMMENTS_XPATH", "REMOVE_COMMENTS_XPATH", "REMOVE_COMMENTS_AND_LISTS_XPATH",
         "RAW_TREE_PRUNE_XPATH", "OVERALL_DISCARD_XPATH", "TEASER_DISCARD_XPATH", "PRECISION_DISCARD_XPATH",
-        "DISCARD_IMAGE_ELEMENTS", "COMMENTS_DISCARD_XPATH",
+        "DISCARD_IMAGE_ELEMENTS", "COMMENTS_DISCARD_XPATH", "AUTHOR_XPATHS", "AUTHOR_DISCARD_XPATHS",
+        "CATEGORIES_XPATHS", "TAGS_XPATHS", "TITLE_XPATHS",
     )
     found = [(f"{name}[{i}]", xp) for name in names for i, xp in enumerate(getattr(x, name))]
     return found + [("BASIC_CLEAN_XPATH", BASIC_CLEAN_XPATH)]

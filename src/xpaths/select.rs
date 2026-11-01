@@ -1,9 +1,10 @@
 //! Building blocks of the selector functions: attribute reads, the XPath functions the upstream
 //! expressions use, and the node walks. Each walk checks the `Call` every `CHECK_INTERVAL` nodes.
 //!
-//! A predicate reads only the node's own name and attributes, never walks the tree. A structural
-//! test inside an XPath predicate (`not(.//h1)`) runs as a second pass over the matches, through
-//! `first_descendant`, so every node loop stays cancellable.
+//! A predicate reads the node's own name and attributes, plus its direct children (`rel='me'`) or
+//! its ancestors (`//div[...]//a`, bounded by the nesting depth). A test that walks a whole
+//! subtree (`not(.//h1)`) runs as a second pass over the matches, through `first_descendant`, so
+//! every node loop stays cancellable.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -86,6 +87,25 @@ pub(crate) fn descendants(
     for id in tree.iterdescendants(ctx, &[]) {
         ticker.tick()?;
         if pred(tree, id) {
+            found.push(id);
+        }
+    }
+    Ok(found)
+}
+
+/// `//*[pred]` from the document root, which `ctx` is: `ctx` itself first when it satisfies `keep`,
+/// then its descendants, in document order.
+pub(crate) fn subtree(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+    keep: impl Fn(&Tree, NodeId) -> bool,
+) -> Result<Vec<NodeId>, ExtractError> {
+    let mut ticker = Ticker { call, visited: 0 };
+    let mut found = Vec::new();
+    for id in tree.iter(ctx, &[]) {
+        ticker.tick()?;
+        if keep(tree, id) {
             found.push(id);
         }
     }

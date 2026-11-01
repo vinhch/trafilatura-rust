@@ -103,6 +103,29 @@ fn descendants_exclude_context_in_order() {
 }
 
 #[test]
+fn subtree_starts_with_the_context_node() {
+    let tree = parse(POSTS);
+    let c = by_id(&tree, "c");
+    let found = subtree(&tree, c, &Call::default(), |_, _| true).unwrap();
+    let expected: Vec<NodeId> = tree.iter(c, &[]).collect();
+    assert_eq!(found.len(), 6);
+    assert_eq!(found, expected);
+    assert_eq!(found.first(), Some(&c));
+}
+
+#[test]
+fn subtree_stops_when_cancelled() {
+    let tree = parse(POSTS);
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    assert_eq!(
+        subtree(&tree, tree.root(), &call, |_, _| true),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
 fn descendants_stop_when_cancelled() {
     let tree = parse(POSTS);
     let token = CancelToken::new();
@@ -220,7 +243,7 @@ fn comments_lookahead_matches_python() {
 
 /// Every selector, named as in `SELECTOR_NAMES`.
 fn ported() -> Vec<(String, Selector)> {
-    let lists: [(&str, &[Selector]); 10] = [
+    let lists: [(&str, &[Selector]); 15] = [
         ("BODY_XPATH", BODY_XPATH),
         ("COMMENTS_XPATH", COMMENTS_XPATH),
         ("REMOVE_COMMENTS_XPATH", REMOVE_COMMENTS_XPATH),
@@ -234,6 +257,11 @@ fn ported() -> Vec<(String, Selector)> {
         ("PRECISION_DISCARD_XPATH", PRECISION_DISCARD_XPATH),
         ("DISCARD_IMAGE_ELEMENTS", DISCARD_IMAGE_ELEMENTS),
         ("COMMENTS_DISCARD_XPATH", COMMENTS_DISCARD_XPATH),
+        ("AUTHOR_XPATHS", AUTHOR_XPATHS),
+        ("AUTHOR_DISCARD_XPATHS", AUTHOR_DISCARD_XPATHS),
+        ("CATEGORIES_XPATHS", CATEGORIES_XPATHS),
+        ("TAGS_XPATHS", TAGS_XPATHS),
+        ("TITLE_XPATHS", TITLE_XPATHS),
     ];
     let single = ("BASIC_CLEAN_XPATH".to_string(), BASIC_CLEAN_XPATH);
     lists
@@ -312,6 +340,16 @@ fn every_pattern_compiles() {
         &COMMENTS_DISCARD_CLASS,
         &COMMENTS_DISCARD_REPLY,
         &COOKIE_CONSENT,
+        &AUTHOR_NAME_CLASS,
+        &AUTHOR_LOOSE_ID,
+        &AUTHOR_LOOSE_CLASS,
+        &AUTHOR_ANY_ID,
+        &AUTHOR_ANY_CLASS,
+        &AUTHOR_DISCARD_ID,
+        &AUTHOR_DISCARD_CLASS,
+        &CATEGORIES_DIV_CLASS,
+        &TAGS_DIV_CLASS,
+        &TITLE_HEADING_CLASS,
     ] {
         assert!(pattern.is_some());
     }

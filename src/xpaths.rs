@@ -15,11 +15,12 @@ use crate::error::ExtractError;
 use crate::pystr::PY_SPACE_CLASS;
 use select::{
     attr, descendants, first_among_siblings, first_attr, first_descendant, has_attr, is_html,
-    re_test, translate, union,
+    re_test, subtree, translate, union,
 };
 
-/// Evaluates one XPath expression against a context node: the matches in document order, the
-/// context node never among them.
+/// Evaluates one XPath expression against a context node: the matches in document order. An
+/// expression that starts with `.//` never matches the context node; one that starts with `//`
+/// selects from the document root, so the context node can be among its matches.
 pub type Selector = fn(&Tree, NodeId, &Call<'_>) -> Result<Vec<NodeId>, ExtractError>;
 
 /// Joins XPath alternatives with `|`; `None` for an empty list, where upstream raises `ValueError`.
@@ -628,6 +629,296 @@ fn comments_discard_xpath_2(
                 first_attr(tree, id, &["id", "class"]),
                 &COMMENTS_DISCARD_REPLY,
             )
+    })
+}
+
+// 5. METADATA
+
+// An expression starting with `//` selects from the document root, which is the context element of
+// every metadata call, so `subtree` (the context node itself first) is its walk.
+
+pattern!(AUTHOR_NAME_CLASS, "author-?name|AuthorName|authorName");
+pattern!(AUTHOR_LOOSE_ID, "author|zuozhe|bianji|xiaobian");
+pattern!(
+    AUTHOR_LOOSE_CLASS,
+    "author|channel-name|zuozhe|bianji|xiaobian|submitted-by|posted-by|journalist-name"
+);
+pattern!(AUTHOR_ANY_ID, "[Aa]uthor");
+pattern!(AUTHOR_ANY_CLASS, "[Aa]uthor|screenname|writer|[Bb]yline");
+pattern!(AUTHOR_DISCARD_ID, "^comments|comment-?list|ProductReviews");
+pattern!(
+    AUTHOR_DISCARD_CLASS,
+    "^[Cc]omments|commentlist|comments-list|sidebar|is-hidden|quote|embedly-instagram|article-(?:share|support)|print|category|meta-date|meta-reviewer"
+);
+pattern!(
+    CATEGORIES_DIV_CLASS,
+    "^(?:post-?info|post-?meta|meta|entry-meta|entry-info|entry-utility)"
+);
+pattern!(TAGS_DIV_CLASS, "^(?:tag|postmeta|meta)");
+pattern!(
+    TITLE_HEADING_CLASS,
+    "(?:post-|entry-|article-|post__)title|headline"
+);
+
+/// Author elements, most specific selector first.
+// upstream: xpaths.py::AUTHOR_XPATHS
+pub const AUTHOR_XPATHS: &[Selector] = &[author_xpaths_0, author_xpaths_1, author_xpaths_2];
+
+// upstream: xpaths.py::AUTHOR_XPATHS
+fn author_xpaths_0(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_html(tree, id, &["author"])
+            || (is_html(
+                tree,
+                id,
+                &["a", "address", "div", "link", "p", "span", "strong"],
+            ) && (attr(tree, id, "rel") == "author"
+                || attr(tree, id, "id") == "author"
+                || attr(tree, id, "class") == "author"
+                || attr(tree, id, "itemprop") == "author name"
+                // `rel='me'` compares a child element named `rel`, not the attribute.
+                || tree.children(id).any(|child| {
+                    is_html(tree, child, &["rel"]) && tree.text_content(child) == "me"
+                })
+                || ["AuthorCard", "AuthorURL"].contains(&attr(tree, id, "data-testid"))
+                || re_test(attr(tree, id, "class"), &AUTHOR_NAME_CLASS)))
+    })
+}
+
+// upstream: xpaths.py::AUTHOR_XPATHS
+fn author_xpaths_1(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_html(tree, id, &["a", "div", "h3", "h4", "p", "span"]) && {
+            let (id_attr, class) = (attr(tree, id, "id"), attr(tree, id, "class"));
+            ["byline", "username", "byl", "BBL"].contains(&class)
+                || attr(tree, id, "itemprop").contains("author")
+                || re_test(id_attr, &AUTHOR_LOOSE_ID)
+                || re_test(class, &AUTHOR_LOOSE_CLASS)
+        }
+    })
+}
+
+// upstream: xpaths.py::AUTHOR_XPATHS
+fn author_xpaths_2(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        attr(tree, id, "data-component").contains("Byline")
+            || attr(tree, id, "itemprop").contains("author")
+            || re_test(attr(tree, id, "id"), &AUTHOR_ANY_ID)
+            || re_test(attr(tree, id, "class"), &AUTHOR_ANY_CLASS)
+    })
+}
+
+/// Elements dropped before reading an author out of a subtree.
+// upstream: xpaths.py::AUTHOR_DISCARD_XPATHS
+pub const AUTHOR_DISCARD_XPATHS: &[Selector] = &[author_discard_xpaths_0, author_discard_xpaths_1];
+
+// upstream: xpaths.py::AUTHOR_DISCARD_XPATHS
+fn author_discard_xpaths_0(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    descendants(tree, ctx, call, |tree, id| {
+        is_html(tree, id, &["a", "div", "section", "span"]) && {
+            let (id_attr, class) = (attr(tree, id, "id"), attr(tree, id, "class"));
+            id_attr == "comments"
+                || ["comments", "title", "date"].contains(&class)
+                || re_test(id_attr, &AUTHOR_DISCARD_ID)
+                || re_test(class, &AUTHOR_DISCARD_CLASS)
+                || attr(tree, id, "data-component").contains("Figure")
+        }
+    })
+}
+
+// upstream: xpaths.py::AUTHOR_DISCARD_XPATHS
+fn author_discard_xpaths_1(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_html(tree, id, &["time", "figure"])
+    })
+}
+
+/// `//a[@href]` below an element that satisfies `holder`: a link under several holders matches once.
+fn is_link_under(tree: &Tree, id: NodeId, holder: impl Fn(&Tree, NodeId) -> bool) -> bool {
+    is_html(tree, id, &["a"])
+        && has_attr(tree, id, "href")
+        && tree.iterancestors(id, &[]).any(|up| holder(tree, up))
+}
+
+/// Links that carry the categories of a page.
+// upstream: xpaths.py::CATEGORIES_XPATHS
+pub const CATEGORIES_XPATHS: &[Selector] = &[
+    categories_xpaths_0,
+    categories_xpaths_1,
+    categories_xpaths_2,
+    categories_xpaths_3,
+    categories_xpaths_4,
+    categories_xpaths_5,
+];
+
+// upstream: xpaths.py::CATEGORIES_XPATHS
+fn categories_xpaths_0(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            is_html(tree, up, &["div"])
+                && (re_test(attr(tree, up, "class"), &CATEGORIES_DIV_CLASS)
+                    || attr(tree, up, "id").starts_with("postpath"))
+        })
+    })
+}
+
+// upstream: xpaths.py::CATEGORIES_XPATHS
+fn categories_xpaths_1(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            let class = attr(tree, up, "class");
+            is_html(tree, up, &["p"])
+                && (class.starts_with("postmeta")
+                    || class.starts_with("entry-categories")
+                    || class == "postinfo"
+                    || attr(tree, up, "id") == "filedunder")
+        })
+    })
+}
+
+// upstream: xpaths.py::CATEGORIES_XPATHS
+fn categories_xpaths_2(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            let class = attr(tree, up, "class");
+            is_html(tree, up, &["footer"])
+                && (class.starts_with("entry-meta") || class.starts_with("entry-footer"))
+        })
+    })
+}
+
+// upstream: xpaths.py::CATEGORIES_XPATHS
+fn categories_xpaths_3(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            let class = attr(tree, up, "class");
+            is_html(tree, up, &["li", "span"])
+                && (["post-category", "postcategory", "entry-category"].contains(&class)
+                    || class.contains("cat-links"))
+        })
+    })
+}
+
+// upstream: xpaths.py::CATEGORIES_XPATHS
+fn categories_xpaths_4(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            is_html(tree, up, &["header"]) && attr(tree, up, "class") == "entry-header"
+        })
+    })
+}
+
+// upstream: xpaths.py::CATEGORIES_XPATHS
+fn categories_xpaths_5(
+    tree: &Tree,
+    ctx: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            is_html(tree, up, &["div"]) && ["row", "tags"].contains(&attr(tree, up, "class"))
+        })
+    })
+}
+
+/// Links that carry the tags of a page.
+// upstream: xpaths.py::TAGS_XPATHS
+pub const TAGS_XPATHS: &[Selector] = &[tags_xpaths_0, tags_xpaths_1, tags_xpaths_2, tags_xpaths_3];
+
+// upstream: xpaths.py::TAGS_XPATHS
+fn tags_xpaths_0(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            is_html(tree, up, &["div"]) && attr(tree, up, "class") == "tags"
+        })
+    })
+}
+
+// upstream: xpaths.py::TAGS_XPATHS
+fn tags_xpaths_1(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            is_html(tree, up, &["p"]) && attr(tree, up, "class").starts_with("entry-tags")
+        })
+    })
+}
+
+// upstream: xpaths.py::TAGS_XPATHS
+fn tags_xpaths_2(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            let class = attr(tree, up, "class");
+            is_html(tree, up, &["div"])
+                && (["row", "jp-relatedposts", "entry-utility"].contains(&class)
+                    || re_test(class, &TAGS_DIV_CLASS))
+        })
+    })
+}
+
+// upstream: xpaths.py::TAGS_XPATHS
+fn tags_xpaths_3(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_link_under(tree, id, |tree, up| {
+            let class = attr(tree, up, "class");
+            class == "entry-meta" || class.contains("topics") || class.contains("tags-links")
+        })
+    })
+}
+
+/// Title elements, most specific selector first.
+// upstream: xpaths.py::TITLE_XPATHS
+pub const TITLE_XPATHS: &[Selector] = &[title_xpaths_0, title_xpaths_1, title_xpaths_2];
+
+// upstream: xpaths.py::TITLE_XPATHS
+fn title_xpaths_0(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_html(tree, id, &["h1", "h2"])
+            && (re_test(attr(tree, id, "class"), &TITLE_HEADING_CLASS)
+                || attr(tree, id, "id").contains("headline")
+                || attr(tree, id, "itemprop").contains("headline"))
+    })
+}
+
+// upstream: xpaths.py::TITLE_XPATHS
+fn title_xpaths_1(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        ["entry-title", "post-title"].contains(&attr(tree, id, "class"))
+    })
+}
+
+// upstream: xpaths.py::TITLE_XPATHS
+fn title_xpaths_2(tree: &Tree, ctx: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>, ExtractError> {
+    subtree(tree, ctx, call, |tree, id| {
+        is_html(tree, id, &["h1", "h2", "h3"])
+            && (attr(tree, id, "class").contains("title") || attr(tree, id, "id").contains("title"))
     })
 }
 

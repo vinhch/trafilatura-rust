@@ -214,7 +214,7 @@ writes it byte for byte.
 | `gen_printable.py` (`title`) | `src/pystr/title.rs` | the `str.title` full title mappings, the Cased class its rule reads, the `str.isupper` ranges and the cases of the title test, read off the image's Python |
 | `gen_nfc.py` (`tables`) | `src/pyunicodedata/nfc.rs` | decompositions, combining classes, composition pairs and the quick-check sets behind `unicodedata.normalize("NFC", ...)` of the image's Python |
 | `gen_nfc.py` (`cases`) | `src/pyunicodedata/cases.rs` | NFC of every character with a decomposition or combining class (alone and between `a` and U+0301), of every composition pair and of two Hangul jamo sequences |
-| `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector on HTML snippets |
+| `gen_xpath_cases.py` | `src/xpaths/cases.rs` | the matches of every upstream selector (content, comment, discard and metadata lists) on HTML snippets |
 | `gen_url.py` (`tables`) | `src/pyurl/tables.rs` | the NFKC netloc breakers of the image's Python |
 | `gen_url.py` (`cases`) | `src/pyurl/cases.rs` | `html.unescape`, `urlsplit`, `urlunsplit`, `urljoin`, `hostname` and `port`, `quote`, `quote_plus`, `parse_qs`, `urlencode`, the two `courlan` helpers on URL strings, `validate_url`, `normalize_url`, `clean_query` and `decode_punycode`, and tld's `get_tld` and courlan's `extract_domain` (`TLD_CASES`, `EXTRACT_DOMAIN_CASES`) |
 | `gen_url.py` (`tld_tables`) | `src/courlan/tld_tables.rs` | the nodes tld's trie marks as suffixes for an exception rule (`ck` for `!www.ck`) and its rules with an `xn--` label below the top level, read off tld's own trie |
