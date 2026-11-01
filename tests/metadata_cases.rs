@@ -20,6 +20,7 @@ fn run(case: &MetadataCase) -> Document {
     let call = Call::default();
     let mut tree = parse_document(case.html, &ParseLimits::default(), &call).unwrap();
     let root = tree.root();
+    // Matches MAX_DATE in tools/parity/parity/gen_metadata_cases.py; the cases do not compare filedate.
     let date_config = DateParams {
         original_date: true,
         extensive_search: false,

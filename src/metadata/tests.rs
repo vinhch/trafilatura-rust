@@ -192,8 +192,8 @@ fn extract_meta_json_falls_back_on_decode_error() {
 #[test]
 fn extract_meta_json_reads_both_script_types() {
     let tree = page(
-        r#"<script type="application/settings+json">{"@context":"https://schema.org","@type":"Article","headline":"One"}</script>
-        <script type="text/javascript">{"@context":"https://schema.org","@type":"Article","headline":"Skipped"}</script>
+        r#"<script type="text/javascript">{"@context":"https://schema.org","@type":"Article","headline":"Skipped"}</script>
+        <script type="application/settings+json">{"@context":"https://schema.org","@type":"Article","headline":"One"}</script>
         <script type="application/ld+json"></script>"#,
     );
     let mut document = Document::new();
@@ -807,7 +807,7 @@ fn extract_metadata_sets_filedate_from_max_date() {
 
 #[test]
 fn extract_metadata_without_date_config_has_no_filedate() {
-    // oracle: set_date_params has no max_date here (D-15 lands in phase 4d)
+    // oracle: filedate None; max_date is the D-15 (phase 4d) placeholder
     let document = run_extract("<html><head></head><body></body></html>", None);
     assert_eq!(document.filedate, None);
 }

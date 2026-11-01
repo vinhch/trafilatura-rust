@@ -12,51 +12,14 @@ mod common;
 
 use std::collections::HashSet;
 
+use common::{blank_document, extract, json_of, parse_html};
+
 use trafilatura_rust::__internals::{
-    Config, DateParams, Document, Extractor, Format, JSON_MINIFY, NodeId, ParseLimits, Selector,
-    Tree, check_authors, extract_json, extract_json_parse_error, extract_meta_json,
-    extract_metadata, extract_metainfo, extract_title, extract_url, normalize_tags, parse_document,
-    process_parent,
+    Config, DateParams, Extractor, Format, JSON_MINIFY, NodeId, Selector, Tree, check_authors,
+    extract_json, extract_json_parse_error, extract_meta_json, extract_metadata, extract_metainfo,
+    extract_title, extract_url, normalize_tags, process_parent,
 };
 use trafilatura_rust::{Call, ExtractError};
-
-/// `extract_metadata(html)` with the defaults, for a page that parses.
-fn extract(html: &str) -> Document {
-    common::metadata(html, None, false, &[]).expect("the page parses")
-}
-
-/// The page parsed for a test that reads the tree.
-fn parse_html(html: &str) -> (Tree, NodeId) {
-    let tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
-    let root = tree.root();
-    (tree, root)
-}
-
-/// Upstream's empty `Document()`. A test cannot build one, so it clears every field of an
-/// extraction result; the fields it leaves set would be a difference from upstream.
-fn blank_document() -> Document {
-    let mut document = extract("<html></html>");
-    document.title = None;
-    document.author = None;
-    document.url = None;
-    document.hostname = None;
-    document.description = None;
-    document.sitename = None;
-    document.date = None;
-    document.categories = None;
-    document.tags = None;
-    document.fingerprint = None;
-    document.id = None;
-    document.license = None;
-    document.comments = None;
-    document.raw_text = None;
-    document.text = None;
-    document.language = None;
-    document.image = None;
-    document.pagetype = None;
-    document.filedate = None;
-    document
-}
 
 fn owned(items: &[&str]) -> Vec<String> {
     items.iter().map(|item| (*item).to_owned()).collect()
@@ -208,7 +171,7 @@ fn test_author_blacklist() {
     let metadata = common::metadata(
         r#"<html><head><meta itemprop="author" content="Jenny Smith"/></head><body></body></html>"#,
         None,
-        false,
+        true,
         &["Jenny Smith"],
     )
     .unwrap();
@@ -217,7 +180,7 @@ fn test_author_blacklist() {
     let metadata = common::metadata(
         r#"<html><body><script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","author":{"name":"Jane Doe"}}</script></body></html>"#,
         None,
-        false,
+        true,
         &["Jane Doe"],
     )
     .unwrap();
@@ -226,7 +189,7 @@ fn test_author_blacklist() {
     let metadata = common::metadata(
         r#"<html><body><a class="author">Jane Doe</a></body></html>"#,
         None,
-        false,
+        true,
         &["Jane Doe"],
     )
     .unwrap();
@@ -526,7 +489,7 @@ fn test_url() {
     ];
     let default_urls = [None, None, None, None, Some("https://example.org"), None];
     for (doc, default_url) in cases.into_iter().zip(default_urls) {
-        let metadata = common::metadata(doc, default_url, false, &[]).unwrap();
+        let metadata = common::metadata(doc, default_url, true, &[]).unwrap();
         assert_eq!(metadata.url.as_deref(), expected, "{doc}");
     }
 
@@ -724,7 +687,7 @@ fn test_meta() {
     assert_eq!(metadata.title.as_deref(), Some("Title"));
 
     // catch errors. Adaptation: upstream's empty Document() is metadata of "", which is None here.
-    assert!(common::metadata("", None, false, &[]).is_none());
+    assert!(common::metadata("", None, true, &[]).is_none());
     let metadata = extract("<html><title></title></html>");
     assert_eq!(metadata.sitename, None);
     let long_title = format!(
@@ -877,13 +840,6 @@ fn test_extract_meta_json_control_char() {
     extract_meta_json(&tree, root, &mut metadata, &Call::default()).unwrap();
     assert_eq!(metadata.pagetype.as_deref(), Some("article"));
     assert_eq!(metadata.title.as_deref(), Some("Graph based headline"));
-}
-
-/// `json.loads(text)`: the JSON value the builder wrote, as a document of the JSON module.
-fn json_of(text: &str) -> trafilatura_rust::__internals::Json {
-    trafilatura_rust::__internals::loads(text, true, &Call::default())
-        .unwrap()
-        .expect("valid JSON")
 }
 
 #[test]
@@ -1062,12 +1018,9 @@ fn test_images() {
     }
 }
 
-// Adaptation: upstream's as_dict is not ported; the same values are asserted on the fields. The
-// date assertion is in test_document_as_dict_phase_4c_lines.
-#[test]
-fn test_document_as_dict() {
-    // Tests that the dict serialization works and preserves data.
-    let htmldoc = r#"
+/// The page of test_document_as_dict, shared with test_document_as_dict_phase_4c_lines, which needs
+/// its date.
+const DOCUMENT_AS_DICT_PAGE: &str = r#"
     <html>
     <head>
         <title>Test Title</title>
@@ -1092,7 +1045,12 @@ fn test_document_as_dict() {
     </html>
     "#;
 
-    let document = extract(htmldoc);
+// Adaptation: upstream's as_dict is not ported; the same values are asserted on the fields. The
+// date assertion is in test_document_as_dict_phase_4c_lines.
+#[test]
+fn test_document_as_dict() {
+    // Tests that the dict serialization works and preserves data.
+    let document = extract(DOCUMENT_AS_DICT_PAGE);
     assert_eq!(document.title.as_deref(), Some("Test Title"));
     assert_eq!(document.author.as_deref(), Some("Jenny Smith"));
     assert_eq!(document.url.as_deref(), Some("https://example.org"));
@@ -1110,8 +1068,10 @@ fn test_document_as_dict() {
 #[test]
 #[ignore = "phase 4c"]
 fn test_document_as_dict_phase_4c_lines() {
-    let htmldoc = r#"<html><head><meta property="og:published_time" content="2017-09-01" /></head><body></body></html>"#;
-    assert_eq!(extract(htmldoc).date.as_deref(), Some("2017-09-01"));
+    assert_eq!(
+        extract(DOCUMENT_AS_DICT_PAGE).date.as_deref(),
+        Some("2017-09-01")
+    );
 }
 
 #[test]

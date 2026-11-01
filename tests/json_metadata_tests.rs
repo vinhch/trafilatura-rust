@@ -11,49 +11,12 @@
 mod common;
 
 use trafilatura_rust::__internals::{
-    Document, JSON_AUTHOR_1, JSON_AUTHOR_2, Json, NodeId, ParseLimits, Tree, extract_json,
-    extract_json_author, extract_meta_json, loads, normalize_authors, normalize_json,
-    parse_document, process_parent,
+    JSON_AUTHOR_1, JSON_AUTHOR_2, extract_json, extract_json_author, extract_meta_json,
+    normalize_authors, normalize_json, process_parent,
 };
-use trafilatura_rust::Call;
+use trafilatura_rust::{Call, Document};
 
-/// `extract_metadata(html)` with the defaults, for a page that parses.
-fn extract(html: &str) -> Document {
-    common::metadata(html, None, false, &[]).expect("the page parses")
-}
-
-/// The page parsed for a test that reads the tree.
-fn parse_html(html: &str) -> (Tree, NodeId) {
-    let tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
-    let root = tree.root();
-    (tree, root)
-}
-
-/// Upstream's empty `Document()`. A test cannot build one, so it clears every field of an
-/// extraction result.
-fn blank_document() -> Document {
-    let mut document = extract("<html></html>");
-    document.title = None;
-    document.author = None;
-    document.url = None;
-    document.hostname = None;
-    document.description = None;
-    document.sitename = None;
-    document.date = None;
-    document.categories = None;
-    document.tags = None;
-    document.fingerprint = None;
-    document.id = None;
-    document.license = None;
-    document.comments = None;
-    document.raw_text = None;
-    document.text = None;
-    document.language = None;
-    document.image = None;
-    document.pagetype = None;
-    document.filedate = None;
-    document
-}
+use common::{blank_document, extract, json_of, parse_html};
 
 /// `extract_meta_json(html.fromstring(html), metadata)` into `metadata`.
 fn fill_meta_json(metadata: &mut Document, html: &str) {
@@ -66,13 +29,6 @@ fn meta_json(html: &str) -> Document {
     let mut metadata = blank_document();
     fill_meta_json(&mut metadata, html);
     metadata
-}
-
-/// `json.loads(text)`: the JSON value a test builds, as a document of the JSON module.
-fn json_of(text: &str) -> Json {
-    loads(text, true, &Call::default())
-        .unwrap()
-        .expect("valid JSON")
 }
 
 /// `process_parent(json_list, Document())` for a JSON list of objects.
@@ -1290,7 +1246,7 @@ fn test_json_metadata_robustness() {
         common::metadata(
             r#"<html><body><script type="application/ld+json">[123]</script></body></html>"#,
             None,
-            false,
+            true,
             &[]
         )
         .is_some()
@@ -1298,8 +1254,8 @@ fn test_json_metadata_robustness() {
 }
 
 // Adaptation: upstream counts process_parent calls through a monkeypatch of the module attribute,
-// which has no Rust analog. The test asserts the observable result: the author is set once, not
-// once per object.
+// which has no Rust analog. The call count is not observable here, so the test checks the list
+// result only.
 #[test]
 fn test_extract_json_processes_list_once() {
     // A flat list of @context objects is processed once, not once per item.

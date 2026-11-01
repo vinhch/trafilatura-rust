@@ -4,19 +4,23 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Helpers shared by the integration tests: where the upstream checkout and the fixtures live.
+//! Helpers shared by the integration tests: the metadata entry points and the fixtures the metadata
+//! tests read (the parsed page, upstream's empty `Document()`, JSON values), and where the upstream
+//! checkout and the fixtures live.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use trafilatura_rust::__internals::{
-    HtmlInput, MAX_FILE_SIZE, ParseLimits, extract_metadata, load_html,
+    HtmlInput, Json, MAX_FILE_SIZE, NodeId, ParseLimits, Tree, extract_metadata, load_html, loads,
+    parse_document,
 };
 use trafilatura_rust::{Call, Document};
 
 /// `extract_metadata` as upstream's tests call it: `html` parsed with `load_html` and default
-/// limits, `date_config` `None`. `None` where `load_html` gives no tree; upstream returns an empty
-/// `Document()` there, which a test cannot build.
+/// limits, `date_config` `None`, `extensive` as the caller passes it (upstream's default is true).
+/// `None` where `load_html` gives no tree; upstream returns an empty `Document()` there, which a
+/// test cannot build.
 #[allow(dead_code)] // used by the metadata test binaries; the other binaries include this module too
 pub fn metadata(
     html: &str,
@@ -49,6 +53,51 @@ pub fn metadata(
         )
         .expect("extract_metadata fails only on cancellation or a huge character reference"),
     )
+}
+
+/// `extract_metadata(html)` with upstream's defaults, for a page that parses.
+pub fn extract(html: &str) -> Document {
+    metadata(html, None, true, &[]).expect("the page parses")
+}
+
+/// The page parsed for a test that reads the tree.
+pub fn parse_html(html: &str) -> (Tree, NodeId) {
+    let tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
+    let root = tree.root();
+    (tree, root)
+}
+
+/// Upstream's empty `Document()`. A test cannot build one, so it clears every field of an
+/// extraction result; the fields it leaves set would be a difference from upstream.
+pub fn blank_document() -> Document {
+    let mut document = extract("<html></html>");
+    document.title = None;
+    document.author = None;
+    document.url = None;
+    document.hostname = None;
+    document.description = None;
+    document.sitename = None;
+    document.date = None;
+    document.categories = None;
+    document.tags = None;
+    document.fingerprint = None;
+    document.id = None;
+    document.license = None;
+    document.comments = None;
+    document.raw_text = None;
+    document.text = None;
+    document.language = None;
+    document.image = None;
+    document.pagetype = None;
+    document.filedate = None;
+    document
+}
+
+/// `json.loads(text)`: the JSON value a test builds, as a document of the JSON module.
+pub fn json_of(text: &str) -> Json {
+    loads(text, true, &Call::default())
+        .unwrap()
+        .expect("valid JSON")
 }
 
 fn manifest_dir() -> &'static Path {
