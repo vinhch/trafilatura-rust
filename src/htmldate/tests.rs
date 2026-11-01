@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::core::{examine_text, search_page};
 use super::extractor_cases::{
     EXTRACT_URL_DATE_CASES, IDIOSYNCRASIES_CASES, PATTERN_SEARCH_CASES, REGEX_PARSE_CASES,
     TRY_DATE_EXPR_CASES,
@@ -13,6 +14,9 @@ use super::extractor_cases::{
 use super::extractors::{
     JSON_MODIFIED, JSON_PUBLISHED, external_date, extract_url_date, idiosyncrasies_search,
     pattern_search, regex_parse, try_date_expr,
+};
+use super::search_cases::{
+    EXAMINE_TEXT_CASES, SEARCH_PAGE_CASES, SEARCH_PAGE_MAX_2045_CASES, W3_RUN_CASE,
 };
 use super::settings::{CLEANING_LIST, MIN_DATE};
 use super::utils::{Extractor, NotAfter, Pattern, clean_html, remove_if_attached, trim_text};
@@ -401,4 +405,69 @@ fn cancelled_call_stops_regex_parse() {
     let call = Call::default().cancel(&token);
     let text = "Foo 5, 2020 ".repeat(1000);
     assert_eq!(regex_parse(&text, &call), Err(ExtractError::Cancelled));
+}
+
+#[test]
+fn examine_text_matches_python() {
+    for &(text, expected) in EXAMINE_TEXT_CASES {
+        assert_eq!(
+            examine_text(text, &search_options(), &Call::default()),
+            Ok(expected.map(str::to_owned)),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn search_page_matches_python() {
+    for &(htmlstring, original, expected) in SEARCH_PAGE_CASES {
+        let options = Extractor {
+            original,
+            ..search_options()
+        };
+        assert_eq!(
+            search_page(htmlstring, &options, &Call::default()),
+            Ok(expected.map(str::to_owned)),
+            "{htmlstring:?} original {original}"
+        );
+    }
+}
+
+#[test]
+fn search_page_max_2045_matches_python() {
+    let max = DateTime::new(2045, 12, 31).expect("a valid date");
+    for &(htmlstring, original, expected) in SEARCH_PAGE_MAX_2045_CASES {
+        let options = Extractor {
+            max,
+            original,
+            ..search_options()
+        };
+        assert_eq!(
+            search_page(htmlstring, &options, &Call::default()),
+            Ok(expected.map(str::to_owned)),
+            "{htmlstring:?} original {original}"
+        );
+    }
+}
+
+#[test]
+fn simple_pattern_w3_run_is_linear() {
+    // Each "w3.org/2020/" is rejected by the lookbehind and retried one code point later; the search then
+    // returns the year after the run.
+    let page = "w3.org/2020/ ".repeat(20_000) + " 2021 ";
+    assert_eq!(
+        search_page(&page, &search_options(), &Call::default()),
+        Ok(W3_RUN_CASE.map(str::to_owned))
+    );
+}
+
+#[test]
+fn cancelled_call_stops_search_page() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    assert_eq!(
+        search_page("<p>May 12, 2019</p>", &search_options(), &call),
+        Err(ExtractError::Cancelled)
+    );
 }

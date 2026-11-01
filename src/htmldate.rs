@@ -9,6 +9,8 @@ mod validators;
 #[cfg(test)]
 mod extractor_cases;
 #[cfg(test)]
+mod search_cases;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod validator_cases;
