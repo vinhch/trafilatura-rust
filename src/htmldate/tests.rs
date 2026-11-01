@@ -8,7 +8,7 @@ use regex::Regex;
 
 use super::core::{
     date_candidates, examine_abbr_elements, examine_elements, examine_header, examine_text,
-    examine_time_elements, search_page, title_h1_elements,
+    examine_time_elements, find_date, search_page, title_h1_elements,
 };
 use super::examine_cases::{EXAMINE_CASES, Expected};
 use super::extractor_cases::{
@@ -20,6 +20,7 @@ use super::extractors::{
     free_text_expressions, idiosyncrasies_search, img_search, json_search, pattern_search,
     regex_parse, try_date_expr,
 };
+use super::find_date_cases::FIND_DATE_CASES;
 use super::search_cases::{
     EXAMINE_TEXT_CASES, SEARCH_PAGE_CASES, SEARCH_PAGE_MAX_2045_CASES, W3_RUN_CASE,
 };
@@ -36,6 +37,7 @@ use crate::cancel::{Call, CancelToken};
 use crate::dom::{ParseLimits, Tree, parse_document};
 use crate::error::ExtractError;
 use crate::pydatetime::DateTime;
+use crate::settings::DateParams;
 
 /// `max_date` "2024-01-31", midnight, naive.
 const LATEST: DateTime = DateTime {
@@ -553,6 +555,40 @@ fn cancelled_call_stops_examine_header() {
     let tree = parse(r#"<html><head><meta name="date" content="2020-01-15"></head></html>"#);
     assert_eq!(
         examine_header(&tree, tree.root(), &search_options(), &call),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn find_date_matches_python() {
+    for &(html, url, original, extensive, expected) in FIND_DATE_CASES {
+        let tree = parse(html);
+        let params = DateParams {
+            original_date: original,
+            extensive_search: extensive,
+            max_date: Some("2024-01-31".to_owned()),
+        };
+        assert_eq!(
+            find_date(&tree, tree.root(), &params, url, &Call::default()),
+            Ok(expected.map(str::to_owned)),
+            "{html:?} url {url:?} original {original} extensive {extensive}"
+        );
+    }
+}
+
+#[test]
+fn cancelled_call_stops_find_date() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    let tree = parse("<html><body><p>May 12, 2019</p></body></html>");
+    let params = DateParams {
+        original_date: false,
+        extensive_search: true,
+        max_date: None,
+    };
+    assert_eq!(
+        find_date(&tree, tree.root(), &params, None, &call),
         Err(ExtractError::Cancelled)
     );
 }

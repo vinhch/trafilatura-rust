@@ -3,7 +3,8 @@ src/dom/html_cases.rs (what lxml.html.tostring returns on fixed pages, `serializ
 src/htmldate/validator_cases.rs (htmldate's validators on fixed inputs, `validator_cases()`) and
 src/htmldate/extractor_cases.rs (htmldate's string extractors on fixed inputs, `extractor_cases()`) and
 src/htmldate/search_cases.rs (htmldate's page-text search on fixed pages, `search_cases()`) and
-src/htmldate/examine_cases.rs (htmldate's tree examiners on fixed pages, `examine_cases()`).
+src/htmldate/examine_cases.rs (htmldate's tree examiners on fixed pages, `examine_cases()`) and
+src/htmldate/find_date_cases.rs (htmldate's `find_date` on fixed pages, `find_date_cases()`).
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -17,6 +18,7 @@ value has no offset.
 calls that are not ported (D-13): `_external_date` finds nothing and `dateutil_parse` raises.
 """
 
+import itertools
 import os
 import random
 import sys
@@ -1127,6 +1129,111 @@ def examine_cases() -> None:
         "",
         "#[rustfmt::skip]",
         "pub(super) const EXAMINE_CASES: &[ExamineCase] = &[",
+        *lines,
+        "];",
+        "",
+    ]
+    sys.stdout.write("\n".join(out))
+
+
+# The pages `find_date_cases` runs, each with its URL argument (`None`: the canonical link is probed) and in
+# the four (`original`, `extensive`) combinations. The comment on each page names the return it ends at.
+FIND_DATE_PAGES = [
+    # the URL argument: its date is the first return
+    ("<html><body><p>Hello</p></body></html>", "https://example.org/2017/09/01/content.html"),
+    # the URL argument has no date, so the header date is the return
+    ('<html><head><meta name="date" content="2019-04-02"></head><body></body></html>', "https://example.org/news/"),
+    # the URL argument is too late for max_date 2024-01-31: the rest of the page decides
+    ("<html><body><p>Hello</p></body></html>", "https://example.org/2030/01/01/x"),
+    # the canonical link probe: its href holds the date
+    ('<html><head><link rel="canonical" href="https://example.org/2018/03/05/a.html"></head><body></body></html>', None),
+    # the canonical link without href gives no URL
+    ('<html><head><link rel="canonical"></head><body><p>Hello</p></body></html>', None),
+    # examine_header: a date by name
+    ('<html><head><meta name="date" content="2019-04-02"></head><body></body></html>', None),
+    # examine_header: og:published_time (the first of test_dates' pages)
+    ('<html><head><meta property="og:published_time" content="2017-09-01"/></head><body></body></html>', None),
+    # examine_header: og:url, whose date is a reserve (the second of test_dates' pages)
+    ('<html><head><meta property="og:url" content="https://example.org/2017/09/01/content.html"/></head><body></body></html>', None),
+    # json_search: datePublished when original, dateModified otherwise
+    ('<html><head><script type="application/ld+json">{"datePublished": "2016-05-06T10:00:00Z", "dateModified": "2016-07-08T10:00:00Z"}</script></head><body></body></html>', None),
+    # examine_abbr_elements: data-utime 1500000000 is 2017-07-14 UTC
+    ('<html><body><abbr data-utime="1500000000">a day</abbr></body></html>', None),
+    # examine_elements over the date candidates: a class cue
+    ('<html><body><div class="entry-date">March 3, 2015</div></body></html>', None),
+    # examine_elements over title and h1, when no candidate has a date
+    ("<html><head><title>Notes from 12 June 2013</title></head><body><p>Hello</p></body></html>", None),
+    # examine_time_elements: a time element with its datetime
+    ('<html><body><time datetime="2012-08-09T12:00:00">a time</time></body></html>', None),
+    # the time element at the bound: the aware value is later than midnight of max_date
+    ('<html><body><time datetime="2024-01-31T23:30:00-05:00">a time</time></body></html>', None),
+    # pattern_search with TIMESTAMP_PATTERN over the page string: a timestamp in an attribute
+    ('<html><body><div data-stamp="2021-06-07T08:00:00+00:00"><p>Hello</p></div></body></html>', None),
+    # img_search: the date in the og:image URL
+    ('<html><head><meta property="og:image" content="https://example.org/2011/07/08/pic.jpg"></head><body></body></html>', None),
+    # idiosyncrasies_search: a date with a text cue
+    ("<html><body><p>Hello</p><p>posted 01/09/17</p></body></html>", None),
+    # fast mode: a loose date in text, which the strict timestamp misses
+    ("<html><body><p>Updated 2020-02-02</p></body></html>", None),
+    # the date only in a script: fast mode drops the script, extensive search reads the page string
+    ('<html><body><p>Hello</p><script>var d = "2020-03-03";</script></body></html>', None),
+    # extensive: the candidate element of test_dates' third page
+    ("<html><body><p>Veröffentlicht am 1.9.17</p></body></html>", None),
+    # free text: the element text is cut at 52 code points before the date, but the tail of the `b` is a short segment
+    ("<html><body><div>Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do <b>x</b> 12 May 2019</div></body></html>", None),
+    # search_page: a date with a text cue in the page string
+    ("<html><body><div>This article was written on 12 May 2019 by staff</div></body></html>", None),
+    # Review Focus 4: audio in object drops nothing, so video survives and its date is found
+    ("<html><body><object><audio></audio></object><video><p>2019-04-05 10:00:00</p></video></body></html>", None),
+    # Review Focus 4: svg in object is namespaced, so video is dropped with the fixed successor
+    ("<html><body><object><svg></svg></object><video><p>2019-04-05 10:00:00</p></video></body></html>", None),
+    # a surviving svg in serialize, with a year-only footer
+    ("<html><body><svg><path d=\"M0 0\"/></svg><footer>© 2018</footer></body></html>", None),
+    # non-ASCII digits in a candidate: the digit gates decide
+    ('<html><body><div class="date">２０２０-01-15</div></body></html>', None),
+    # no date at all
+    ("<html><head></head><body><p>Nothing here.</p></body></html>", None),
+]
+FIND_DATE_MAX = "2024-01-31"
+
+
+def find_date_cases() -> None:
+    from parity import html5tree
+    from parity.generate import html5_parsers
+
+    oracle_setup()
+    from htmldate.core import find_date
+
+    lines = []
+    with html5_parsers():
+        for html, url in FIND_DATE_PAGES:
+            for original, extensive in itertools.product((False, True), repeat=2):
+                tree = html5tree.parse_document(html)
+                assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {html[:60]!r}"
+                result = find_date(
+                    tree, original_date=original, extensive_search=extensive, max_date=FIND_DATE_MAX, url=url
+                )
+                lines.append(
+                    f"    ({rust_str(html)}, {rust_option_str(url)}, {str(original).lower()}, "
+                    f"{str(extensive).lower()}, {rust_option_str(result)}),"
+                )
+    print(f"find_date cases: {len(lines)}", file=sys.stderr)
+    out = [
+        f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}.",
+        "// Do not edit. Regenerate from the repository root with:",
+        "//   scripts/oracle.sh 'from parity.gen_htmldate_cases import find_date_cases; find_date_cases()' > src/htmldate/find_date_cases.rs",
+        "// htmldate 1.11.0's find_date on fixed pages, in UTC with D-13 off, min_date 1995-01-01 and max_date 2024-01-31.",
+        "",
+        "/// A page, the URL argument, `original`, `extensive`, then the date `find_date` returns.",
+        "pub(super) type FindDateCase = (",
+        "    &'static str,",
+        "    Option<&'static str>,",
+        "    bool,",
+        "    bool,",
+        "    Option<&'static str>,",
+        ");",
+        "#[rustfmt::skip]",
+        "pub(super) const FIND_DATE_CASES: &[FindDateCase] = &[",
         *lines,
         "];",
         "",

@@ -4,8 +4,8 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! `extract_metadata` against the pages upstream reads (`docs/parity-harness.md`). The `date` of a
-//! case is not compared: htmldate lands in phase 4c.
+//! `extract_metadata` against the pages upstream reads (`docs/parity-harness.md`). The `filedate` of a case
+//! is not compared: it is the config's `max_date`.
 
 #[path = "metadata_cases/cases.rs"]
 mod cases;
@@ -61,6 +61,7 @@ fn differences(case: &MetadataCase, document: &Document) -> Vec<String> {
         ("language", &document.language, case.language),
         ("image", &document.image, case.image),
         ("pagetype", &document.pagetype, case.pagetype),
+        ("date", &document.date, case.date),
     ];
     let mut found: Vec<String> = strings
         .iter()

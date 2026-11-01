@@ -20,7 +20,7 @@ exists today; phases are in `phase-plan.md`.
 | `xpaths.py` | `xpaths.rs` | exists: the content, comment, discard and metadata selectors (`AUTHOR_XPATHS`, `AUTHOR_DISCARD_XPATHS`, `CATEGORIES_XPATHS`, `TAGS_XPATHS`, `TITLE_XPATHS`) | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | exists: `baseline`, `baseline_tree`, `html2txt`, `html2txt_tree`, `basic_cleaning`, `build_body`, `block_text` and the JSON-LD readers; only `html2txt` is public (`api.rs`) | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported | the readability and jusText fallbacks run only when `fast=False` (D-1) |
-| `metadata.py` | `metadata.rs` | exists: `extract_metadata` and the meta tag, JSON-LD, title, author, URL, sitename, category, tag and license readers; the date is `find_date`, a stub (`htmldate/core.rs`, `// todo(phase 4c)`) | metadata from meta tags and the tree |
+| `metadata.py` | `metadata.rs` | exists: `extract_metadata` and the meta tag, JSON-LD, title, author, URL, sitename, category, tag and license readers; the date comes from `find_date` (`htmldate/core.rs`) | metadata from meta tags and the tree |
 | `json_metadata.py` | `json_metadata.rs` | exists: `extract_json`, `process_parent`, `extract_json_parse_error`, `extract_json_author`, `normalize_json`, `normalize_authors`, `is_plausible_sitename` and the author, publisher and type patterns; an upstream exception becomes `JsonFailure::Raised`, which the caller treats as `extract_metadata`'s `except Exception` does (D-19 for a value that is no string) | metadata from JSON-LD |
 | `deduplication.py` | `deduplication.rs` | stub: `duplicate_test` returns `false` (`// todo(phase 5)`) | the duplicate test, simhash and content fingerprint |
 | `utils.py` | `utils.rs` | partial: decoding and HTML loading, the text helpers (`trim`, `sanitize`, `textfilter`, `line_processing` and the rest), `image_src`, `is_image_file`, `is_acceptable_length` and `check_html_lang` exist; `safe_base_url` and `safe_relative_url` (over `courlan`) exist, `language_filter` and `language_classifier` are stubs (OI-4), `normalize_unicode` (NFC, over `pyunicodedata`) and `as_list` (over `pyjson`) exist | text normalization, trimming, language and size checks, decoding and HTML loading |
@@ -64,7 +64,7 @@ Upstream's own dependencies carry extraction logic, so the parts trafilatura cal
 
 | Package | Handling | Status |
 | --- | --- | --- |
-| `htmldate` (date extraction) | ported as a module named `htmldate` | stub: `find_date` (`htmldate/core.rs`) returns `None` until phase 4c |
+| `htmldate` (date extraction) | ported as a module named `htmldate` | exists: `find_date` (`htmldate/core.rs`) runs upstream's stages on a copy of the tree; its inputs are `DateParams` (`max_date` from the caller) and the D-21 clock |
 | `courlan` (URL normalization and filtering) | ported as a module named `courlan` | partial: `get_base_url`, `fix_relative_urls`, `get_tldinfo` and `extract_domain` (`courlan.rs`), `validate_url` and `is_valid_url` (`courlan/filters.rs`) and `normalize_url` (`courlan/clean.rs`) exist; `tld`'s `get_tld` is `courlan/tld.rs` over the `psl` crate, with `courlan/tld_tables.rs` generated; the other courlan functions are not ported |
 | `charset_normalizer` | replaced by `chardetng` (D-3) | done |
 | `justext` | not ported: only the `fast=False` fallbacks use it | not ported |
@@ -161,7 +161,7 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus` 
 
 `Err(Rejected(_))` stands for upstream's `None` and for a raise that escapes upstream's entry point.
 Options that no phase makes work yet are absent, so none silently does nothing: the metadata method (phase 4d),
-date extraction (phase 4c), deduplication, `prune_xpath` and the XML, XML-TEI, JSON and CSV formats. Metadata
+date extraction (`find_date` runs inside metadata since phase 4c; its `Options` method waits), deduplication, `prune_xpath` and the XML, XML-TEI, JSON and CSV formats. Metadata
 extraction and its filters already run inside the crate (phase 4b); only their `Options` methods wait. The
 planned additions are `max_date` and the caller-owned deduplication cache on `Call`, and an `Options` method
 for each of the above when its phase lands.

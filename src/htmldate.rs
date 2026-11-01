@@ -11,6 +11,8 @@ mod examine_cases;
 #[cfg(test)]
 mod extractor_cases;
 #[cfg(test)]
+mod find_date_cases;
+#[cfg(test)]
 mod search_cases;
 #[cfg(test)]
 mod tests;

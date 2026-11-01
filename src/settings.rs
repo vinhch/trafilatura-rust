@@ -55,7 +55,7 @@ pub struct Config {
     pub min_file_size: usize,
     /// Element count above which a page is discarded; `None` = no limit.
     pub max_tree_size: Option<usize>,
-    /// Whether the date search is extensive. No effect until phase 4 ports the date search.
+    /// Whether the date search is extensive: the free-text pass and the page-text search of `find_date`.
     pub extensive_date_search: bool,
 }
 

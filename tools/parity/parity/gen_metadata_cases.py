@@ -739,11 +739,11 @@ def json_cases() -> None:
     sys.stdout.write("\n".join(out))
 
 
-# The `Document` fields a `MetadataCase` holds, in upstream slot order; `date` (htmldate, phase 4c) and
-# `filedate` (copied from the config) are left out.
+# The `Document` fields a `MetadataCase` holds, in upstream slot order; `filedate` (copied from the config) is
+# left out.
 CASE_STRING_FIELDS = (
     "title", "author", "url", "hostname", "description", "sitename", "fingerprint", "id", "license",
-    "comments", "raw_text", "text", "language", "image", "pagetype",
+    "comments", "raw_text", "text", "language", "image", "pagetype", "date",
 )
 MAX_DATE = "2024-01-31"
 
@@ -832,7 +832,10 @@ def run_metadata(html: str, default_url: str | None, blacklist: tuple[str, ...])
 
 
 def cases() -> None:
+    from parity.gen_htmldate_cases import oracle_setup
     from parity.generate import html5_parsers
+
+    oracle_setup()
 
     lines = []
     with html5_parsers():
@@ -853,7 +856,7 @@ def cases() -> None:
         "// Upstream's `extract_metadata` on pages: the metadata it returns.",
         "",
         "/// A page parsed by html5lib and the `Document` fields upstream's `extract_metadata` returns for it with the default",
-        "/// URL and the author blacklist; `date` and `filedate` are not compared.",
+        "/// URL and the author blacklist; `filedate` is not compared.",
         "pub struct MetadataCase {",
         "    pub html: &'static str,",
         "    pub default_url: Option<&'static str>,",

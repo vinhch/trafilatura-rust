@@ -264,6 +264,8 @@ pub(crate) fn check_extracted_reference(
 
 /// `check_date_input`: the date of an ISO string, else `default` (no input, or a string that is no ISO date).
 // upstream: validators.py::check_date_input
+// Test-only: the table tests the rule; `get_max_date` inlines it so that the clock is read lazily.
+#[cfg(test)]
 pub(crate) fn check_date_input(date_object: Option<&str>, default: DateTime) -> DateTime {
     date_object
         .and_then(DateTime::from_isoformat)

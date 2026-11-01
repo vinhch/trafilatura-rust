@@ -547,9 +547,7 @@ fn test_description() {
     );
 }
 
-// Adaptation: the date comes from htmldate, which lands in phase 4c; the whole test waits for it.
 #[test]
-#[ignore = "phase 4c"]
 fn test_dates() {
     // Simple tests for date extraction (most of the tests are carried out externally for htmldate module)
     let tests = [
@@ -1064,9 +1062,7 @@ fn test_document_as_dict() {
     );
 }
 
-// Adaptation: the date of test_document_as_dict, which needs htmldate (phase 4c).
 #[test]
-#[ignore = "phase 4c"]
 fn test_document_as_dict_phase_4c_lines() {
     assert_eq!(
         extract(DOCUMENT_AS_DICT_PAGE).date.as_deref(),

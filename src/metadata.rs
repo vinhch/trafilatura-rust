@@ -136,7 +136,7 @@ const OG_PROPERTIES: &[(&str, &str)] = &[
 const OG_AUTHOR: &[&str] = &["og:author", "og:article:author"];
 
 /// The metadata of the page at `root`, as a [`Document`] with empty body and comments. `date_config`
-/// is the date parameters, `extensive` builds the default ones when it is `None`; `filedate` is its
+/// is the date parameters, or `None` for the defaults built from `extensive`; `filedate` is its
 /// `max_date`. Fails with `InvalidValue` on a character reference of more than 4300 digits and with
 /// the call's error when `call` stops.
 // upstream: metadata.py::extract_metadata (`filecontent` is always a tree here, so `load_html` is not ported)
