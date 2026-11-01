@@ -115,12 +115,18 @@ fn is_bare_html(node: &Node, empty: bool) -> bool {
     node.ns == Ns::Html && (VOID_ELEMENTS.contains(&name) || (empty && name == "li"))
 }
 
-/// The text of `node`. In the HTML method `script` and `style` text is raw, whatever the namespace.
+/// An element whose text is raw in the HTML method, whatever its namespace (libxml2 compares the name
+/// without case).
+fn is_raw_text_element(name: &str) -> bool {
+    name.eq_ignore_ascii_case("script") || name.eq_ignore_ascii_case("style")
+}
+
+/// The text of `node`. In the HTML method the text of a raw text element is raw.
 fn push_text(out: &mut String, node: &Node, method: Method) {
     let text = node.text.as_deref().unwrap_or("");
     match method {
         Method::Xml => push_escaped(out, text, false),
-        Method::Html if matches!(&*node.name, "script" | "style") => out.push_str(text),
+        Method::Html if is_raw_text_element(&node.name) => out.push_str(text),
         Method::Html => push_html_text(out, text),
     }
 }
@@ -353,8 +359,9 @@ impl Tree {
         }
     }
 
-    /// The escaped tail of `id`: always for a descendant (`level` > 0), only with `with_tail` for
-    /// the element the walk started at.
+    /// The tail of `id`: always for a descendant (`level` > 0), only with `with_tail` for the element
+    /// the walk started at. A tail belongs to its parent, so in the HTML method it is raw when that
+    /// parent is a raw text element.
     fn push_tail(
         &self,
         out: &mut String,
@@ -364,9 +371,14 @@ impl Tree {
         method: Method,
     ) {
         if level > 0 || with_tail {
-            let tail = self.node(id).tail.as_deref().unwrap_or("");
+            let node = self.node(id);
+            let tail = node.tail.as_deref().unwrap_or("");
+            let raw_parent = node
+                .parent()
+                .is_some_and(|parent| is_raw_text_element(&self.node(parent).name));
             match method {
                 Method::Xml => push_escaped(out, tail, false),
+                Method::Html if raw_parent => out.push_str(tail),
                 Method::Html => push_html_text(out, tail),
             }
         }

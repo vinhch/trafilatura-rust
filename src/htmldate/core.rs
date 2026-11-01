@@ -477,7 +477,7 @@ pub(crate) fn compare_reference(
     })
 }
 
-/// A matched `D[/.-]M[/.-]Y` (or `M[/.-]Y`) run as `YYYY-MM-DD`: components zero-padded, a two-digit year
+/// A matched `D[/.-]M[/.-]Y` run as `YYYY-MM-DD`: components zero-padded, a two-digit year
 /// corrected.
 // upstream: core.py::normalize_match
 pub(crate) fn normalize_match(pattern: &Pattern, item: &str) -> Option<String> {
@@ -858,7 +858,8 @@ pub(crate) const CLASS_ATTRS: &[&str] = &["date-published", "published", "time p
 // upstream: core.py::ALWAYS_TAGS
 pub(crate) const ALWAYS_TAGS: &[&str] = &["footer", "small"];
 
-/// Substrings of an `id` that make an element a date candidate (`[Mm]eta|time|publish|footer`).
+/// Substrings of the first of `id` or `class` in source order that make an element a date candidate
+/// (`[Mm]eta|time|publish|footer`).
 // upstream: core.py::ID_CLASS_CUES
 pub(crate) const ID_CLASS_CUES: &[&str] = &["Meta", "meta", "time", "publish", "footer"];
 
@@ -936,8 +937,9 @@ fn tagged_descendants(
     Ok(found)
 }
 
-/// The elements of `root`'s subtree that may carry a date, in document order: every element when
-/// `extensive_search`, else the fast tags and the always-tags, of which the first is kept by its attributes.
+/// The elements of `root`'s subtree that may carry a date, in document order. The always-tags are kept; the other
+/// elements in scope (every element when `extensive_search`, else the fast tags) are kept when `is_date_candidate`
+/// holds.
 // upstream: core.py::date_candidates
 pub(crate) fn date_candidates(
     tree: &Tree,

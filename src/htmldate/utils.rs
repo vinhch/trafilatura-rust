@@ -134,7 +134,8 @@ impl Pattern {
     }
 
     /// Python `findall` with one group: group 1 of each match, left to right, `""` where the group did not
-    /// take part. After an empty match the search moves on one code point.
+    /// take part. Empty matches are not supported: Python's rule for them (retry at the same position, then
+    /// forbid another empty match there) is not ported.
     // upstream: re.Pattern.findall
     pub(crate) fn findall<'t>(
         &self,

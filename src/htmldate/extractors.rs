@@ -403,8 +403,6 @@ fn is_discarded(string: &str) -> bool {
 }
 
 // upstream: extractors.py::try_date_expr
-// deviation: D-13 (the gate before `_external_date` is not ported: it only decides whether that call runs, and
-// the call gives no date, so the result is None either way)
 pub(crate) fn try_date_expr(
     string: Option<&str>,
     format: Format,
@@ -428,6 +426,8 @@ pub(crate) fn try_date_expr(
     if let Some(found) = custom_parse(&string, format, min_date, max_date, call)? {
         return Ok(Some(found));
     }
+    // deviation: D-13 (the gate before `_external_date` is not ported: it only decides whether that call runs, and
+    // the call gives no date, so the result is None either way)
     if extensive_search {
         return Ok(validate_and_convert(
             external_date(&string).as_ref(),

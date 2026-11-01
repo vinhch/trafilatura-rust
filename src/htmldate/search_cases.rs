@@ -38,6 +38,7 @@ pub(super) const SEARCH_PAGE_CASES: &[(&str, bool, Option<&str>)] = &[
 #[rustfmt::skip]
 pub(super) const SEARCH_PAGE_MAX_2045_CASES: &[(&str, bool, Option<&str>)] = &[
     (" 12.05.2040 12.05.2041 12.05.2040 ", false, None),
+    (" 12.05.2038 ", false, Some("2038-05-12")),
 ];
 
 /// A text segment, then `examine_text(text, options)` with min_date 1995-01-01 and max_date 2024-01-31.

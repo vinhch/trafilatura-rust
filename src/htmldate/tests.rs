@@ -1,6 +1,6 @@
-//! The htmldate settings, utils and validators against htmldate 1.11.0 on the pinned CPython 3.13.16 image.
-//! The tables come from `validator_cases.rs` (generated); a `// oracle:` comment names the probe that gave a
-//! value, run through `scripts/oracle.sh`.
+//! Tests of the htmldate port: settings, utils, validators, extractors, the page-text search, the tree examiners
+//! and `find_date`. Expected values in the generated `*_cases.rs` tables come from `scripts/oracle.sh`; a
+//! `// oracle:` comment names the probe that gave a hand-written value.
 
 use std::sync::LazyLock;
 

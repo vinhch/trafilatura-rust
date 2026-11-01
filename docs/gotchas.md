@@ -128,9 +128,9 @@ function.
   image's Unicode data, not the `regex` crate's.
 - `re.IGNORECASE` folds U+0130 (capital I with dot) and U+0131 (dotless i) to `i`; Rust `(?i)` does
   not. A pattern that can meet them rewrites each `i` to a class of `i`, U+0130 and U+0131
-  (`ignore_case_i` in `pystr.rs`); `COOKIE_CONSENT_RE` in `settings.rs` and `HTML_MARKUP` in
-  `baseline.rs` do the same, so `<dİv>` and `<dıv>` count as markup as in Python. The other special
-  folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and need no
+  (`ignore_case_i` in `pystr.rs`, which also widens `ı` and `İ` as Python's `re.I` does for `i`); `COOKIE_CONSENT_RE`
+  in `settings.rs` and `HTML_MARKUP` in `baseline.rs` do the same, so `<dİv>` and `<dıv>` count as markup as in Python.
+  The other special folds (U+017F long s with `s`, U+212A Kelvin sign with `k`) agree in both engines and need no
   rewrite. `HTML_MARKUP` and `DISCUSSION_FORUM_POSTING_RE` (`extraction.rs`) also take the
   whitespace class from `PY_SPACE_CLASS`, so a `"@type"` key and its value separated by U+001C are a
   forum page.
@@ -190,9 +190,11 @@ function.
   superscript. `pystr::is_digit` holds `isdigit`; `decimal_value` holds the digits `int` takes.
 - `datetime.fromisoformat` (CPython 3.13's C parser, which the oracle runs) takes any one character as the date
   separator (`"2020-01-01X10:20"`, `"2020-01-01é10:20"`) and rejects a separator with no time after it (`"2020-01-01 "`,
-  `"2020-01-011"`). Pure-Python `_pydatetime` accepts those two and parses the time part differently: C takes a
-  fraction right after the hour (`"06.8"` is 06:00:00.8), a second `:` before the fraction, and `Z` only as the last
-  character. C also reads ISO week dates (`"2020W011"`, `"2020-W53-1"`) and truncates a fraction past six digits.
+  `"2020-01-011"`). Pure-Python `_pydatetime` accepts those two and parses the time part differently: for
+  `time.fromisoformat`, C takes a fraction right after the hour (`"06.8"` is 06:00:00.8) and a second `:` before the
+  fraction (`"10:20:30:5"`), where `_pydatetime` rejects both; C rejects `"10:20Z05"`, which `_pydatetime` accepts. The
+  same holds for `datetime` after a `T`. Both parsers read ISO week dates (`"2020W011"`, `"2020-W53-1"`) and truncate a
+  fraction past six digits.
   `DateTime::from_isoformat` ports the C parser; its table includes a seeded sample of strings. The venv runs 3.13.13
   and the fixture platform runs 3.13.16, and they differ on fraction-before-zone inputs (`"10:20:30.+05:00"`): probe
   with the pinned image, not the venv.

@@ -99,6 +99,8 @@ pub(super) const TOSTRING_HTML_CASES: &[(&str, &str)] = &[
     ("<a href=\"\">x</a>", "<html><head></head><body><a href=\"\">x</a></body></html>"),
     ("<svg><script>a&lt;b</script></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:script>a<b</ns0:script></ns0:svg></body></html>"),
     ("<svg><style>a&lt;b</style></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:style>a<b</ns0:style></ns0:svg></body></html>"),
+    ("<svg><style><g></g>a&lt;b</style><script><g></g>c&lt;d</script></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:style><ns0:g></ns0:g>a<b</ns0:style><ns0:script><ns0:g></ns0:g>c<d</ns0:script></ns0:svg></body></html>"),
+    ("<svg><style>x<g></g>a&amp;b<g></g></style></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:style>x<ns0:g></ns0:g>a&b<ns0:g></ns0:g></ns0:style></ns0:svg></body></html>"),
     ("<svg><area></area><track>x</track></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:area></ns0:area><ns0:track>x</ns0:track></ns0:svg></body></html>"),
     ("<svg><base>t</base></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:base>t</ns0:base></ns0:svg></body></html>"),
     ("<svg><path checked=\"v\" selected=v nowrap=x></path></svg>", "<html><head></head><body><ns0:svg xmlns:ns0=\"http://www.w3.org/2000/svg\"><ns0:path checked selected nowrap></ns0:path></ns0:svg></body></html>"),

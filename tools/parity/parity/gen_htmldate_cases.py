@@ -368,6 +368,9 @@ TOSTRING_PAGES = [
     # Foreign elements: raw script and style text by name, void and URI rules only for HTML elements
     "<svg><script>a&lt;b</script></svg>",
     "<svg><style>a&lt;b</style></svg>",
+    # The tail of a child of a raw text element is raw, in the element's namespace or not
+    "<svg><style><g></g>a&lt;b</style><script><g></g>c&lt;d</script></svg>",
+    "<svg><style>x<g></g>a&amp;b<g></g></style></svg>",
     "<svg><area></area><track>x</track></svg>",
     "<svg><base>t</base></svg>",
     '<svg><path checked="v" selected=v nowrap=x></path></svg>',
@@ -631,7 +634,7 @@ TRY_DATE_EXPR_INPUTS = [
     "a" * 49 + " 2017-09-01",
     # the date starts after the 52-code-point segment
     "a" * 52 + " 2017-09-01",
-    # Review Focus 1: digits that `\d`, `isdigit` and `int` read differently
+    # digits that `\d`, `isdigit` and `int` read differently
     "２０２０-01-15",
     "٢٠٢٠-٠١-١٥",
     "²⁰²⁰0115",
@@ -851,6 +854,7 @@ SEARCH_PAGE_INPUTS = [
 
 SEARCH_PAGE_MAX_2045_INPUTS = [
     (" 12.05.2040 12.05.2041 12.05.2040 ", False),
+    (" 12.05.2038 ", False),
 ]
 
 EXAMINE_TEXT_INPUTS = [
@@ -1153,7 +1157,7 @@ FIND_DATE_PAGES = [
     ('<html><head><meta name="date" content="2019-04-02"></head><body></body></html>', None),
     # examine_header: og:published_time (the first of test_dates' pages)
     ('<html><head><meta property="og:published_time" content="2017-09-01"/></head><body></body></html>', None),
-    # examine_header: og:url, whose date is a reserve (the second of test_dates' pages)
+    # examine_header: og:url, whose date is a reserve: with extensive search off the result is None
     ('<html><head><meta property="og:url" content="https://example.org/2017/09/01/content.html"/></head><body></body></html>', None),
     # json_search: datePublished when original, dateModified otherwise
     ('<html><head><script type="application/ld+json">{"datePublished": "2016-05-06T10:00:00Z", "dateModified": "2016-07-08T10:00:00Z"}</script></head><body></body></html>', None),
@@ -1185,14 +1189,16 @@ FIND_DATE_PAGES = [
     ("<html><body><p>Posted 3 March 2018</p><p>Posted 4 April 2017</p></body></html>", None),
     # free text discriminates in the other direction: a segment with a cue after another with a date in the page string
     ("<html><body><p>1 April 2017</p><div>updated 3 March 2018 here</div></body></html>", None),
-    # search_page: a date with a text cue in the page string
+    # free text: a date with a text cue, which the free-text stage returns
     ("<html><body><div>This article was written on 12 May 2019 by staff</div></body></html>", None),
-    # Review Focus 4: audio in object drops nothing, so video survives and its date is found
+    # lxml's live iteration in clean_html: the video after an object with audio is kept and its date is found
     ("<html><body><object><audio></audio></object><video><p>2019-04-05 10:00:00</p></video></body></html>", None),
-    # Review Focus 4: svg in object is namespaced, so video is dropped with the fixed successor
+    # the plain name `svg` never matches a namespaced svg in clean_html, so the video after it is dropped
     ("<html><body><object><svg></svg></object><video><p>2019-04-05 10:00:00</p></video></body></html>", None),
     # a surviving svg in serialize, with a year-only footer
     ("<html><body><svg><path d=\"M0 0\"/></svg><footer>© 2018</footer></body></html>", None),
+    # the tail of a child of a svg style is raw, so `&copy;` reads as a copyright cue and 2021 wins over the link date
+    ('<html><body><a href="/2019/05/12/post">post</a><svg><style><g></g>&amp;copy; 2021 </style></svg></body></html>', None),
     # non-ASCII digits in a candidate: the digit gates decide
     ('<html><body><div class="date">２０２０-01-15</div></body></html>', None),
     # no date at all
