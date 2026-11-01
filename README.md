@@ -60,7 +60,7 @@ CI (`.github/workflows/`): `ci.yml` calls `_ci.yml` on pushes to `main` and pull
 the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through
 the `crates-io` environment. `quality.yml` re-checks advisories and runs each fuzz target for 15
 minutes with AddressSanitizer and minimizes the corpus cache, and runs `cargo-mutants` on
-`src/main_extractor.rs` in 7 shards that fail on a surviving mutant not listed in `.cargo/mutants.toml`,
+`src/main_extractor.rs` in 12 shards that fail on a surviving mutant not listed in `.cargo/mutants.toml`,
 weekly and on demand. `bench.yml` runs
 `scripts/regression.sh` on pull requests targeting `main` and reports the heap and time change of the
 sample against the base in the job summary; it is not a required check. Actions are pinned by commit
