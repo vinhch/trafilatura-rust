@@ -211,6 +211,7 @@ writes it byte for byte.
 | `gen_decimal.py` | `src/pystr/decimal.rs` | the run starts of the `Nd` decimal digits of the image's Python |
 | `gen_decimal.py` (`digit`) | `src/pystr/decimal.rs` | the `str.isdigit` ranges of the image's Python |
 | `gen_htmldate_cases.py` | `src/pydatetime/cases.rs` | `datetime.fromisoformat`, `datetime.strptime(s, "%Y-%m-%d")`, `datetime.fromtimestamp(s, tz=utc)`, `datetime(y, m, d)` and `strftime` on fixed inputs and a seeded sample of strings, under UTC with the two htmldate calls of D-13 turned off |
+| `gen_htmldate_cases.py` (`validator_cases`) | `src/htmldate/validator_cases.rs` | htmldate 1.11.0's validators on fixed inputs under UTC with D-13 off: `is_valid_date` on date strings against `MIN_DATE` and a `max_date` of 2024-01-31, `compare_values` with naive, aware and tied references and both `original` values, `filter_ymd_candidate` with `copyear` below, at and above the year, and `check_date_input` |
 | `gen_htmldate_cases.py` (`serialize_cases`) | `src/dom/html_cases.rs` | `lxml.html.tostring` (libxml2 2.14.6, method html) on whole HTML pages parsed by html5lib, on elements built with `etree.Element`, and on the first `p` with and without its tail |
 | `gen_printable.py` (`alpha`) | `src/pystr/alpha.rs` | the `str.isalpha` ranges of the image's Python |
 | `gen_printable.py` (`lower`) | `src/pystr/lower.rs` | the `str.lower` one-character mappings and the Cased and Case_Ignorable classes of its final-sigma rule, read off the image's Python |

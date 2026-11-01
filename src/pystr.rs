@@ -12,6 +12,8 @@ mod title;
 
 use std::cmp::Ordering;
 
+use regex::Regex;
+
 use crate::error::{ExtractError, Rejection};
 use alpha::ALPHA;
 use decimal::{DIGIT, ND_ZEROS};
@@ -423,6 +425,19 @@ pub fn unicode_escape(s: &str) -> Option<String> {
 // Python's `re.IGNORECASE` also matches `İ` and `ı` for `i`, which Rust's `(?i)` does not.
 pub(crate) fn ignore_case_i(pattern: &str) -> String {
     pattern.replace(['i', 'I'], "[iİı]")
+}
+
+/// A pattern of upstream with `\w`, `\s` and `\d` written as `@W@`, `@S@` and `@D@`, which stand for Python's
+/// classes. `None` where the pattern does not compile.
+// upstream: re.compile (Unicode str patterns)
+pub(crate) fn compile_py(pattern: &str) -> Option<Regex> {
+    Regex::new(
+        &pattern
+            .replace("@W@", PY_WORD_CLASS)
+            .replace("@S@", PY_SPACE_CLASS)
+            .replace("@D@", &digit_class()),
+    )
+    .ok()
 }
 
 #[cfg(test)]

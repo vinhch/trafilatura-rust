@@ -1,5 +1,6 @@
-"""Generates src/pydatetime/cases.rs (what CPython 3.13's datetime and strptime return on fixed inputs) and
-src/dom/html_cases.rs (what lxml.html.tostring returns on fixed pages, `serialize_cases()`).
+"""Generates src/pydatetime/cases.rs (what CPython 3.13's datetime and strptime return on fixed inputs),
+src/dom/html_cases.rs (what lxml.html.tostring returns on fixed pages, `serialize_cases()`) and
+src/htmldate/validator_cases.rs (htmldate's validators on fixed inputs, `validator_cases()`).
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 
@@ -441,6 +442,144 @@ def serialize_cases() -> None:
         "#[rustfmt::skip]",
         "pub(super) const TOSTRING_HTML_TAIL_CASES: &[(&str, &str, &str)] = &[",
         *tail_lines,
+        "];",
+        "",
+    ]
+    sys.stdout.write("\n".join(out))
+
+
+# htmldate's validators (src/htmldate/validator_cases.rs): date strings, reference comparison, the YMD filter and
+# the date-input check. The bounds are MIN_DATE and a max_date of "2024-01-31" (midnight), as the Rust tests build them.
+VALIDATOR_FORMAT = "%Y-%m-%d"
+VALIDATOR_EARLIEST = datetime(1995, 1, 1)
+VALIDATOR_LATEST = datetime(2024, 1, 31)
+VALIDATOR_DEFAULT = datetime(2000, 1, 1)
+
+IS_VALID_DATE_STR_INPUTS = [
+    "2020-01-15",
+    "2020-1-15",
+    "2020-11-1",
+    "2020-01-1x",
+    " 2020-01-15",
+    "2020-+1-15",
+    "2020-01-32",
+    "2020-02-30",
+    "2020-01-15T10:00",
+    "1994-12-31",
+    "1995-01-01",
+    "2024-01-31",
+    "2024-02-01",
+    "２０２０-01-15",
+    "2015abc-01-01",
+    "20151-01-01",
+    "0999-01-01",
+    "9999-01-01",
+    "2020-01-",
+    "",
+]
+
+# (reference, attempt, original): the reference is a datetime string or None, the attempt is in REFERENCE_FORMAT
+COMPARE_VALUES_INPUTS = [
+    (None, "2020-01-01T10:20:30.000000", True),
+    (None, "2020-01-01T10:20:30.000000+0000", False),
+    (None, "2020-01-01T10:20:30.000007+0530", True),
+    ("2020-01-01T10:00:00.000000+0100", "2020-01-01T10:00:00.000000+0000", True),
+    ("2020-01-01T10:00:00.000000+0100", "2020-01-01T10:00:00.000000+0000", False),
+    ("2020-01-01T10:00:00.000000", "2019-12-31T23:00:00.000000+0000", True),
+    ("2020-01-01T10:00:00.000000", "2019-12-31T23:00:00.000000+0000", False),
+    ("2020-01-01T10:00:00.000000", "2021-01-01T00:00:00.000000", False),
+    ("2020-01-01T10:00:00.000000", "2021-01-01T00:00:00.000000", True),
+    (None, "garbage", True),
+    ("2020-01-01T10:00:00.000000", "garbage", True),
+    (None, "999-01-01T00:00:00.000000", True),
+    ("2020-01-01T10:00:00.000000", "999-01-01T00:00:00.000000", True),
+    (None, "2020-01-01T10:00:00.000000+053015.000001", True),
+]
+
+# (bestmatch groups or None, copyear)
+FILTER_YMD_INPUTS = [
+    (None, 0),
+    (("2020", "01", "15"), 0),
+    (("2020", "01", "15"), 2019),
+    (("2020", "01", "15"), 2020),
+    (("2020", "01", "15"), 2021),
+    (("2019", "12", "31"), 2020),
+    (("2020", "1", "5"), 0),
+    (("2020", "11", "1"), 0),
+    (("2020", "02", "30"), 0),
+    (("2024", "01", "31"), 0),
+    (("2024", "02", "01"), 0),
+    (("1994", "12", "31"), 0),
+    (("1995", "01", "01"), 0),
+    (("２０２０", "01", "15"), 0),
+    (("２０２０", "01", "15"), 2021),
+]
+
+CHECK_DATE_INPUT_INPUTS = [None, "2024-01-31", "2024-01-31T10:00+02:00", "garbage", "", "2024-1-31"]
+
+
+def validator_cases() -> None:
+    oracle_setup()
+    from htmldate.utils import Extractor
+    from htmldate.validators import check_date_input, compare_values, filter_ymd_candidate, is_valid_date
+
+    is_valid_lines = [
+        f"    ({rust_str(text)}, {str(is_valid_date(text, VALIDATOR_FORMAT, VALIDATOR_EARLIEST, VALIDATOR_LATEST)).lower()}),"
+        for text in IS_VALID_DATE_STR_INPUTS
+    ]
+    compare_lines = []
+    for reference, attempt, original in COMPARE_VALUES_INPUTS:
+        before = None if reference is None else datetime.fromisoformat(reference)
+        options = Extractor(
+            extensive=False, max=VALIDATOR_LATEST, min=VALIDATOR_EARLIEST, original=original, format=VALIDATOR_FORMAT
+        )
+        result = compare_values(before, attempt, options)
+        compare_lines.append(
+            f"    ({literal(before)}, {rust_str(attempt)}, {str(original).lower()}, {literal(result)}),"
+        )
+    filter_lines = []
+    for bestmatch, copyear in FILTER_YMD_INPUTS:
+        groups = None if bestmatch is None else tuple(bestmatch)
+        result = filter_ymd_candidate(groups, copyear, VALIDATOR_FORMAT, VALIDATOR_EARLIEST, VALIDATOR_LATEST)
+        rust_groups = "None" if bestmatch is None else f"Some([{', '.join(rust_str(g) for g in bestmatch)}])"
+        rust_result = "None" if result is None else f"Some({rust_str(result)})"
+        filter_lines.append(f"    ({rust_groups}, {copyear}, {rust_result}),")
+    check_lines = []
+    for text in CHECK_DATE_INPUT_INPUTS:
+        result = check_date_input(text, VALIDATOR_DEFAULT)
+        rust_text = "None" if text is None else f"Some({rust_str(text)})"
+        check_lines.append(f"    ({rust_text}, {struct(result)}),")
+    out = [
+        f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}.",
+        "// Do not edit. Regenerate from the repository root with:",
+        "//   scripts/oracle.sh 'from parity.gen_htmldate_cases import validator_cases; validator_cases()' > src/htmldate/validator_cases.rs",
+        "// htmldate 1.11.0's validators on fixed inputs, in UTC with the htmldate calls of D-13 turned off.",
+        "",
+        "use crate::pydatetime::DateTime;",
+        "",
+        "/// `is_valid_date(text, \"%Y-%m-%d\", MIN_DATE, 2024-01-31)`.",
+        "#[rustfmt::skip]",
+        "pub(super) const IS_VALID_DATE_STR_CASES: &[(&str, bool)] = &[",
+        *is_valid_lines,
+        "];",
+        "",
+        "/// `compare_values(reference, attempt, options)` with `options.original` as given, then the returned reference.",
+        "#[rustfmt::skip]",
+        "pub(super) const COMPARE_VALUES_CASES: &[(Option<DateTime>, &str, bool, Option<DateTime>)] = &[",
+        *compare_lines,
+        "];",
+        "",
+        "/// `filter_ymd_candidate(bestmatch, copyear, \"%Y-%m-%d\", MIN_DATE, 2024-01-31)`.",
+        "#[allow(clippy::type_complexity)]",
+        "#[rustfmt::skip]",
+        "pub(super) const FILTER_YMD_CASES: &[(Option<[&str; 3]>, i64, Option<&str>)] = &[",
+        *filter_lines,
+        "];",
+        "",
+        "/// `check_date_input(text, 2000-01-01)`, `None` for no input.",
+        "#[rustfmt::skip]",
+        "pub(super) const CHECK_DATE_INPUT_CASES: &[(Option<&str>, DateTime)] = &[",
+        *check_lines,
         "];",
         "",
     ]

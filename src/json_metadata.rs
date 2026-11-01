@@ -19,7 +19,7 @@ use crate::error::{ExtractError, Rejection};
 use crate::html_processing::tick;
 use crate::pyhtml::unescape;
 use crate::pyjson::{Invalid, Json, JsonRef, Kind, try_loads};
-use crate::pystr::{self, PY_SPACE_CLASS, PY_WORD_CLASS, ignore_case_i};
+use crate::pystr::{self, compile_py, ignore_case_i};
 use crate::settings::Document;
 use crate::utils::{HTML_STRIP_TAGS, as_list, trim};
 
@@ -102,15 +102,6 @@ const AUTHOR_ATTRS: [&str; 3] = ["givenName", "additionalName", "familyName"];
 // step that uses it a no-op instead of a panic.
 fn compile(pattern: &str) -> Option<Regex> {
     Regex::new(pattern).ok()
-}
-
-/// A pattern of upstream with `\w` and `\s` written as `@W@` and `@S@`, which stand for Python's classes.
-fn compile_py(pattern: &str) -> Option<Regex> {
-    compile(
-        &pattern
-            .replace("@W@", PY_WORD_CLASS)
-            .replace("@S@", PY_SPACE_CLASS),
-    )
 }
 
 /// Crude author search of a JSON-LD text that does not parse; `.` takes newlines as `re.DOTALL` does.
