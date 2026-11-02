@@ -178,7 +178,7 @@ fn test_author_blacklist() {
         Some("c; d")
     );
     // regression: author_blacklist alone must enable with_metadata. Adaptation: the settings
-    // Extractor is built from a Config, as tests/unit_tests.rs does.
+    // Extractor is built from a Config, as tests/unit_tests/ does.
     let with_blacklist = Extractor::new(
         Config::default(),
         Format::Txt,

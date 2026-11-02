@@ -23,6 +23,7 @@ fn tag(count: usize) -> String {
     format!("<x{}>", attrs(count))
 }
 
+/// `html` parsed by html5ever in one piece, without the scanner.
 fn whole_tree(html: &str, fragment: bool) -> Tree {
     let call = Call::default();
     let limits = ParseLimits {

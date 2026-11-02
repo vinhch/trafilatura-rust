@@ -383,7 +383,7 @@ fn md_inline(body: &str, kw: Kw) -> String {
 }
 
 /// The file `name` of upstream's `tests/resources`, read from the checkout; `None` (with a note)
-/// when the checkout is absent, as `parity.rs` does; with `PARITY_REQUIRE_FIXTURES` set an absent
+/// when the checkout is absent, as `parity/` does; with `PARITY_REQUIRE_FIXTURES` set an absent
 /// checkout panics instead.
 fn resource(name: &str) -> Option<Vec<u8>> {
     let Some(root) = common::upstream_root() else {

@@ -586,7 +586,7 @@ fn test_math_recovery() {
     // html5 tree `math` carries the MathML namespace, so neither `recover_math` nor the
     // `MANUALLY_CLEANED` loop sees it: nothing is recovered and nothing is dropped. The expected
     // dumps are the html5 results of upstream's own functions; `recover_math` itself is tested in
-    // `html_processing::tests::recover_math_on_html_namespace_math`.
+    // `html_processing::tests::cleaning::recover_math_on_html_namespace_math`.
     // oracle: dump_tree(tree_cleaning(parse_document(html), options)) with options.tables = True
     let call = Call::default();
     let mut options = default_options();

@@ -5,7 +5,7 @@
     clippy::indexing_slicing
 )]
 //! Test builders for the trees upstream's tests make with lxml: `etree.fromstring` and
-//! `lxml.html.fromstring`. A module of its own, not `tests/common`, which `tests/parity.rs` also
+//! `lxml.html.fromstring`. A module of its own, not `tests/common`, which `tests/parity/` also
 //! compiles and would warn about the builders it does not use.
 
 use std::borrow::Cow;

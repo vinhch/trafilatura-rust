@@ -155,8 +155,6 @@ fn most_tag_attributes(html: &str, fragment: bool) -> usize {
     most.get()
 }
 
-/// `html` parsed by html5ever in one piece, without the scanner.
-
 #[test]
 fn scan_agrees_with_html5ever() {
     // the case starts k bytes before the first chunk boundary, so its markup straddles it

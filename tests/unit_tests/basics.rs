@@ -46,7 +46,7 @@ fn test_trim() {
 // Not ported: `load_html(123)` and `extract(None, ...)` (the input is typed), `core.Extractor(source=)`
 // and the `output_format="xyz"` raises (no such option; `Format` is an enum), `_RespLike` (no
 // response objects). The XML line is `test_input_phase_6_lines`. The other lines of upstream's test
-// that touch encoding and repair are `test_input_*` and `test_repair_*` in `src/utils/tests.rs`.
+// that touch encoding and repair are `test_input_*` and `test_repair_*` in `src/utils/tests/input.rs`.
 #[test]
 fn test_input() {
     let options = default_options();

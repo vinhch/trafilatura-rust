@@ -12,7 +12,7 @@
 //! with `html.fromstring`, so they run through the tree entry point (`extract_tree`).
 //!
 //! Not ported here: the `language_filter` and `check_html_lang` lines of `test_filters`, which are
-//! unit tests of `utils` (`check_html_lang_matches_python` in `src/utils/tests.rs`; the filter is a
+//! unit tests of `utils` (`check_html_lang_matches_python` in `src/utils/tests/text.rs`; the filter is a
 //! stub, OI-4); `test_prune_xpath` (the crate takes no caller selectors, D-7, followup F-16). The
 //! lines that need the language detection of OI-4 or the XML output and the URL blacklist are in the
 //! `#[ignore]` tests below.
