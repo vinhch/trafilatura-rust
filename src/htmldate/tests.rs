@@ -32,8 +32,9 @@ use super::validator_cases::{
     CHECK_DATE_INPUT_CASES, COMPARE_VALUES_CASES, FILTER_YMD_CASES, IS_VALID_DATE_STR_CASES,
 };
 use super::validators::{
-    Counter, Format, check_date_input, compare_values, correct_year, filter_ymd_candidate,
-    get_max_date, is_valid_date_str, plausible_year_filter, validate_and_convert,
+    Counter, Format, check_date_input, compare_values, correct_year, end_of_utc_day,
+    filter_ymd_candidate, get_max_date, is_valid_date_str, plausible_year_filter,
+    validate_and_convert,
 };
 use crate::cancel::{Call, CancelToken};
 use crate::dom::{ParseLimits, Tree, parse_document};
@@ -701,6 +702,30 @@ fn select_candidate_drops_years_outside_the_bounds() {
         pick(&[("2030-01-01", 1), ("2020-05-05", 1)]),
         groups("2020", "05", "05")
     );
+}
+
+#[test]
+fn end_of_utc_day_is_the_last_instant_of_the_same_utc_day() {
+    // epoch seconds from the Python oracle (datetime(..., tzinfo=timezone.utc).timestamp())
+    for (seconds, expected_day) in [
+        (1_790_899_199, (2026, 10, 1)), // 2026-10-01 23:59:59
+        (1_790_899_200, (2026, 10, 2)), // 2026-10-02 00:00:00
+        (1_790_859_600, (2026, 10, 1)), // 2026-10-01 13:00:00
+    ] {
+        let end = end_of_utc_day(seconds);
+        assert_eq!((end.year, end.month, end.day), expected_day, "{seconds}");
+        assert_eq!(
+            (
+                end.hour,
+                end.minute,
+                end.second,
+                end.microsecond,
+                end.offset
+            ),
+            (23, 59, 59, 999_999, None),
+            "{seconds}"
+        );
+    }
 }
 
 #[test]

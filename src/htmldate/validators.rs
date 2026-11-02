@@ -278,7 +278,12 @@ fn end_of_current_utc_day() -> DateTime {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs());
-    let now = i64::try_from(now).unwrap_or(i64::MAX);
+    end_of_utc_day(i64::try_from(now).unwrap_or(i64::MAX))
+}
+
+/// The end of the UTC day that holds `now` (seconds since the Unix epoch), naive: 23:59:59.999999.
+// Split from the clock read so that tests can fix the time of day.
+pub(crate) fn end_of_utc_day(now: i64) -> DateTime {
     let day_start = now - now.rem_euclid(SECONDS_PER_DAY);
     DateTime::from_timestamp_utc(day_start).map_or(LAST_INSTANT, |day| DateTime {
         hour: 23,
