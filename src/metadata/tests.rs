@@ -433,14 +433,17 @@ fn short_bold(tree: &Tree, root: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>,
     collect_nodes(tree, root, call, |node| tree.tag(node) == Some("b"))
 }
 
-/// Selects the paragraphs, then takes longer than the test's deadline before returning them.
+/// Selects the paragraphs, then spins until the call's deadline has passed before returning them.
+/// A deadline that has already passed would stop the first expression's check, so the test would
+/// never reach the join of this match.
 fn slow_paragraphs(
     tree: &Tree,
     root: NodeId,
     call: &Call<'_>,
 ) -> Result<Vec<NodeId>, ExtractError> {
     let found = paragraphs(tree, root, call)?;
-    std::thread::sleep(std::time::Duration::from_millis(60));
+    // Ends because the test sets a deadline and no cancel token: the loop exits once it passes.
+    while call.check().is_ok() {}
     Ok(found)
 }
 
