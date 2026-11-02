@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use trafilatura_rust::__internals::{
     DumpMode, HtmlInput, MAX_FILE_SIZE, ParseLimits, dump, load_html,
 };
@@ -828,37 +828,37 @@ const METADATA_KNOWN: &[(&str, &str, &str)] = &[
         "date",
         "D-13",
     ),
-    // Non-UTF-8: byte 0xB3 is ł in the charset upstream guesses, ³ in the crate's latin-1 guess
+    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
     (
         "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
         "author",
         "D-3",
     ),
-    // Non-UTF-8: as author
+    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
     (
         "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
         "description",
         "D-3",
     ),
-    // Non-UTF-8: as author
+    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
     (
         "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
         "title",
         "D-3",
     ),
-    // Non-UTF-8: the fixture reads the bytes as latin-1 where the crate reads Central European letters
+    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
     (
         "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
         "description",
         "D-3",
     ),
-    // Non-UTF-8: as description
+    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
     (
         "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
         "tags",
         "D-3",
     ),
-    // Non-UTF-8: as description
+    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
     (
         "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
         "title",
@@ -953,7 +953,7 @@ fn run_metadata_page(upstream: &Path, fixtures: &Path, entry: &Value, max_date: 
     if source.ends_with(".gz") && cfg!(not(feature = "decompress")) {
         return unchecked(vec!["decompress"], None);
     }
-    let (Some(want), Some(got)) = (expected.as_object(), actual.as_object()) else {
+    let Some((want, got)) = field_maps(expected, &actual) else {
         return unchecked(vec!["port-bug"], Some((expected.clone(), actual.clone())));
     };
     let mut fields = Vec::new();
@@ -997,9 +997,18 @@ fn deviation_of(id: &str, field: &str) -> &'static str {
         .map_or("", |(_, _, deviation)| deviation)
 }
 
-/// The `METADATA_KNOWN` entries that do not hold: the field matches the fixture, or the page is not in
-/// the corpus. Entries of a page that was not compared are not checked.
-fn stale_known(pages: &[MetaPage]) -> Vec<String> {
+/// The metadata objects of a fixture page and of its crate metadata, by field name.
+type FieldMaps<'a> = (&'a Map<String, Value>, &'a Map<String, Value>);
+
+/// The field maps of a fixture page and of its crate metadata, or `None` when one side is `null`: a
+/// whole-page mismatch, not a field one.
+fn field_maps<'a>(expected: &'a Value, actual: &'a Value) -> Option<FieldMaps<'a>> {
+    Some((expected.as_object()?, actual.as_object()?))
+}
+
+/// The entries of `known` that do not hold: the field matches the fixture, or the page is not in
+/// `pages`, which reports a misspelt page id. Entries of a page that was not compared are not checked.
+fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str)]) -> Vec<String> {
     let differing: std::collections::HashSet<(&str, &str)> = pages
         .iter()
         .flat_map(|p| {
@@ -1013,7 +1022,7 @@ fn stale_known(pages: &[MetaPage]) -> Vec<String> {
         .filter(|p| !p.checked)
         .map(|p| p.id.as_str())
         .collect();
-    METADATA_KNOWN
+    known
         .iter()
         .filter(|(page, field, _)| {
             !differing.contains(&(*page, *field)) && !unchecked.contains(*page)
@@ -1104,7 +1113,7 @@ fn metadata_matches_html5_fixture() {
         .iter()
         .map(|entry| run_metadata_page(&upstream, &fixtures, entry, max_date))
         .collect();
-    let stale = stale_known(&pages);
+    let stale = stale_known(&pages, METADATA_KNOWN);
     let path = write_metadata_report(&pages, &stale);
     let port_bugs: Vec<&str> = pages
         .iter()
@@ -1119,6 +1128,49 @@ fn metadata_matches_html5_fixture() {
         stale.len(),
         path.display()
     );
+}
+
+#[test]
+fn stale_known_reports_entries_that_do_not_hold() {
+    let page = |id: &str, checked: bool, fields: &[&str]| MetaPage {
+        id: id.to_string(),
+        classes: vec![],
+        checked,
+        fields: fields
+            .iter()
+            .map(|name| MetaField {
+                name: name.to_string(),
+                expected: Value::Null,
+                actual: Value::Null,
+                class: "port-bug",
+            })
+            .collect(),
+        whole: None,
+    };
+    let pages = [
+        page("absent", true, &[]),
+        page("present", true, &["date"]),
+        page("unchecked", false, &[]),
+    ];
+    let known = [
+        ("absent", "date", "D-13"),
+        ("present", "date", "D-13"),
+        ("unchecked", "date", "D-13"),
+        ("unlisted", "date", "D-13"),
+    ];
+    assert_eq!(
+        stale_known(&pages, &known),
+        ["absent date", "unlisted date"]
+    );
+}
+
+#[test]
+fn field_maps_compares_only_two_objects() {
+    let dict = json!({"title": "a"});
+    assert!(field_maps(&dict, &dict).is_some());
+    assert!(field_maps(&Value::Null, &dict).is_none());
+    assert!(field_maps(&dict, &Value::Null).is_none());
+    assert!(field_maps(&Value::Null, &Value::Null).is_none());
 }
 
 /// Dropping the text of unread scripts and styles must not change any output: each corpus page
