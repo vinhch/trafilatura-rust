@@ -1,0 +1,325 @@
+use super::*;
+
+/// Metadata fields that differ from the fixtures for an explained reason: (page id, field, deviation
+/// id). Each entry carries its reason in a comment above it. An entry whose field matches fails the
+/// test as stale.
+pub(crate) const METADATA_KNOWN: &[(&str, &str, &str)] = &[
+    // dateparser date; without it upstream gives the crate's date, 2007-12-16
+    (
+        "tests__eval__archive.org.dimido.de.marketing.html",
+        "date",
+        "D-13",
+    ),
+    // dateparser date; without it upstream gives 2019-02-09
+    ("tests__eval__assabah.com.tn.article.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2018-04-01
+    ("tests__eval__diario1.com-legislativa.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-04-21
+    ("tests__eval__diarioextra.com-cidh.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-02-01
+    ("tests__eval__dtb-tennis.de-nominiert.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-04-21
+    ("tests__eval__elfaro.net-asamblea.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2019-01-01
+    ("tests__eval__football.ua.podolski.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-04-19
+    ("tests__eval__guetemala.com-nicole.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-05-03
+    (
+        "tests__eval__lacuarta.com-loretoaravena.html",
+        "date",
+        "D-13",
+    ),
+    // dateparser date; without it upstream gives 2022-04-26
+    (
+        "tests__eval__laestrella.com.pa-laboral.html",
+        "date",
+        "D-13",
+    ),
+    // dateparser date; without it upstream gives 2022-05-04
+    ("tests__eval__lanacion.com.ar-jugada.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-01-01
+    ("tests__eval__petri-heil-ch-hechte.html", "date", "D-13"),
+    // dateparser date; without it upstream gives 2022-01-17
+    (
+        "tests__eval__schweizerjaeger.ch-steinkauz.html",
+        "date",
+        "D-13",
+    ),
+    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
+    (
+        "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
+        "author",
+        "D-3",
+    ),
+    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
+    (
+        "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
+        "description",
+        "D-3",
+    ),
+    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
+    (
+        "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
+        "title",
+        "D-3",
+    ),
+    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
+    (
+        "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
+        "description",
+        "D-3",
+    ),
+    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
+    (
+        "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
+        "tags",
+        "D-3",
+    ),
+    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
+    (
+        "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
+        "title",
+        "D-3",
+    ),
+];
+
+const METADATA_CLASSES: [&str; 5] = ["match", "decompress", "upstream-error", "known", "port-bug"];
+
+/// A metadata field of a page that differs from the fixture.
+pub(crate) struct MetaField {
+    pub(crate) name: String,
+    pub(crate) expected: Value,
+    pub(crate) actual: Value,
+    pub(crate) class: &'static str,
+}
+
+pub(crate) struct MetaPage {
+    pub(crate) id: String,
+    pub(crate) classes: Vec<&'static str>,
+    /// Whether the fields were compared. False for `upstream-error`, `decompress` and a whole-page
+    /// mismatch.
+    pub(crate) checked: bool,
+    pub(crate) fields: Vec<MetaField>,
+    /// The fixture and the crate metadata of a whole-page mismatch, one side `null`.
+    pub(crate) whole: Option<(Value, Value)>,
+}
+
+/// The metadata of `doc` in the shape of the fixtures: `categories` and `tags` as arrays (`None` as
+/// `[]`), every other field as a string or `null`.
+fn doc_metadata(doc: &Document) -> Value {
+    json!({
+        "title": doc.title,
+        "author": doc.author,
+        "url": doc.url,
+        "hostname": doc.hostname,
+        "description": doc.description,
+        "sitename": doc.sitename,
+        "date": doc.date,
+        "categories": doc.categories.as_deref().unwrap_or_default(),
+        "tags": doc.tags.as_deref().unwrap_or_default(),
+        "fingerprint": doc.fingerprint,
+        "id": doc.id,
+        "license": doc.license,
+        "language": doc.language,
+        "image": doc.image,
+        "pagetype": doc.pagetype,
+        "filedate": doc.filedate,
+    })
+}
+
+/// Compares one page's metadata with its fixture. The first class that applies decides the page:
+/// `upstream-error`, `match` (equal, `null` on both sides included), `decompress`, else per field
+/// `known` when `METADATA_KNOWN` lists it and `port-bug` when not. A `null` on one side only is a
+/// whole-page `port-bug`.
+pub(crate) fn run_metadata_page(
+    upstream: &Path,
+    fixtures: &Path,
+    entry: &Value,
+    max_date: &str,
+) -> MetaPage {
+    let id = entry["id"].as_str().unwrap().to_string();
+    let source = entry["source"].as_str().unwrap();
+    let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
+    let expected = &fixture["html5"]["metadata"];
+    let unchecked = |classes: Vec<&'static str>, whole: Option<(Value, Value)>| MetaPage {
+        id: id.clone(),
+        classes,
+        checked: false,
+        fields: vec![],
+        whole,
+    };
+    if fixture["html5"]["errors"]["metadata"].is_string() {
+        return unchecked(vec!["upstream-error"], None);
+    }
+    let bytes = std::fs::read(upstream.join(source)).unwrap();
+    let call = Call::default().max_date(max_date);
+    let extracted = Options::new()
+        .with_metadata(true)
+        .keep_script_text(true)
+        .build()
+        .bare_extraction(&Input::bytes(&bytes), &call);
+    let actual = match extracted {
+        Ok(doc) => doc_metadata(&doc),
+        Err(ExtractError::Rejected(_)) => Value::Null,
+        Err(other) => panic!("{id}: unexpected error {other:?}"),
+    };
+    if *expected == actual {
+        return MetaPage {
+            id,
+            classes: vec!["match"],
+            checked: true,
+            fields: vec![],
+            whole: None,
+        };
+    }
+    if source.ends_with(".gz") && cfg!(not(feature = "decompress")) {
+        return unchecked(vec!["decompress"], None);
+    }
+    let Some((want, got)) = field_maps(expected, &actual) else {
+        return unchecked(vec!["port-bug"], Some((expected.clone(), actual.clone())));
+    };
+    let mut fields = Vec::new();
+    for (name, want) in want {
+        let got = got
+            .get(name)
+            .unwrap_or_else(|| panic!("{id}: fixture field {name} has no crate field"));
+        if want == got {
+            continue;
+        }
+        let known = METADATA_KNOWN
+            .iter()
+            .any(|(page, field, _)| *page == id && *field == name);
+        fields.push(MetaField {
+            name: name.clone(),
+            expected: want.clone(),
+            actual: got.clone(),
+            class: if known { "known" } else { "port-bug" },
+        });
+    }
+    let mut classes: Vec<&'static str> = fields.iter().map(|f| f.class).collect();
+    classes.sort_unstable();
+    classes.dedup();
+    if classes.is_empty() {
+        classes.push("match");
+    }
+    MetaPage {
+        id,
+        classes,
+        checked: true,
+        fields,
+        whole: None,
+    }
+}
+
+/// The deviation id of a `METADATA_KNOWN` entry for this page and field.
+fn deviation_of(id: &str, field: &str) -> &'static str {
+    METADATA_KNOWN
+        .iter()
+        .find(|(page, name, _)| *page == id && *name == field)
+        .map_or("", |(_, _, deviation)| deviation)
+}
+
+/// The metadata objects of a fixture page and of its crate metadata, by field name.
+type FieldMaps<'a> = (&'a Map<String, Value>, &'a Map<String, Value>);
+
+/// The field maps of a fixture page and of its crate metadata, or `None` when one side is `null`: a
+/// whole-page mismatch, not a field one.
+pub(crate) fn field_maps<'a>(expected: &'a Value, actual: &'a Value) -> Option<FieldMaps<'a>> {
+    Some((expected.as_object()?, actual.as_object()?))
+}
+
+/// The entries of `known` that do not hold: the field matches the fixture, or the page is not in
+/// `pages`, which reports a misspelt page id. Entries of a page that was not compared are not checked.
+pub(crate) fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str)]) -> Vec<String> {
+    let differing: std::collections::HashSet<(&str, &str)> = pages
+        .iter()
+        .flat_map(|p| {
+            p.fields
+                .iter()
+                .map(move |f| (p.id.as_str(), f.name.as_str()))
+        })
+        .collect();
+    let unchecked: std::collections::HashSet<&str> = pages
+        .iter()
+        .filter(|p| !p.checked)
+        .map(|p| p.id.as_str())
+        .collect();
+    known
+        .iter()
+        .filter(|(page, field, _)| {
+            !differing.contains(&(*page, *field)) && !unchecked.contains(*page)
+        })
+        .map(|(page, field, _)| format!("{page} {field}"))
+        .collect()
+}
+
+pub(crate) fn write_metadata_report(pages: &[MetaPage], stale: &[String]) -> PathBuf {
+    let mut out = String::from("# Parity report: metadata against the html5 fixtures\n\n");
+    let _ = writeln!(out, "Pages: {}\n", pages.len());
+    out.push_str("## Classes\n\n");
+    for class in METADATA_CLASSES {
+        let page_count = pages.iter().filter(|p| p.classes.contains(&class)).count();
+        let field_count: usize = pages
+            .iter()
+            .map(|p| p.fields.iter().filter(|f| f.class == class).count())
+            .sum();
+        let _ = writeln!(out, "- {class}: {page_count} pages, {field_count} fields");
+    }
+    let known: Vec<(&MetaPage, &MetaField)> = pages
+        .iter()
+        .flat_map(|p| {
+            p.fields
+                .iter()
+                .filter(|f| f.class == "known")
+                .map(move |f| (p, f))
+        })
+        .collect();
+    let mut deviations: Vec<&str> = METADATA_KNOWN.iter().map(|(_, _, d)| *d).collect();
+    deviations.sort_unstable();
+    deviations.dedup();
+    out.push_str("\n## Known differences by deviation id\n\n");
+    for deviation in deviations {
+        let count = known
+            .iter()
+            .filter(|(p, f)| deviation_of(&p.id, &f.name) == deviation)
+            .count();
+        let _ = writeln!(out, "- {deviation}: {count} fields");
+    }
+    out.push_str("\n## Port-bug pages\n\n");
+    for page in pages.iter().filter(|p| p.classes.contains(&"port-bug")) {
+        let _ = writeln!(out, "### {}\n", page.id);
+        if let Some((expected, actual)) = &page.whole {
+            let _ = writeln!(out, "- whole page: expected {expected}, actual {actual}");
+        }
+        for f in page.fields.iter().filter(|f| f.class == "port-bug") {
+            let _ = writeln!(
+                out,
+                "- {}: expected {}, actual {}",
+                f.name, f.expected, f.actual
+            );
+        }
+        out.push('\n');
+    }
+    out.push_str("## Known differences\n\n");
+    for (page, f) in &known {
+        let _ = writeln!(
+            out,
+            "- {} {} ({}): expected {}, actual {}",
+            page.id,
+            f.name,
+            deviation_of(&page.id, &f.name),
+            f.expected,
+            f.actual
+        );
+    }
+    out.push_str("\n## Stale entries\n\n");
+    for entry in stale {
+        let _ = writeln!(out, "- {entry}");
+    }
+    let dir = common::report_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("metadata-report.md");
+    std::fs::write(&path, out).unwrap();
+    path
+}
