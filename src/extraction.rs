@@ -574,7 +574,7 @@ pub fn bare_extraction(
     if options.dedup && duplicate_test(&tree, postbody, ctx) {
         return Err(ExtractError::Rejected(Rejection::Duplicate));
     }
-    // todo(phase 4): language (the detected language goes into `document.language`)
+    // todo(OI-4): language (the detected language goes into `document.language`)
     if let Some(lang) = lang
         && language_filter(&temp_text, &temp_comments, Some(lang))
     {

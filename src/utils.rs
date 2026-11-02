@@ -813,15 +813,15 @@ pub fn check_html_lang(tree: &Tree, root: NodeId, target_language: &str, strict:
 
 /// Runs the language classifier on the text or the comments, whichever is longer.
 // upstream: utils.py::language_classifier
-// todo(phase 4): language
+// todo(OI-4): language
 pub fn language_classifier(_temp_text: &str, _temp_comments: &str) -> Option<String> {
     None
 }
 
 /// Whether the text is in another language than the target; the detected language is not written
-/// to the document until phase 4.
+/// to the document until OI-4 is decided.
 // upstream: utils.py::language_filter
-// todo(phase 4): language
+// todo(OI-4): language
 pub fn language_filter(
     _temp_text: &str,
     _temp_comments: &str,

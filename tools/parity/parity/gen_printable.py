@@ -1,4 +1,4 @@
-"""Generates src/pystr/printable.rs, src/pystr/alpha.rs, src/pystr/lower.rs and src/pystr/title.rs: the Python character tables behind `crate::pystr`.
+"""Generates src/pystr/printable.rs, src/pystr/alpha.rs, src/pystr/alnum.rs, src/pystr/lower.rs and src/pystr/title.rs: the Python character tables behind `crate::pystr`.
 
 Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows and macOS):
 

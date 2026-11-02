@@ -45,10 +45,6 @@
 //!   input and the format are typed), `core.Extractor(source=)`, the YAML parse of
 //!   `test_markdown_metadata_yaml_safe`, the `prune_xpath` line of
 //!   `test_extract_leaves_caller_tree_intact` (D-7).
-//! - Single lines: `load_html(123)`, `extract(None, ...)` and the `output_format="xyz"` raises (the
-//!   input and the format are typed), `core.Extractor(source=)`, the YAML parse of
-//!   `test_markdown_metadata_yaml_safe`, the `prune_xpath` line of
-//!   `test_extract_leaves_caller_tree_intact` (D-7).
 
 use std::collections::HashSet;
 

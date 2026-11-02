@@ -1,5 +1,6 @@
 //! Python string semantics where Rust's differ: whitespace, `splitlines`, `isprintable`, `isalpha`,
-//! `lower`, `title`, `isupper`, `repr`, the `unicode_escape` decode, `\w` and decimal digits.
+//! `isalnum`, punctuation, `lower`, `title`, `isupper`, `repr`, the `unicode_escape` decode, `\w`
+//! and decimal digits.
 //!
 //! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py` and
 //! `gen_decimal.py`); the functions only search them.
