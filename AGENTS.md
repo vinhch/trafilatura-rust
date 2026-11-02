@@ -33,7 +33,13 @@ not when it looks similar or scores well on a benchmark.
 - Port behavior function by function. Keep upstream's order of steps: the extraction pipeline mutates
   one tree, so the order of operations is behavior.
 - Put each port in the Rust module `docs/architecture.md` maps to the upstream file: one Rust module
-  per upstream file, so a diff of one Python file points at one Rust file.
+  per upstream file, a file or a directory (`name.rs` plus `name/`) whose files the module map lists,
+  so a diff of one Python file points at one Rust module. A split moves whole functions and never
+  splits a ported function.
+- File size guide: production files 800 lines, test files 1,000. Past the guide, split by concern, or
+  keep the file with a `//! size: <reason>` line in its module doc (`// size: <reason>` in a file with
+  no module doc). A file never exceeds 1.5 times the guide, reason or not. Generated files are exempt
+  and never read whole. Unit tests sit in a sibling `tests.rs` or `tests/`, never inline.
 - Names follow Rust style, not upstream spelling: rename where it reads better (`xmltotxt` becomes
   `xml_to_text`), drop the leading `_` of private helpers (visibility says private), `HtmlParser`
   not `HTMLParser`, a suffix for a Rust keyword (`ref_`). The trace comment below is the link to
@@ -113,7 +119,9 @@ These hold for the whole crate; `docs/architecture.md` (Runtime contract) has th
 ## Tests
 
 The upstream `tests/<name>_tests.py` of each module in the module map is its specification; tests of
-out-of-scope modules are not ported. It becomes `tests/<name>_tests.rs`, case by case, keeping each
+out-of-scope modules are not ported. It becomes the `<name>_tests` test target (`tests/<name>_tests.rs`,
+or `tests/<name>_tests/main.rs` with submodules that follow the upstream file's test order), case by
+case, keeping each
 test name (`test_extract_with_metadata` becomes `fn test_extract_with_metadata`), so a changed upstream
 test points at one Rust test.
 
