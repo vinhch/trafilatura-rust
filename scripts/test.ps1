@@ -18,7 +18,7 @@ $ScriptName = 'test.ps1'
 $StackTests = @(
     'baseline::tests::deep_json_on_small_stack'
     'dom::tests::iter::deep_chain_walks_iteratively'
-    'extraction::tests::deep_caller_tree_on_small_stack'
+    'extraction::tests::caller_tree::deep_caller_tree_on_small_stack'
     'main_extractor::tests::dispatch::deep_nesting_fits_512k_stack'
     'pyjson::tests::deep_document_drops_on_small_stack'
     'xml::tests::output_deep_nesting_fits_512k_stack'
