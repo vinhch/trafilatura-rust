@@ -64,8 +64,8 @@ cargo clippy --locked -- -D warnings
 cargo clippy --locked --no-default-features -- -D warnings
 cargo test --locked --all-features
 # The test profile builds at opt-level 1; the dev profile stays at 0, where stack frames are largest.
-# A filter that matches nothing would pass vacuously, so the selection is counted first.
-stack_args=(--locked --profile dev --all-features --lib --test unit_tests -- --exact "${stack_tests[@]}")
+# A filter that matches nothing would pass vacuously, so the selection is counted first. An #[ignore]d stack test still runs here.
+stack_args=(--locked --profile dev --all-features --lib --test unit_tests -- --include-ignored --exact "${stack_tests[@]}")
 stack_listing="$(cargo test "${stack_args[@]}" --list)"
 stack_found="$(grep -c ': test$' <<<"$stack_listing" || true)"
 [ "$stack_found" -eq "${#stack_tests[@]}" ] || fail "stack tests: expected ${#stack_tests[@]}, found $stack_found"

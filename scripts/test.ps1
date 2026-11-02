@@ -75,8 +75,8 @@ Invoke-Checked @('cargo', 'clippy', '--locked', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--no-default-features', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'test', '--locked', '--all-features')
 # The test profile builds at opt-level 1; the dev profile stays at 0, where stack frames are largest.
-# A filter that matches nothing would pass vacuously, so the selection is counted first.
-$StackArgs = @('test', '--locked', '--profile', 'dev', '--all-features', '--lib', '--test', 'unit_tests', '--', '--exact') + $StackTests
+# A filter that matches nothing would pass vacuously, so the selection is counted first. An #[ignore]d stack test still runs here.
+$StackArgs = @('test', '--locked', '--profile', 'dev', '--all-features', '--lib', '--test', 'unit_tests', '--', '--include-ignored', '--exact') + $StackTests
 $StackListing = & cargo @StackArgs --list
 if ($LASTEXITCODE -ne 0) { Fail "'cargo $($StackArgs -join ' ') --list' exited with $LASTEXITCODE" }
 $StackFound = @($StackListing | Where-Object { $_ -match ': test$' }).Count
