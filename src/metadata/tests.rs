@@ -433,36 +433,39 @@ fn short_bold(tree: &Tree, root: NodeId, call: &Call<'_>) -> Result<Vec<NodeId>,
     collect_nodes(tree, root, call, |node| tree.tag(node) == Some("b"))
 }
 
-/// Selects the paragraphs, then spins until the call's deadline has passed before returning them.
-/// A deadline that has already passed would stop the first expression's check, so the test would
-/// never reach the join of this match.
-fn slow_paragraphs(
+thread_local! {
+    // A selector is a fn pointer and cannot capture the test's token; each test thread has its own.
+    static STOP_AFTER_SELECT: CancelToken = CancelToken::new();
+}
+
+/// Selects the paragraphs with the call still live, then cancels it. The stop lands after the
+/// selection, so the only check that can see it is the one before the match is joined.
+fn cancel_after_paragraphs(
     tree: &Tree,
     root: NodeId,
     call: &Call<'_>,
 ) -> Result<Vec<NodeId>, ExtractError> {
     let found = paragraphs(tree, root, call)?;
-    // Ends because the test sets a deadline and no cancel token: the loop exits once it passes.
-    while call.check().is_ok() {}
+    STOP_AFTER_SELECT.with(CancelToken::cancel);
     Ok(found)
 }
 
 #[test]
 fn metainfo_checks_the_call_before_each_match_is_joined() {
-    // The first match is too short, so the loop reaches the second expression's match with a deadline
-    // that has passed; a check only every CHECK_INTERVAL matches would return its text.
+    // The first match is too short, so the loop moves on to the second expression; its match is
+    // joined only after the call was cancelled.
     let tree = document("", "<b>a</b><p>valid text</p>");
-    let call =
-        Call::default().deadline(std::time::Instant::now() + std::time::Duration::from_millis(20));
+    let token = STOP_AFTER_SELECT.with(|token| token.clone());
+    let call = Call::default().cancel(&token);
     assert_eq!(
         extract_metainfo(
             &tree,
             tree.root(),
-            &[short_bold, slow_paragraphs],
+            &[short_bold, cancel_after_paragraphs],
             200,
             &call
         ),
-        Err(ExtractError::DeadlineExceeded)
+        Err(ExtractError::Cancelled)
     );
 }
 
