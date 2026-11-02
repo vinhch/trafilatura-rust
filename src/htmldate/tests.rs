@@ -7,8 +7,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::core::{
-    date_candidates, examine_abbr_elements, examine_elements, examine_header, examine_text,
-    examine_time_elements, find_date, search_page, title_h1_elements,
+    THREE_LOOSE_CATCH, YEAR_PATTERN, date_candidates, examine_abbr_elements, examine_elements,
+    examine_header, examine_text, examine_time_elements, find_date, search_page, select_candidate,
+    title_h1_elements,
 };
 use super::examine_cases::{EXAMINE_CASES, Expected};
 use super::extractor_cases::{
@@ -30,8 +31,8 @@ use super::validator_cases::{
     CHECK_DATE_INPUT_CASES, COMPARE_VALUES_CASES, FILTER_YMD_CASES, IS_VALID_DATE_STR_CASES,
 };
 use super::validators::{
-    Format, check_date_input, compare_values, correct_year, filter_ymd_candidate, get_max_date,
-    is_valid_date_str, plausible_year_filter, validate_and_convert,
+    Counter, Format, check_date_input, compare_values, correct_year, filter_ymd_candidate,
+    get_max_date, is_valid_date_str, plausible_year_filter, validate_and_convert,
 };
 use crate::cancel::{Call, CancelToken};
 use crate::dom::{ParseLimits, Tree, parse_document};
@@ -590,5 +591,113 @@ fn cancelled_call_stops_find_date() {
     assert_eq!(
         find_date(&tree, tree.root(), &params, None, &call),
         Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn find_date_extensive_skips_segments_at_the_length_bounds() {
+    // oracle: scripts/oracle.sh 'from htmldate import find_date; print(find_date(<page>, extensive_search=True,
+    // original_date=False, max_date="2024-01-31"))': the 6 and 52 code point segments are not read, so the
+    // 5/5/2020 segment is the only reference
+    let params = DateParams {
+        original_date: false,
+        extensive_search: true,
+        max_date: Some("2024-01-31".to_owned()),
+    };
+    let long = format!("{:x<52}", "3/3/2023 ");
+    assert_eq!(long.chars().count(), 52);
+    for newer in ["3/3/23", long.as_str()] {
+        let tree = parse(&format!(
+            "<html><body><p>{newer}</p><p>5/5/2020 and more</p></body></html>"
+        ));
+        assert_eq!(
+            find_date(&tree, tree.root(), &params, None, &Call::default()),
+            Ok(Some("2020-05-05".to_owned())),
+            "{newer:?}"
+        );
+    }
+}
+
+#[test]
+fn examine_abbr_elements_reads_text_longer_than_ten() {
+    // oracle: examine_abbr_elements(parse(html), options) with the first text at 10 code points and the second at
+    // 14: only the second is a reference, so the newer first date loses
+    let tree = parse(
+        r#"<div><abbr class="published">2023-03-03</abbr><abbr class="published">2020-05-05 abc</abbr></div>"#,
+    );
+    assert_eq!(
+        examine_abbr_elements(&tree, tree.root(), &search_options(), &Call::default()),
+        Ok(Some("2020-05-05".to_owned()))
+    );
+}
+
+#[test]
+fn examine_time_elements_text_needs_more_than_six() {
+    // oracle: examine_time_elements(parse(html), options): a 6 code point text is no reference
+    let tree = parse("<div><time>3/3/23</time></div>");
+    assert_eq!(
+        examine_time_elements(&tree, tree.root(), &search_options(), &Call::default()),
+        Ok(None)
+    );
+}
+
+#[test]
+fn examine_time_elements_datetime_needs_more_than_six() {
+    // oracle: examine_time_elements(parse(html), options): a 6 code point datetime is skipped for the text
+    let tree = parse(r#"<div><time datetime="3/3/23">5/5/2020</time></div>"#);
+    assert_eq!(
+        examine_time_elements(&tree, tree.root(), &search_options(), &Call::default()),
+        Ok(Some("2020-05-05".to_owned()))
+    );
+}
+
+#[test]
+fn examine_time_elements_original_shortcut_attributes() {
+    // oracle: examine_time_elements(parse(html), options) with original=True: the first element's date returns at
+    // once, though the second is older
+    let options = Extractor {
+        original: true,
+        ..search_options()
+    };
+    for attributes in [r#"pubdate="pubdate""#, r#"class="entry-date""#] {
+        let tree = parse(&format!(
+            r#"<div><time datetime="2022-02-02" {attributes}></time><time datetime="2020-02-02"></time></div>"#
+        ));
+        assert_eq!(
+            examine_time_elements(&tree, tree.root(), &options, &Call::default()),
+            Ok(Some("2022-02-02".to_owned())),
+            "{attributes}"
+        );
+    }
+}
+
+#[test]
+fn select_candidate_drops_years_outside_the_bounds() {
+    // oracle: select_candidate(Counter(candidates), THREE_LOOSE_CATCH, YEAR_PATTERN, options).groups()
+    let pick = |candidates: &[(&str, usize)]| {
+        let mut counter = Counter::default();
+        for &(key, count) in candidates {
+            counter.add(key, count);
+        }
+        select_candidate(
+            &counter,
+            &THREE_LOOSE_CATCH,
+            &YEAR_PATTERN,
+            &search_options(),
+            &Call::default(),
+        )
+    };
+    let groups = |year: &str, month: &str, day: &str| {
+        Ok(Some([year, month, day].map(|group| Some(group.to_owned()))))
+    };
+    // the runner-up year is before the minimum: the frequent newer candidate stays
+    assert_eq!(
+        pick(&[("2023-03-03", 3), ("1990-01-01", 2)]),
+        groups("2023", "03", "03")
+    );
+    // the larger year is after the maximum: the plausible runner-up wins the tie
+    assert_eq!(
+        pick(&[("2030-01-01", 1), ("2020-05-05", 1)]),
+        groups("2020", "05", "05")
     );
 }
