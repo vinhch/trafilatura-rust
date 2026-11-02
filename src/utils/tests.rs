@@ -61,7 +61,7 @@ fn default_input_cap_is_64_mib() {
 }
 
 fn repaired(html: &str) -> String {
-    let beginning = html.chars().take(50).collect::<String>().to_lowercase();
+    let beginning = pystr::lower(&html.chars().take(50).collect::<String>());
     repair_faulty_html(html, &beginning).into_owned()
 }
 
@@ -1032,6 +1032,16 @@ mod text {
                 "{html} {target:?} {strict}"
             );
         }
+    }
+
+    #[test]
+    fn check_html_lang_lowercases_like_python_str_lower() {
+        // Python 3.13 leaves U+10D50 unchanged; Rust's to_lowercase maps it to U+10D70.
+        // oracle: check_html_lang(load_html('<html lang="\U00010d50">...'), target, True)
+        let html = "<html lang=\"\u{10d50}\"><head></head><body><p>Some text here</p></body></html>";
+        let tree = tree(html);
+        assert!(!check_html_lang(&tree, tree.root(), "\u{10d70}", true));
+        assert!(check_html_lang(&tree, tree.root(), "\u{10d50}", true));
     }
 
     #[test]

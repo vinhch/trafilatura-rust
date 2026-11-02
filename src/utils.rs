@@ -388,7 +388,7 @@ pub fn load_html(
         }
         HtmlInput::Str(text) => Cow::Borrowed(text),
     };
-    let beginning = html.chars().take(50).collect::<String>().to_lowercase();
+    let beginning = pystr::lower(&html.chars().take(50).collect::<String>());
     let check_flag = is_dubious_html(&beginning);
     let html = repair_faulty_html(&html, &beginning);
     // lxml cannot parse an empty document and upstream keeps `None`.
@@ -763,7 +763,7 @@ pub fn is_acceptable_length(my_len: usize, ctx: &Ctx<'_>) -> bool {
 /// Whether `target` is one of the pieces `re.split(r"([a-z]{2})", value.lower())` returns: the
 /// two-letter codes and what lies between them.
 fn lang_attr_matches(value: &str, target: &str) -> bool {
-    let value = value.to_lowercase();
+    let value = pystr::lower(value);
     let Some(codes) = RE_HTML_LANG.as_ref() else {
         return false;
     };
