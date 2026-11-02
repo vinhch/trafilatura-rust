@@ -127,6 +127,19 @@ fn normalize_authors_matches_python() {
 }
 
 #[test]
+fn normalize_authors_stops_on_a_cancelled_call() {
+    let token = CancelToken::new();
+    token.cancel();
+    let call = Call::default().cancel(&token);
+    // The name is dropped as empty, so the fullest-form filter has nothing to check; only the
+    // check per name can stop the call.
+    assert_eq!(
+        normalize_authors(None, "123", &call),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
 fn normalize_json_matches_python() {
     for (text, expected) in NORMALIZE_JSON_CASES {
         assert_eq!(normalize_json(text).unwrap(), *expected, "{text:?}");
