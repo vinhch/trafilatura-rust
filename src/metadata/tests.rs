@@ -834,3 +834,16 @@ fn extract_metadata_stops_on_cancellation() {
         Some(ExtractError::Cancelled)
     );
 }
+
+#[test]
+fn url_base_comes_from_meta_elements_only() {
+    // oracle: extract_url(parse_document(html), None): the `link` with a `content` and an og: name is not a meta
+    assert_eq!(
+        url_of(
+            r#"<link name="og:x" content="https://bad.example/a"><meta property="og:url" content="https://good.example/b"><link rel="canonical" href="/p">"#,
+            None
+        )
+        .as_deref(),
+        Some("https://good.example/p")
+    );
+}

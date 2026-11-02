@@ -3,6 +3,7 @@
 //! `// oracle:` comment names the probe that gave a hand-written value.
 
 use std::sync::LazyLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 
@@ -699,5 +700,27 @@ fn select_candidate_drops_years_outside_the_bounds() {
     assert_eq!(
         pick(&[("2030-01-01", 1), ("2020-05-05", 1)]),
         groups("2020", "05", "05")
+    );
+}
+
+#[test]
+fn get_max_date_default_is_the_current_utc_day() {
+    // the clock is read around the call, so a midnight crossing between the reads is allowed
+    let utc_day = || {
+        let seconds = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("the clock is after 1970")
+            .as_secs();
+        let day = DateTime::from_timestamp_utc(i64::try_from(seconds).expect("fits"))
+            .expect("a current timestamp converts");
+        (day.year, day.month, day.day)
+    };
+    let before = utc_day();
+    let max = get_max_date(None);
+    let after = utc_day();
+    let got = (max.year, max.month, max.day);
+    assert!(
+        got == before || got == after,
+        "{got:?} not {before:?}..{after:?}"
     );
 }
