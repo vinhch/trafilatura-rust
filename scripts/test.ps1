@@ -19,7 +19,7 @@ $StackTests = @(
     'baseline::tests::deep_json_on_small_stack'
     'dom::tests::deep_chain_walks_iteratively'
     'extraction::tests::deep_caller_tree_on_small_stack'
-    'main_extractor::tests::deep_nesting_fits_512k_stack'
+    'main_extractor::tests::dispatch::deep_nesting_fits_512k_stack'
     'pyjson::tests::deep_document_drops_on_small_stack'
     'xml::tests::output_deep_nesting_fits_512k_stack'
     'test_extract_deep_caller_supplied_tree'
