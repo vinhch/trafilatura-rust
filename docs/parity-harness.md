@@ -121,6 +121,24 @@ The report is `.temp/parity/output-report.md`: per format the outputs and hunks 
 outputs of each class other than `match` (with the reason of a `normalized` page) and the diffs of the
 first outputs that differ, outputs with a `port-bug` hunk first.
 
+## Metadata check
+
+`metadata_matches_html5_fixture` in `tests/parity.rs` runs `bare_extraction` with `with_metadata(true)`,
+`keep_script_text(true)` and `Call::max_date` set to the index's `max_date`, and no URL. It compares each
+field of `fixture["html5"]["metadata"]` with the same field of the crate's `Document`. Values compare as
+JSON: strings or `null`, and `categories` and `tags` as arrays, `None` as `[]`.
+
+Each page gets the first class that applies: `upstream-error`, `match` (equal, `null` on both sides
+included), `decompress` (compressed input without the feature, D-4), else per field `known` when
+`METADATA_KNOWN` lists the page and field, or `port-bug`. A `null` on one side only is a whole-page
+`port-bug`. The test fails on any `port-bug` field or page, and on a `METADATA_KNOWN` entry whose field
+matches the fixture or whose page is not in the corpus. Entries of a page that was not compared are not
+checked.
+
+`METADATA_KNOWN` holds (page id, field, deviation id); each entry carries its reason in a comment. The
+report is `.temp/parity/metadata-report.md`: the classes, the known differences by deviation id, the
+`port-bug` pages with expected and actual values, and the stale entries.
+
 ## Test and measurement
 
 - The parity test needs the `__internals` feature, which `cargo test --all-features` enables. It
