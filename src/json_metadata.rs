@@ -765,9 +765,8 @@ pub fn normalize_authors(
         Some(regex) => regex.split(&author_string).collect(),
         None => vec![&*author_string],
     };
-    let mut visited = 0;
     for name in names {
-        tick(&mut visited, call)?;
+        call.check()?;
         let author = trim(name);
         // remove emoji
         let author = sub_all(&AUTHOR_EMOJI_REMOVE, &author, "");
@@ -806,6 +805,7 @@ pub fn normalize_authors(
     }
     // keep only the fullest form of each name (drop names contained in another)
     let mut fullest = Vec::with_capacity(new_authors.len());
+    let mut visited = 0;
     for name in &new_authors {
         tick(&mut visited, call)?;
         if !new_authors
