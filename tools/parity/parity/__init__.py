@@ -1,4 +1,4 @@
-# Fixed "now" for date extraction (htmldate max_date); written into index.json. The crate takes it as `DateParams.max_date`.
+# Fixed "now" for date extraction (htmldate max_date); written into index.json. The crate takes it per call as `Call::max_date`.
 MAX_DATE = "2026-10-01"
 
 
