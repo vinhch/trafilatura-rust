@@ -4,6 +4,7 @@
 //! The tables are generated from the interpreter (`tools/parity/parity/gen_printable.py` and
 //! `gen_decimal.py`); the functions only search them.
 
+mod alnum;
 mod alpha;
 mod decimal;
 mod lower;
@@ -15,6 +16,7 @@ use std::cmp::Ordering;
 use regex::Regex;
 
 use crate::error::{ExtractError, Rejection};
+use alnum::{ALNUM, PUNCTUATION};
 use alpha::ALPHA;
 use decimal::{DIGIT, ND_ZEROS};
 use lower::{CASE_IGNORABLE, CASED, LOWER};
@@ -188,6 +190,17 @@ pub(crate) fn is_all_printable(s: &str) -> bool {
 /// `char::is_alphabetic` also takes `Nl` and `Other_Alphabetic` marks.
 pub fn is_alpha(c: char) -> bool {
     in_ranges(ALPHA, c)
+}
+
+/// Python `str.isalnum` for one character: `isalpha`, `isdecimal`, `isdigit` or `isnumeric`. Rust's
+/// `char::is_alphanumeric` follows a newer Unicode version.
+pub(crate) fn is_alnum(c: char) -> bool {
+    in_ranges(ALNUM, c)
+}
+
+/// Unicode general category `P*` (punctuation), as `unicodedata.category(c)[0] == "P"` gives it.
+pub(crate) fn is_punctuation(c: char) -> bool {
+    in_ranges(PUNCTUATION, c)
 }
 
 /// Python `str.lower()`, by the Unicode data of the interpreter, not of the Rust standard library:

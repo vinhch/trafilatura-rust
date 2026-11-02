@@ -233,6 +233,23 @@ fn lower_matches_python() {
 }
 
 #[test]
+fn is_alnum_and_is_punctuation_match_python() {
+    // oracle: c.isalnum() and unicodedata.category(c)[0] == "P"
+    for c in ['a', 'Z', '1', '²', '٣', 'Ⅻ', '一', 'é'] {
+        assert!(is_alnum(c), "{c:?}");
+    }
+    for c in ['_', '-', ' ', '\u{301}', '$', '。'] {
+        assert!(!is_alnum(c), "{c:?}");
+    }
+    for c in ['_', '-', '!', '。', '«', '、'] {
+        assert!(is_punctuation(c), "{c:?}");
+    }
+    for c in ['$', '+', 'a', ' ', '\u{301}'] {
+        assert!(!is_punctuation(c), "{c:?}");
+    }
+}
+
+#[test]
 fn is_alpha_matches_python() {
     // oracle: [c.isalpha() for c in (chr(0x2160), chr(0x345), chr(0x1c5), chr(0xe9))]
     assert!(!is_alpha('\u{2160}'));

@@ -620,7 +620,6 @@ pub fn internal_extraction(
         document.id = record_id.map(str::to_owned);
         if let Some(raw_text) = &document.raw_text {
             let title = document.title.as_deref().unwrap_or("None");
-            // todo(phase 5): deduplication
             document.fingerprint = Some(content_fingerprint(&format!("{title} {raw_text}")));
         }
     }
