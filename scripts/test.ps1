@@ -14,6 +14,17 @@ if (Test-Path Variable:PSNativeCommandUseErrorActionPreference) {
 
 $ScriptName = 'test.ps1'
 
+# Tests that prove recursion fits a 512 KiB stack (AGENTS.md, Runtime rules). A new one goes on this list.
+$StackTests = @(
+    'baseline::tests::deep_json_on_small_stack'
+    'dom::tests::deep_chain_walks_iteratively'
+    'extraction::tests::deep_caller_tree_on_small_stack'
+    'main_extractor::tests::deep_nesting_fits_512k_stack'
+    'pyjson::tests::deep_document_drops_on_small_stack'
+    'xml::tests::output_deep_nesting_fits_512k_stack'
+    'test_extract_deep_caller_supplied_tree'
+)
+
 function Fail {
     param([Parameter(Mandatory = $true)][string]$Message)
     $Host.UI.WriteErrorLine("$ScriptName`: $Message")
@@ -27,7 +38,8 @@ Usage: scripts/$ScriptName [--no-deny]
 Runs scripts/version.ps1 --check, cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
-items only the tests use), cargo test --locked --all-features (doc tests included) and cargo deny check.
+items only the tests use), cargo test --locked --all-features (doc tests included), the stack tests again
+in the dev profile (opt-level 0, a real debug build) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
   -h, --help   Show this message.
@@ -62,6 +74,14 @@ Invoke-Checked @('cargo', 'clippy', '--locked', '--all-targets', '--all-features
 Invoke-Checked @('cargo', 'clippy', '--locked', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--no-default-features', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'test', '--locked', '--all-features')
+# The test profile builds at opt-level 1; the dev profile stays at 0, where stack frames are largest.
+# A filter that matches nothing would pass vacuously, so the selection is counted first.
+$StackArgs = @('test', '--locked', '--profile', 'dev', '--all-features', '--lib', '--test', 'unit_tests', '--', '--exact') + $StackTests
+$StackListing = & cargo @StackArgs --list
+if ($LASTEXITCODE -ne 0) { Fail "'cargo $($StackArgs -join ' ') --list' exited with $LASTEXITCODE" }
+$StackFound = @($StackListing | Where-Object { $_ -match ': test$' }).Count
+if ($StackFound -ne $StackTests.Count) { Fail "stack tests: expected $($StackTests.Count), found $StackFound" }
+Invoke-Checked (@('cargo') + $StackArgs)
 if ($RunDeny) {
     # Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.
     cargo deny --version *> $null

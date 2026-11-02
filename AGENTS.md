@@ -96,7 +96,7 @@ These hold for the whole crate; `docs/architecture.md` (Runtime contract) has th
   added `max_nodes` and 1,000 attributes per tag (D-5) and the input cap `max_input_bytes` (D-11).
   Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a 512 KiB stack
   in a debug build, so a default thread stack is enough (a musl host that spawns its own threads sets
-  512 KiB).
+  512 KiB). `scripts/test.sh` runs these tests in the dev profile from a list; a new one goes on that list.
 - No hidden clock: `max_date` is per call (`Call::max_date`), never read from the clock when the
   extractor is built.
 - Panic-free on any input. `unwrap`, `expect` and `panic` fail clippy outside tests; `string_slice`

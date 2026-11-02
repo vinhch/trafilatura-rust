@@ -110,7 +110,7 @@ upstream has no equivalent.
   Table construction is bounded by the cells
   it mints: it fails with `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in
   one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a
-  512 KiB stack in a debug build, so a default thread stack is enough (a musl host that spawns its own
+  512 KiB stack in a debug build (the list in `scripts/test.sh`), so a default thread stack is enough (a musl host that spawns its own
   threads sets 512 KiB).
 - No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`). Here a call sets it
   with `Call::max_date`; without one, `extract_metadata` takes today's UTC date, read once per call

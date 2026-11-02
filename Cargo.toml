@@ -128,3 +128,11 @@ required-features = ["__internals"]
 name = "extract"
 harness = false
 required-features = ["__internals"]
+
+# Tests run the parity corpus; opt-level 1 cuts it about 6x. dev stays at 0 for the stack proof
+# in scripts/test.sh.
+[profile.test]
+opt-level = 1
+
+[profile.test.package."*"]
+opt-level = 2
