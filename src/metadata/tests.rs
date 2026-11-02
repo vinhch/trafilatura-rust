@@ -806,10 +806,13 @@ fn extract_metadata_sets_filedate_from_max_date() {
 }
 
 #[test]
-fn extract_metadata_without_date_config_has_no_filedate() {
-    // oracle: filedate None; max_date is the D-15 (phase 4d) placeholder
+fn extract_metadata_without_date_config_takes_today_utc() {
+    // D-15: without a date config, max_date is today's UTC date, and filedate is that date
+    let before = today_utc();
     let document = run_extract("<html><head></head><body></body></html>", None);
-    assert_eq!(document.filedate, None);
+    let after = today_utc();
+    let filedate = document.filedate.unwrap();
+    assert!(filedate == before || filedate == after, "{filedate}");
 }
 
 #[test]

@@ -31,11 +31,13 @@ impl CancelToken {
     }
 }
 
-/// Per-call context: an optional cancellation token and an optional deadline.
+/// Per-call context: an optional cancellation token, an optional deadline and an optional latest
+/// date for the metadata.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Call<'a> {
     cancel: Option<&'a CancelToken>,
     deadline: Option<Instant>,
+    pub(crate) max_date: Option<&'a str>,
 }
 
 impl<'a> Call<'a> {
@@ -48,6 +50,14 @@ impl<'a> Call<'a> {
     /// Stops the call with `ExtractError::DeadlineExceeded` once `deadline` has passed.
     pub fn deadline(mut self, deadline: Instant) -> Self {
         self.deadline = Some(deadline);
+        self
+    }
+
+    /// Sets the latest date the metadata accepts, `YYYY-MM-DD`, and the value of `filedate`. The
+    /// text is passed on as given; a value that is not a date only changes the date search, which
+    /// then uses the end of the current UTC day. Without this, the call uses today's UTC date.
+    pub fn max_date(mut self, date: &'a str) -> Self {
+        self.max_date = Some(date);
         self
     }
 

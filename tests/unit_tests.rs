@@ -12,7 +12,7 @@
 //! an assertion that holds is ported as it is, one that does not asserts that result with a
 //! `deviation: D-1` comment (the slow path of `fast=False` is not ported), or `D-2` where the html5
 //! and libxml2 trees differ. Every explicit `fast=False` call has a D-1 comment, even when the
-//! value is the same. Lines that need the XML output (Phase 6) or metadata (Phase 4) are in
+//! value is the same. Lines that need the XML or JSON output (Phase 6) are in
 //! `#[ignore = "phase N"]` tests named `<test>_phase_N_lines`, over stubs that give the neutral
 //! value.
 //!
@@ -22,13 +22,16 @@
 //!   (mutates `MANUALLY_CLEANED` in place; the crate's lists are constants, D-8).
 //! - The slow path (D-1, Phase 11): `test_sanitize_tree_*`, `test_readability_*`, `test_external`,
 //!   `test_is_probably_readerable`, `test_prefer_readability_rejects_raw_json`,
-//!   `test_compare_extraction_justext_*`, `test_recall_escalation_justext`.
-//! - Metadata and `Document` (Phase 4): `test_extract_with_metadata`, `test_python_output`,
-//!   `test_url_blacklist`, `test_tojson`, `test_xmltocsv`, `test_extractor_parity`,
-//!   `test_reset_caches`, `test_document_isolation`, `test_extraction_options`, and the cache lines
-//!   of `test_trim`; language detection (OI-4): `test_wrong_language_discarded`,
-//!   `test_lang_detection`.
-//! - The XML and TEI output (Phase 6), whole tests: `test_yoast_faq_block`,
+//!   `test_compare_extraction_justext_*`, `test_recall_escalation_justext`, and the justext and
+//!   readability lines of `test_extraction_options`.
+//! - Python objects and caches: `test_extractor_parity` (compares Python `Extractor` attributes;
+//!   `Options::build` is the one translation), `test_reset_caches` and the cache lines of
+//!   `test_trim` (the crate keeps no caches, `docs/architecture.md` no process-global state),
+//!   `test_document_isolation` (Python object identity; owned `Document` fields cannot alias),
+//!   `test_python_output` (`as_dict` key count; the crate has no `as_dict`, and the parity metadata
+//!   comparison checks the same keys).
+//! - Language detection (OI-4): `test_wrong_language_discarded`, `test_lang_detection`.
+//! - The XML, XML-TEI, JSON and CSV output (Phase 6), whole tests: `test_yoast_faq_block`,
 //!   `test_linebreak_before_inline_kept_in_xml`, `test_nested_element_tail_kept`,
 //!   `test_extract_div_keeps_inline_link`, `test_lb_only_subtree_stays_one_paragraph`,
 //!   `test_table_processing`, `test_xml_table_preserves_empty_cells`,
@@ -36,7 +39,12 @@
 //!   `test_longer_fallback_can_replace_requested_image`,
 //!   `test_recall_escalation_captured_comment_list`, `test_list_item_attr_whitelist`,
 //!   `test_list_processing`, `test_nested_list_first_item_not_duplicated`, `test_code_blocks`,
-//!   `test_table_nested_in_cell_pipeline`, `test_check_tei_loose_text`.
+//!   `test_table_nested_in_cell_pipeline`, `test_check_tei_loose_text`, `test_tojson`,
+//!   `test_xmltocsv`.
+//! - Single lines: `load_html(123)`, `extract(None, ...)` and the `output_format="xyz"` raises (the
+//!   input and the format are typed), `core.Extractor(source=)`, the YAML parse of
+//!   `test_markdown_metadata_yaml_safe`, the `prune_xpath` line of
+//!   `test_extract_leaves_caller_tree_intact` (D-7).
 //! - Single lines: `load_html(123)`, `extract(None, ...)` and the `output_format="xyz"` raises (the
 //!   input and the format are typed), `core.Extractor(source=)`, the YAML parse of
 //!   `test_markdown_metadata_yaml_safe`, the `prune_xpath` line of
@@ -58,7 +66,9 @@ use trafilatura_rust::__internals::{
     strip_double_tags, textfilter, tree_cleaning, tree_cleaning_with, trim, xml_to_text,
     yaml_scalar,
 };
-use trafilatura_rust::{Call, ExtractError, Format as ApiFormat, Input, Options};
+use trafilatura_rust::{
+    Call, Document, ExtractError, Format as ApiFormat, Input, Options, Rejection,
+};
 
 #[allow(dead_code)]
 mod common;
@@ -185,11 +195,152 @@ fn new_config() -> Config {
 
 // The metadata line of `test_config_loading`.
 #[test]
-#[ignore = "phase 4"]
 fn test_config_loading_phase_4_lines() {
     let html =
         "<html><body><article><p>Short paragraph of content here.</p></article></body></html>";
     assert!(extract_with_metadata(html, &Kw::new().config(new_config()), None).is_none());
+}
+
+#[test]
+fn test_extract_with_metadata() {
+    // oracle: extract_with_metadata(my_document, output_format="txt", include_formatting=True,
+    // fast=True, url=url); the XML lines are in `test_extract_with_metadata_phase_6_lines`
+    let url = "http://aa.bb/cc.html";
+    let html =
+        "<html><head></head><body><article><p>AAA, <p>BBB</p>, CCC.</p></article></body></html>";
+    let kw = Kw::new()
+        .format(ApiFormat::Python)
+        .formatting(true)
+        .url(url);
+    let parsed = metadata_document(html, &kw, None).unwrap();
+    let content = parsed.text.clone().unwrap_or_default();
+    assert!(content.contains("AAA"));
+    assert!(content.contains("BBB"));
+    assert!(content.contains("CCC"));
+    assert_eq!(parsed.url.as_deref(), Some(url));
+    assert_eq!(parsed.date, None);
+    assert_eq!(parsed.title, None);
+
+    let html = "<html><head><title>title</title></head><body><article><div>May 24, 2021</div><p>AAA, <p>BBB</p>, CCC.</p></article></body></html>";
+    let parsed = metadata_document(html, &kw, None).unwrap();
+    let content = parsed.text.clone().unwrap_or_default();
+    assert!(content.contains("AAA"));
+    assert!(content.contains("BBB"));
+    assert!(content.contains("CCC"));
+    assert_eq!(parsed.url.as_deref(), Some(url));
+    assert_eq!(parsed.date.as_deref(), Some("2021-05-24"));
+    assert_eq!(parsed.title.as_deref(), Some("title"));
+
+    // oracle: extract_with_metadata(my_document, output_format="python") raises ValueError
+    assert_eq!(
+        Kw::new()
+            .format(ApiFormat::Python)
+            .options()
+            .build()
+            .extract(&Input::text(html), &Call::default()),
+        Err(ExtractError::Rejected(Rejection::InvalidValue))
+    );
+
+    // oracle: extract_with_metadata(my_document, target_language="en", fast=True) is None
+    let html = r#"<html><head><meta http-equiv="content-language" content="es"></head><body><article><p>AAA, <p>BBB</p>, CCC.</p></article></body></html>"#;
+    assert_eq!(
+        Options::new()
+            .with_metadata(true)
+            .target_language("en")
+            .build()
+            .bare_extraction(&Input::text(html), &Call::default())
+            .err(),
+        Some(ExtractError::Rejected(Rejection::WrongHtmlLang))
+    );
+}
+
+// The XML lines of `test_extract_with_metadata`.
+#[test]
+#[ignore = "phase 6"]
+fn test_extract_with_metadata_phase_6_lines() {
+    let html =
+        "<html><head></head><body><article><p>AAA, <p>BBB</p>, CCC.</p></article></body></html>";
+    // oracle: extract_with_metadata(my_document, output_format="xml", config=ZERO_CONFIG)
+    let parsed = extract_xml_document(html, &Kw::zero()).unwrap();
+    assert_eq!(parsed.raw_text.as_deref(), Some("AAA, BBB , CCC."));
+    assert_eq!(parsed.fingerprint.as_deref(), Some("ee7d2fb6fcf2837d"));
+    let content = parsed.text.unwrap_or_default();
+    assert!(content.contains("AAA"));
+    assert!(content.contains("BBB"));
+    assert!(content.contains("CCC"));
+}
+
+#[test]
+fn test_extraction_options() {
+    // The justext and readability lines of upstream's test are the slow path (D-1), not ported.
+    let my_html = r#"<html><head><meta http-equiv="content-language" content="EN"/></head><body><div="article-body"><p>Text.<!-- comment --><?php echo "This is a PHP processing instruction"; ?></p></div></body></html>"#;
+    // oracle: extract(my_html, output_format="python") raises ValueError
+    assert_eq!(
+        Kw::new()
+            .format(ApiFormat::Python)
+            .options()
+            .build()
+            .extract(&Input::text(my_html), &Call::default()),
+        Err(ExtractError::Rejected(Rejection::InvalidValue))
+    );
+    assert!(extract(my_html, &Kw::new().config(new_config())).is_none());
+    assert!(extract(my_html, &Kw::zero()).is_some());
+    // oracle: extract(my_html, target_language="de", config=ZERO_CONFIG) is None. Upstream's
+    // fast=True line gives the same value, so this one assertion covers both.
+    assert!(
+        or_none(
+            Options::new()
+                .target_language("de")
+                .config(zero_config())
+                .build()
+                .extract(&Input::text(my_html), &Call::default())
+        )
+        .is_none()
+    );
+
+    // oracle: bare_extraction(my_html, with_metadata=True).date, with the config of each call
+    let page = format!(
+        "<html><head/><body>{}<p>Posted on 1st Dec 2019<.</p></body></html>",
+        "<p>ABC def ghi jkl.</p>".repeat(1000)
+    );
+    let date_of = |options: Options| {
+        options
+            .build()
+            .bare_extraction(&Input::text(&page), &Call::default())
+            .unwrap()
+            .date
+    };
+    assert!(date_of(Options::new().config(zero_config()).with_metadata(true)).is_some());
+    assert_eq!(
+        date_of(Options::new().config(new_config()).with_metadata(true)),
+        None
+    );
+    assert_eq!(
+        date_of(Options::new().config(new_config()).with_metadata(false)),
+        None
+    );
+}
+
+// The XML lines of `test_extraction_options`.
+#[test]
+#[ignore = "phase 6"]
+fn test_extraction_options_phase_6_lines() {
+    let my_html = r#"<html><head><meta http-equiv="content-language" content="EN"/></head><body><div="article-body"><p>Text.<!-- comment --><?php echo "This is a PHP processing instruction"; ?></p></div></body></html>"#;
+    // oracle: extract(my_html, only_with_metadata=False, output_format="xml", config=ZERO_CONFIG)
+    assert!(extract_xml(my_html, &Kw::zero()).is_some());
+    // oracle: extract(my_html, only_with_metadata=True, output_format="xml", config=ZERO_CONFIG)
+    assert!(extract_xml(my_html, &Kw::zero().only_with_metadata(true)).is_none());
+}
+
+#[test]
+fn test_url_blacklist() {
+    // oracle: extract(doc, config=ZERO_CONFIG) is not None; with url_blacklist={"https://example.org/page"} it is None
+    let doc = r#"<html><head><link rel="canonical" href="https://example.org/page"/></head><body><article><p>Some real article body text here.</p></article></body></html>"#;
+    assert!(extract(doc, &Kw::zero()).is_some());
+    let blocked = Kw::zero()
+        .options()
+        .url_blacklist(["https://example.org/page"]);
+    assert!(or_none(blocked.build().extract(&Input::text(doc), &Call::default())).is_none());
 }
 
 #[test]
@@ -370,6 +521,7 @@ struct Kw {
     images: bool,
     tables: bool,
     url: Option<String>,
+    only_with_metadata: bool,
     config: Config,
 }
 
@@ -385,6 +537,7 @@ impl Kw {
             images: false,
             tables: true,
             url: None,
+            only_with_metadata: false,
             config: Config::default(),
         }
     }
@@ -442,6 +595,11 @@ impl Kw {
         self
     }
 
+    fn only_with_metadata(mut self, only_with_metadata: bool) -> Self {
+        self.only_with_metadata = only_with_metadata;
+        self
+    }
+
     fn config(mut self, config: Config) -> Self {
         self.config = config;
         self
@@ -456,7 +614,8 @@ impl Kw {
             .links(self.links)
             .images(self.images)
             .tables(self.tables)
-            .config(self.config.clone());
+            .config(self.config.clone())
+            .only_with_metadata(self.only_with_metadata);
         match self.formatting {
             Some(formatting) => options.formatting(formatting),
             None => options,
@@ -555,7 +714,7 @@ fn extract_xmltei_tree(_html: &str, _kw: &Kw) -> Option<String> {
 }
 
 /// `extract(html.fromstring(html), output_format="xml", with_metadata=True, **kw)`.
-// todo(phase 6): xml output, and phase 4: metadata
+// todo(phase 6): xml output
 fn extract_xml_with_metadata_tree(_html: &str, _kw: &Kw) -> Option<String> {
     None
 }
@@ -573,14 +732,48 @@ fn extract_xmltei_with_id(_html: &str, _url: &str, _record_id: &str) -> Option<S
 }
 
 /// `extract(html, with_metadata=True, record_id=..., **kw)` in the format of `kw`.
-// todo(phase 4): metadata
-fn extract_with_metadata(_html: &str, _kw: &Kw, _record_id: Option<&str>) -> Option<String> {
-    None
+fn extract_with_metadata(html: &str, kw: &Kw, record_id: Option<&str>) -> Option<String> {
+    or_none(
+        kw.options()
+            .with_metadata(true)
+            .build()
+            .extract(&input_of(html, kw, record_id), &Call::default()),
+    )
+}
+
+/// `bare_extraction(html, with_metadata=True, record_id=..., **kw)`: the document with its metadata.
+fn metadata_document(html: &str, kw: &Kw, record_id: Option<&str>) -> Option<Document> {
+    or_none(
+        kw.options()
+            .with_metadata(true)
+            .build()
+            .bare_extraction(&input_of(html, kw, record_id), &Call::default()),
+    )
+}
+
+/// The input of `html` with the URL of `kw` and the record id, each when set.
+fn input_of<'a>(html: &'a str, kw: &'a Kw, record_id: Option<&'a str>) -> Input<'a> {
+    let input = Input::text(html);
+    let input = match kw.url.as_deref() {
+        Some(url) => input.url(url),
+        None => input,
+    };
+    match record_id {
+        Some(id) => input.record_id(id),
+        None => input,
+    }
 }
 
 /// `extract(html, output_format="json", with_metadata=True, record_id=..., **kw)`.
-// todo(phase 4): metadata
+// todo(phase 6): json output
 fn extract_json_with_metadata(_html: &str, _kw: &Kw, _record_id: Option<&str>) -> Option<String> {
+    None
+}
+
+/// The document of `extract_with_metadata(html, output_format="xml", **kw)`, which upstream returns
+/// for the XML output; its `raw_text` and `fingerprint` are read from it.
+// todo(phase 6): xml output
+fn extract_xml_document(_html: &str, _kw: &Kw) -> Option<Document> {
     None
 }
 
@@ -1596,17 +1789,8 @@ fn test_formatting_phase_6_lines() {
         Kw::zero().tables(true),
     );
     assert!(result.contains("AP-fonden"));
-}
-
-// The metadata lines of `test_formatting`.
-#[test]
-#[ignore = "phase 4"]
-fn test_formatting_phase_4_lines() {
-    let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";
-    let meta_result = extract_with_metadata(meta_string, &Kw::zero().markdown(), None).unwrap();
-    assert!(meta_result.starts_with("---\ntitle: Test\nfingerprint: "));
-    assert!(meta_result.ends_with("---\nABC."));
     // the record ID and fingerprint are in the header, as in the other formats
+    let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";
     let json_result: serde_json::Value = serde_json::from_str(
         &extract_json_with_metadata(meta_string, &Kw::zero(), Some("doc-1")).unwrap(),
     )
@@ -1618,6 +1802,15 @@ fn test_formatting_phase_4_lines() {
             json_result["fingerprint"].as_str().unwrap()
         )));
     }
+}
+
+// The Markdown metadata lines of `test_formatting`; the JSON lines are in `test_formatting_phase_6_lines`.
+#[test]
+fn test_formatting_phase_4_lines() {
+    let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";
+    let meta_result = extract_with_metadata(meta_string, &Kw::zero().markdown(), None).unwrap();
+    assert!(meta_result.starts_with("---\ntitle: Test\nfingerprint: "));
+    assert!(meta_result.ends_with("---\nABC."));
 }
 
 /// `handle_image(html.fromstring(html))`: the tree and the new element, `None` for no image.
@@ -2429,7 +2622,7 @@ fn test_links_phase_6_lines() {
                 .contains(r#"<ref target="testlink.html">link</ref>"#)
         );
     }
-    // test license link; the metadata of the `license` attribute is Phase 4 as well
+    // test license link; the license attribute is metadata of the XML output
     let html = r#"<html><body><p>Test text under <a rel="license" href="">CC BY-SA license</a>.</p></body></html>"#;
     assert!(
         extract_xml_with_metadata_tree(html, &Kw::zero().links(true))
@@ -3615,7 +3808,6 @@ fn test_html_conversion() {
 
 // The metadata lines of `test_html_conversion`.
 #[test]
-#[ignore = "phase 4"]
 fn test_html_conversion_phase_4_lines() {
     let html = "<html><body><article><h1>Title 1</h1><p>Text.</p></article></body></html>";
     let expected_html = r#"<html>
@@ -4792,7 +4984,6 @@ fn test_markdown_metadata_yaml_safe() {
 
 // The end-to-end lines of `test_markdown_metadata_yaml_safe`, minus the YAML parse.
 #[test]
-#[ignore = "phase 4"]
 fn test_markdown_metadata_yaml_safe_phase_4_lines() {
     // end-to-end: a title with ": " used to emit invalid YAML, now it is quoted
     let html = concat!(

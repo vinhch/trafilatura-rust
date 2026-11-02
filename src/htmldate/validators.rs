@@ -273,7 +273,7 @@ pub(crate) fn check_date_input(date_object: Option<&str>, default: DateTime) -> 
 }
 
 /// The end of the current UTC day, naive: 23:59:59.999999.
-// deviation: D-21 (UTC, not the local day; the clock is read only here)
+// deviation: D-21 (UTC, not the local day; the clock is read here and by `today_utc`, D-15)
 fn end_of_current_utc_day() -> DateTime {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

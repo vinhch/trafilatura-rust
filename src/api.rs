@@ -59,6 +59,11 @@ pub struct Options {
     config: Config,
     max_nodes: Option<usize>,
     max_input_bytes: Option<usize>,
+    with_metadata: bool,
+    only_with_metadata: bool,
+    author_blacklist: HashSet<String>,
+    url_blacklist: HashSet<String>,
+    keep_script_text: bool,
 }
 
 impl Default for Options {
@@ -72,7 +77,9 @@ impl Options {
     /// [`Format::Python`] for [`Extractor::bare_extraction`]), [`Focus::Balanced`], comments and
     /// tables on, formatting unset (on for Markdown), links and images off, no target language,
     /// `Config::default()`, `max_nodes` at `DEFAULT_MAX_NODES` (500,000) and
-    /// `max_input_bytes` at `DEFAULT_MAX_INPUT_BYTES` (64 MiB).
+    /// `max_input_bytes` at `DEFAULT_MAX_INPUT_BYTES` (64 MiB). Metadata is not extracted, both
+    /// blacklists are empty, and the text of unread `style` and `script` elements is dropped at the
+    /// parse.
     pub fn new() -> Self {
         Self {
             format: None,
@@ -86,6 +93,11 @@ impl Options {
             config: Config::default(),
             max_nodes: Some(DEFAULT_MAX_NODES),
             max_input_bytes: Some(DEFAULT_MAX_INPUT_BYTES),
+            with_metadata: false,
+            only_with_metadata: false,
+            author_blacklist: HashSet::new(),
+            url_blacklist: HashSet::new(),
+            keep_script_text: false,
         }
     }
 
@@ -158,6 +170,53 @@ impl Options {
         self
     }
 
+    /// Sets whether metadata is extracted: title, author, URL, hostname, date, sitename and the other
+    /// fields go into the [`Document`] of [`Extractor::bare_extraction`], and into the header of the
+    /// text, Markdown and HTML outputs of [`Extractor::extract`]. A URL or author blacklist, or
+    /// [`Options::only_with_metadata`], turns it on too.
+    pub fn with_metadata(mut self, on: bool) -> Self {
+        self.with_metadata = on;
+        self
+    }
+
+    /// Sets whether a page without a date, a title or a URL is rejected with
+    /// `Rejection::MissingMetadata`. Implies metadata extraction.
+    pub fn only_with_metadata(mut self, on: bool) -> Self {
+        self.only_with_metadata = on;
+        self
+    }
+
+    /// Sets the authors to drop from the metadata, replacing the set given before. A name matches
+    /// without regard to case, one `;`-separated name at a time. A non-empty set turns metadata
+    /// extraction on.
+    pub fn author_blacklist<I, S>(mut self, authors: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.author_blacklist = authors.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Sets the URLs of pages to reject with `Rejection::BlacklistedUrl`, replacing the set given
+    /// before. A non-empty set turns metadata extraction on, since the URL is a metadata field.
+    pub fn url_blacklist<I, S>(mut self, urls: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.url_blacklist = urls.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Sets whether the text of `script` and `style` elements is kept in the parse. Off, the text
+    /// of a `style` element and of a `script` whose `type` upstream does not read is not stored. A
+    /// page whose text readers reach dropped text is parsed again with the text kept.
+    pub fn keep_script_text(mut self, keep: bool) -> Self {
+        self.keep_script_text = keep;
+        self
+    }
+
     /// Resolves the options once for each format the [`Extractor`] may run: with no format set,
     /// [`Format::Txt`] for `extract` and [`Format::Python`] for `bare_extraction`.
     pub fn build(&self) -> Extractor {
@@ -168,10 +227,10 @@ impl Options {
                 self.focus == Focus::Precision,
                 self.focus == Focus::Recall,
                 self.formatting,
-                false,
-                false,
-                HashSet::new(),
-                HashSet::new(),
+                self.with_metadata,
+                self.only_with_metadata,
+                self.author_blacklist.clone(),
+                self.url_blacklist.clone(),
             );
             settings.comments = self.comments;
             settings.links = self.links;
@@ -186,7 +245,7 @@ impl Options {
             limits: ParseLimits {
                 max_nodes: self.max_nodes,
                 max_input_bytes: self.max_input_bytes,
-                drop_script_text: true,
+                drop_script_text: !self.keep_script_text,
                 ..ParseLimits::default()
             },
         }
@@ -227,9 +286,8 @@ impl<'a> Input<'a> {
         self
     }
 
-    /// Sets the id of the record, stored on the document of [`Extractor::extract`]. No output format
-    /// shows it yet: TXT, Markdown and HTML print it only in a metadata header, and metadata
-    /// extraction is not offered.
+    /// Sets the id of the record. It appears in the metadata header that the text, Markdown and
+    /// HTML outputs get from [`Options::with_metadata`].
     pub fn record_id(mut self, record_id: &'a str) -> Self {
         self.record_id = Some(record_id);
         self
@@ -248,14 +306,6 @@ pub struct Extractor {
 }
 
 impl Extractor {
-    /// The same extractor with the text of `style` and `script` elements kept in the parse.
-    #[cfg(any(test, feature = "__internals"))]
-    #[doc(hidden)]
-    pub fn with_script_text(mut self) -> Self {
-        self.limits.drop_script_text = false;
-        self
-    }
-
     /// Extracts the main text of `input` as a string in the format of the options ([`Format::Txt`]
     /// when unset). `Err(Rejected(_))` stands for upstream's `None` and for an exception that
     /// escapes `extract`: [`Format::Python`] fails with `Rejection::InvalidValue` after a

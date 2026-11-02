@@ -7,9 +7,10 @@ from other languages.
 
 Status: the extraction pipeline of upstream's fast mode works through the public API (`Options`,
 `Extractor`, `html2txt`): main text and comments from bytes or a string, as text, Markdown or HTML, or as
-the `Document` of `bare_extraction`. Not yet there: metadata extraction, deduplication, XML, XML-TEI, JSON
-and CSV output, and `fast=False`. The crate is not published. Extraction is checked by upstream's unit and
-filter tests ported by name, by cases generated from upstream Python and by comparing the text, Markdown
+the `Document` of `bare_extraction`, with metadata when `Options::with_metadata` is set. Not yet there:
+deduplication, XML, XML-TEI, JSON and CSV output, and `fast=False`. The crate is not published.
+Extraction is checked by upstream's unit and filter tests ported by name, by cases generated from
+upstream Python and by comparing the text, Markdown
 and HTML output of the corpus pages with upstream's (`docs/phase-plan.md` has the roadmap).
 
 Scope: for now only upstream's fast mode (`fast=True`). The readability and jusText fallbacks that

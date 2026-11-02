@@ -45,7 +45,7 @@ fn clean_and_trim_overlong_charref_fails() {
 
 #[test]
 fn set_date_params_prefers_the_original_date() {
-    // oracle: set_date_params(False); max_date None is the D-15 (phase 4d) placeholder
+    // oracle: set_date_params(False) without its max_date; the port leaves max_date None (D-15)
     assert_eq!(
         set_date_params(false),
         DateParams {

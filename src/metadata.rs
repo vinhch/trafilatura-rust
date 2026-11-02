@@ -19,7 +19,7 @@ use crate::json_metadata::{
 use crate::pyhtml::unescape;
 use crate::pyjson::{Invalid, try_loads};
 use crate::pystr::{self, PY_SPACE_CLASS, ignore_case_i};
-use crate::settings::{DateParams, Document, set_date_params};
+use crate::settings::{DateParams, Document, set_date_params, today_utc};
 use crate::utils::{HTML_STRIP_TAGS, line_processing, safe_base_url, trim};
 use crate::xpaths::{
     AUTHOR_DISCARD_XPATHS, AUTHOR_XPATHS, CATEGORIES_XPATHS, Selector, TAGS_XPATHS, TITLE_XPATHS,
@@ -136,9 +136,9 @@ const OG_PROPERTIES: &[(&str, &str)] = &[
 const OG_AUTHOR: &[&str] = &["og:author", "og:article:author"];
 
 /// The metadata of the page at `root`, as a [`Document`] with empty body and comments. `date_config`
-/// is the date parameters, or `None` for the defaults built from `extensive`; `filedate` is its
-/// `max_date`. Fails with `InvalidValue` on a character reference of more than 4300 digits and with
-/// the call's error when `call` stops.
+/// is the date parameters, or `None` for the defaults built from `extensive`; an absent `max_date`
+/// is today's UTC date, and `filedate` is the `max_date` used. Fails with `InvalidValue` on a
+/// character reference of more than 4300 digits and with the call's error when `call` stops.
 // upstream: metadata.py::extract_metadata (`filecontent` is always a tree here, so `load_html` is not ported)
 pub fn extract_metadata(
     tree: &mut Tree,
@@ -149,9 +149,13 @@ pub fn extract_metadata(
     author_blacklist: &HashSet<String>,
     call: &Call<'_>,
 ) -> Result<Document, ExtractError> {
-    let date_config = date_config
+    let mut date_config = date_config
         .cloned()
         .unwrap_or_else(|| set_date_params(extensive));
+    // deviation: D-15 (upstream's default is the local date; the UTC date is read per call)
+    if date_config.max_date.is_none() {
+        date_config.max_date = Some(today_utc());
+    }
 
     // initialize dict and try to strip meta tags
     let mut metadata = examine_meta(tree, root, call)?;

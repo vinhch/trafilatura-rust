@@ -19,7 +19,7 @@ use crate::main_extractor::{elem_text, extract_comments, extract_content};
 use crate::metadata::extract_metadata;
 use crate::pyjson::dumps_str;
 use crate::pystr::{self, PY_SPACE_CLASS, is_alpha};
-use crate::settings::{Document, Extractor, Field, Focus, Format};
+use crate::settings::{DateParams, Document, Extractor, Field, Focus, Format};
 use crate::utils::{HtmlInput, check_html_lang, language_filter, load_html, normalize_unicode};
 use crate::xml::{build_json_output, control_xml_output, meta_items, xml_to_csv, xml_to_text};
 use crate::xpaths::{RAW_TREE_PRUNE_XPATH, REMOVE_COMMENTS_AND_LISTS_XPATH, REMOVE_COMMENTS_XPATH};
@@ -501,12 +501,20 @@ pub fn bare_extraction(
     }
 
     let mut document = if options.with_metadata {
+        // the call's `max_date` replaces the options' one
+        let date_params = match call.max_date {
+            Some(max_date) => Cow::Owned(DateParams {
+                max_date: Some(max_date.to_owned()),
+                ..options.date_params.clone()
+            }),
+            None => Cow::Borrowed(&options.date_params),
+        };
         // deviation: D-1 (upstream passes `options.fast` as `extensive`)
         let document = extract_metadata(
             &mut tree,
             root,
             options.url.as_deref(),
-            Some(&options.date_params),
+            Some(date_params.as_ref()),
             true,
             &options.author_blacklist,
             call,

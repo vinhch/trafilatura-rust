@@ -5,7 +5,7 @@ use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;
 use crate::error::Rejection;
-use crate::settings::{self, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES};
+use crate::settings::{self, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES, today_utc};
 use crate::utils::HtmlInput;
 
 const PAGE: &str = concat!(
@@ -395,13 +395,113 @@ fn default_options_accept_a_page_just_under_the_node_limit() {
 #[test]
 fn build_drops_script_text() {
     assert!(Options::new().build().limits.drop_script_text);
+}
+
+#[test]
+fn keep_script_text_keeps_the_parse_text() {
     assert!(
         !Options::new()
+            .keep_script_text(true)
             .build()
-            .with_script_text()
             .limits
             .drop_script_text
     );
+}
+
+const METADATA_PAGE: &str = concat!(
+    "<html><head><title>T</title><meta name=\"author\" content=\"Jane Doe\"/>",
+    "<link rel=\"canonical\" href=\"https://example.org/a\"/></head><body><article>",
+    "<p>The first paragraph of the page describes the subject in some detail, so that the ",
+    "extractor keeps it as the main text of the document.</p>",
+    "<p>The second paragraph adds more words to the same subject, so the page is not too short ",
+    "to be kept by the extractor.</p></article></body></html>"
+);
+
+fn document_of(options: &Options, page: &str, call: &Call<'_>) -> Result<Document, ExtractError> {
+    options.build().bare_extraction(&Input::text(page), call)
+}
+
+#[test]
+fn metadata_option_fills_the_document() {
+    let call = Call::default().max_date("2026-10-01");
+    let document = document_of(&Options::new().with_metadata(true), METADATA_PAGE, &call).unwrap();
+    assert_eq!(document.title.as_deref(), Some("T"));
+    assert_eq!(document.author.as_deref(), Some("Jane Doe"));
+    assert_eq!(document.hostname.as_deref(), Some("example.org"));
+    assert_eq!(document.filedate.as_deref(), Some("2026-10-01"));
+
+    let without = document_of(&Options::new(), METADATA_PAGE, &call).unwrap();
+    assert_eq!(without.title, None);
+    assert_eq!(without.author, None);
+    assert_eq!(without.hostname, None);
+    assert_eq!(without.filedate, None);
+}
+
+#[test]
+fn max_date_is_per_call() {
+    let extractor = Options::new().with_metadata(true).build();
+    let input = Input::text(METADATA_PAGE);
+    let earlier = extractor
+        .bare_extraction(&input, &Call::default().max_date("2024-01-31"))
+        .unwrap();
+    let later = extractor
+        .bare_extraction(&input, &Call::default().max_date("2026-10-01"))
+        .unwrap();
+    assert_eq!(earlier.filedate.as_deref(), Some("2024-01-31"));
+    assert_eq!(later.filedate.as_deref(), Some("2026-10-01"));
+}
+
+#[test]
+fn invalid_max_date_is_kept_as_filedate() {
+    let call = Call::default().max_date("2026/10/01");
+    let document = document_of(&Options::new().with_metadata(true), METADATA_PAGE, &call);
+    assert_eq!(
+        document.map(|document| document.filedate),
+        Ok(Some("2026/10/01".to_owned()))
+    );
+}
+
+#[test]
+fn default_max_date_is_today_utc() {
+    let before = today_utc();
+    let document = document_of(
+        &Options::new().with_metadata(true),
+        METADATA_PAGE,
+        &Call::default(),
+    )
+    .unwrap();
+    let after = today_utc();
+    let filedate = document.filedate.unwrap();
+    assert!(filedate == before || filedate == after, "{filedate}");
+}
+
+#[test]
+fn url_blacklist_alone_turns_metadata_on() {
+    let blocked = Options::new().url_blacklist(["https://example.org/a"]);
+    assert_eq!(
+        document_of(&blocked, METADATA_PAGE, &Call::default()).err(),
+        Some(ExtractError::Rejected(Rejection::BlacklistedUrl))
+    );
+    let other = Options::new().url_blacklist(["https://example.org/b"]);
+    assert!(document_of(&other, METADATA_PAGE, &Call::default()).is_ok());
+}
+
+#[test]
+fn only_with_metadata_rejects_a_page_without_date() {
+    let options = Options::new().only_with_metadata(true);
+    assert_eq!(
+        document_of(&options, METADATA_PAGE, &Call::default()).err(),
+        Some(ExtractError::Rejected(Rejection::MissingMetadata))
+    );
+}
+
+#[test]
+fn author_blacklist_drops_the_author() {
+    let options = Options::new()
+        .with_metadata(true)
+        .author_blacklist(["Jane Doe"]);
+    let document = document_of(&options, METADATA_PAGE, &Call::default()).unwrap();
+    assert_eq!(document.author, None);
 }
 
 /// The recall revert keeps `script` in the tree, and `handle_forms` compares form text with it.

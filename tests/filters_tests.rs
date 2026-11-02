@@ -123,7 +123,7 @@ fn test_filters() {
 // with `py3langid` installed, which the oracle's container does not have, so these values are
 // upstream's assertions as written.
 #[test]
-#[ignore = "phase 4"]
+#[ignore = "OI-4"]
 fn test_filters_phase_4_lines() {
     let zero = |lang: &str| settings(zero_config(), None, Some(lang));
     // lang detection on the content
@@ -146,7 +146,7 @@ fn test_filters_phase_4_lines() {
 }
 
 /// `extract(doc, output_format="xml", config=ZERO_CONFIG, url_blacklist=...)`.
-// todo(phase 6): xml output, and phase 4: the URL blacklist
+// todo(phase 6): xml output
 fn extract_xml(_doc: &str, _url_blacklist: &[&str]) -> Option<String> {
     None
 }

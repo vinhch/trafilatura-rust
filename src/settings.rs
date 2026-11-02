@@ -3,12 +3,14 @@
 
 use std::collections::HashSet;
 use std::sync::LazyLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 
 use crate::cancel::Call;
 use crate::dom::{LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
+use crate::pydatetime::DateTime;
 use crate::pyhtml::unescape;
 use crate::pystr::ignore_case_i;
 use crate::utils::line_processing;
@@ -118,7 +120,8 @@ pub struct DateParams {
     pub original_date: bool,
     /// Extensive date search.
     pub extensive_search: bool,
-    /// Latest date accepted, `YYYY-MM-DD`; `None` until the call sets it.
+    /// Latest date accepted, `YYYY-MM-DD`; `None` until `extract_metadata` sets today's UTC date
+    /// (D-15).
     pub max_date: Option<String>,
 }
 
@@ -238,15 +241,27 @@ impl Extractor {
     }
 }
 
-/// The default date parameters, preferring the original date.
+/// The default date parameters, preferring the original date. `max_date` stays `None` here, so the
+/// options build without a clock read: `extract_metadata` fills it per call (`today_utc`, D-15).
 // upstream: settings.py::set_date_params
 pub fn set_date_params(extensive: bool) -> DateParams {
     DateParams {
         original_date: true,
         extensive_search: extensive,
-        // todo(phase 4d): max_date default (D-15)
         max_date: None,
     }
+}
+
+/// Today's UTC date, `YYYY-MM-DD`: the `max_date` of a call that sets none. A clock past year 9999
+/// gives the empty string, which no date search reads.
+// upstream: settings.py::set_date_params (`max_date` default, the local date there)
+// deviation: D-15 (UTC, not the local date)
+pub(crate) fn today_utc() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let seconds = i64::try_from(seconds).unwrap_or(i64::MAX);
+    DateTime::from_timestamp_utc(seconds).map_or_else(String::new, |today| today.strftime_ymd())
 }
 
 /// What an extraction returns: the metadata fields, the body and comments body as trees, and the

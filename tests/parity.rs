@@ -778,11 +778,15 @@ fn script_text_drop_keeps_output() {
                     .focus(focus)
                     .comments(comments)
                     .build();
+                let kept_extractor = Options::new()
+                    .format(Format::Txt)
+                    .focus(focus)
+                    .comments(comments)
+                    .keep_script_text(true)
+                    .build();
                 let page = Input::bytes(&bytes);
                 let dropped = extractor.extract(&page, &Call::default());
-                let kept = extractor
-                    .with_script_text()
-                    .extract(&page, &Call::default());
+                let kept = kept_extractor.extract(&page, &Call::default());
                 if dropped != kept {
                     differing.push(format!("{id} {focus:?} comments={comments}"));
                 }

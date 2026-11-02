@@ -112,9 +112,9 @@ upstream has no equivalent.
   one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a
   512 KiB stack in a debug build, so a default thread stack is enough (a musl host that spawns its own
   threads sets 512 KiB).
-- No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`); here it is an
-  option (`Call`, planned) whose default is computed on each `extract` call, never when the extractor
-  is built, and parity fixtures pin it.
+- No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`). Here a call sets it
+  with `Call::max_date`; without one, `extract_metadata` takes today's UTC date, read once per call
+  and never when the extractor is built (D-15).
 - Panic-free on any input. The crate runs behind FFI, where a panic aborts the host process.
   `unwrap`, `expect` and `panic` fail clippy outside tests; `string_slice` fails everywhere, tests
   included; `indexing_slicing` is a warning, and CI denies warnings. `clippy.toml` exempts only
@@ -159,13 +159,18 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus` 
 | `config` | `Config::default()` | |
 | `max_input_bytes` | `Some(DEFAULT_MAX_INPUT_BYTES)` | `ParseLimits::max_input_bytes` (D-11): raw input length above which `Rejection::InputTooLarge` is returned, before decompression; `None` lifts the limit. The free `html2txt` always uses the default. |
 | `max_nodes` | `Some(DEFAULT_MAX_NODES)` | `ParseLimits::max_nodes` (D-5); `None` lifts the limit. `ParseLimits::max_depth` is not exposed. |
+| `with_metadata` | `false` | Metadata goes into the `Document` of `bare_extraction` and into the header of the text, Markdown and HTML outputs. A URL or author blacklist, or `only_with_metadata`, turns it on. |
+| `only_with_metadata` | `false` | Rejects a page without a date, title or URL with `Rejected(MissingMetadata)`. Implies `with_metadata`. |
+| `author_blacklist` | empty | Names dropped from the author, matched without regard to case; replaces the set. A non-empty set implies `with_metadata`. |
+| `url_blacklist` | empty | URLs rejected with `Rejected(BlacklistedUrl)`; replaces the set. A non-empty set implies `with_metadata`. |
+| `keep_script_text` | `false` | Keeps the text of `script` and `style` elements in the parse, as upstream does (D-14). |
 
 `Err(Rejected(_))` stands for upstream's `None` and for a raise that escapes upstream's entry point.
-Options that no phase makes work yet are absent, so none silently does nothing: the metadata method (phase 4d),
-date extraction (`find_date` runs inside metadata; its `Options` method waits), deduplication, `prune_xpath` and the XML, XML-TEI, JSON and CSV formats. Metadata
-extraction and its filters already run inside the crate (phase 4b); only their `Options` methods wait. The
-planned additions are `max_date` and the caller-owned deduplication cache on `Call`, and an `Options` method
-for each of the above when its phase lands.
+Options that no phase makes work yet are absent, so none silently does nothing: date extraction parameters
+(`find_date` runs inside metadata; its `Options` method waits), deduplication, `prune_xpath` and the XML,
+XML-TEI, JSON and CSV formats. Metadata extraction, its filters and its `Options` methods are in the table
+above. The planned addition is the caller-owned deduplication cache on `Call`, and an `Options` method for
+each of the absent ones when its phase lands.
 
 Tree input (upstream's `HtmlElement` for `filecontent`) is internal: `extraction.rs` takes a `Source`,
 a page or an element of a caller's tree, which the public methods and the tests that pass a tree use.
