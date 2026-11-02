@@ -1016,7 +1016,7 @@ fn test_images() {
     }
 }
 
-/// The page of test_document_as_dict, shared with test_document_as_dict_phase_4c_lines, which needs
+/// The page of test_document_as_dict, shared with test_document_as_dict_metadata_lines, which needs
 /// its date.
 const DOCUMENT_AS_DICT_PAGE: &str = r#"
     <html>
@@ -1044,7 +1044,7 @@ const DOCUMENT_AS_DICT_PAGE: &str = r#"
     "#;
 
 // Adaptation: upstream's as_dict is not ported; the same values are asserted on the fields. The
-// date assertion is in test_document_as_dict_phase_4c_lines.
+// date assertion is in test_document_as_dict_metadata_lines.
 #[test]
 fn test_document_as_dict() {
     // Tests that the dict serialization works and preserves data.
@@ -1063,7 +1063,7 @@ fn test_document_as_dict() {
 }
 
 #[test]
-fn test_document_as_dict_phase_4c_lines() {
+fn test_document_as_dict_metadata_lines() {
     assert_eq!(
         extract(DOCUMENT_AS_DICT_PAGE).date.as_deref(),
         Some("2017-09-01")

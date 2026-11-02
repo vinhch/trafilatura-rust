@@ -142,7 +142,7 @@ fn test_trim() {
 
 // Reading a cfg file is upstream API (`use_config`, `settingsfile=`) that this crate does not offer,
 // so the file-based assertions are not ported; `NEW_CONFIG` is built from the values of
-// `newsettings.cfg`. The `extract_with_metadata` line is `test_config_loading_phase_4_lines`.
+// `newsettings.cfg`. The `extract_with_metadata` line is `test_config_loading_metadata_lines`.
 #[test]
 fn test_config_loading() {
     // a partial settings file: the key it sets overrides, the others keep their default
@@ -191,7 +191,7 @@ fn new_config() -> Config {
 
 // The metadata line of `test_config_loading`.
 #[test]
-fn test_config_loading_phase_4_lines() {
+fn test_config_loading_metadata_lines() {
     let html =
         "<html><body><article><p>Short paragraph of content here.</p></article></body></html>";
     assert!(extract_with_metadata(html, &Kw::new().config(new_config()), None).is_none());
@@ -1802,7 +1802,7 @@ fn test_formatting_phase_6_lines() {
 
 // The Markdown metadata lines of `test_formatting`; the JSON lines are in `test_formatting_phase_6_lines`.
 #[test]
-fn test_formatting_phase_4_lines() {
+fn test_formatting_metadata_lines() {
     let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";
     let meta_result = extract_with_metadata(meta_string, &Kw::zero().markdown(), None).unwrap();
     assert!(meta_result.starts_with("---\ntitle: Test\nfingerprint: "));
@@ -3744,7 +3744,7 @@ fn test_heading_inline_formatting() {
 }
 
 // The first assert uses `method="html"`, which writes the same as the XML method on this input.
-// The metadata lines are `test_html_conversion_phase_4_lines`.
+// The metadata lines are `test_html_conversion_metadata_lines`.
 #[test]
 fn test_html_conversion() {
     let source = r##"<xml>
@@ -3804,7 +3804,7 @@ fn test_html_conversion() {
 
 // The metadata lines of `test_html_conversion`.
 #[test]
-fn test_html_conversion_phase_4_lines() {
+fn test_html_conversion_metadata_lines() {
     let html = "<html><body><article><h1>Title 1</h1><p>Text.</p></article></body></html>";
     let expected_html = r#"<html>
   <head>
@@ -4980,7 +4980,7 @@ fn test_markdown_metadata_yaml_safe() {
 
 // The end-to-end lines of `test_markdown_metadata_yaml_safe`, minus the YAML parse.
 #[test]
-fn test_markdown_metadata_yaml_safe_phase_4_lines() {
+fn test_markdown_metadata_yaml_safe_lines() {
     // end-to-end: a title with ": " used to emit invalid YAML, now it is quoted
     let html = concat!(
         "<html><head><title>COP30: a beginner\u{2019}s guide</title>",

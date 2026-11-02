@@ -124,7 +124,7 @@ fn test_filters() {
 // upstream's assertions as written.
 #[test]
 #[ignore = "OI-4"]
-fn test_filters_phase_4_lines() {
+fn test_filters_language_detection_lines() {
     let zero = |lang: &str| settings(zero_config(), None, Some(lang));
     // lang detection on the content
     let doc = "<html><body><article><p>How many ages hence/Shall this our lofty scene be acted over,/In states unborn and accents yet unknown!</p></article></body></html>";

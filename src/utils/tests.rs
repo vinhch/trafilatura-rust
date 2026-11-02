@@ -1061,7 +1061,7 @@ mod text {
     }
 
     #[test]
-    fn language_filter_is_a_stub_until_phase_4() {
+    fn language_filter_stub_rejects_text() {
         assert!(!language_filter("text", "comments", Some("de")));
     }
 
