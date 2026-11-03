@@ -6,7 +6,7 @@
 # An equivalent mutant goes in exclude_re as a single-quoted string, with one comment line above it giving the reason.
 # Write it line-free (^<path>:[0-9]+:[0-9]+: <description>$) when its description is unique in the function,
 # and line-anchored otherwise.
-examine_globs = ["src/main_extractor.rs", "src/main_extractor/tables.rs", "src/main_extractor/content.rs", "src/metadata.rs", "src/htmldate/validators.rs", "src/htmldate/core.rs"]
+examine_globs = ["src/main_extractor.rs", "src/main_extractor/tables.rs", "src/main_extractor/content.rs", "src/metadata.rs", "src/htmldate/validators.rs", "src/htmldate/core.rs", "src/htmldate/core/patterns.rs", "src/htmldate/core/search.rs", "src/htmldate/core/examiners.rs"]
 all_features = true # the integration test targets need the __internals feature
 gitignore = true
 timeout_multiplier = 2.0
