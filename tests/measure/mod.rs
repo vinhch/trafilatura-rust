@@ -114,7 +114,7 @@ fn wide_table(rows: usize) -> String {
 }
 
 /// An `<ol>` of `items` items inside an `<article>`: a bare `<ol>` in the body comes out as plain
-/// lines, so the numbering of `xml::list_marker` would never run.
+/// lines, so the numbering of `xml::to_text::list_marker` would never run.
 fn ordered_list(items: usize) -> String {
     let mut out = String::from("<article><ol>");
     for n in 0..items {
@@ -125,7 +125,7 @@ fn ordered_list(items: usize) -> String {
 }
 
 /// A Markdown page of `items` ordered-list items: Markdown is the only format where the numbering of
-/// `xml::list_marker` runs.
+/// `xml::to_text::list_marker` runs.
 pub fn ordered_list_page(name: &'static str, items: usize) -> Synthetic {
     Synthetic {
         name,

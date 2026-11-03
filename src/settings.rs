@@ -52,7 +52,7 @@ pub struct Config {
     /// Largest decompressed size, in bytes, of byte input; only the `decompress` feature reads it,
     /// and a decoded string is never cut.
     pub max_file_size: usize,
-    /// Smallest input in bytes for `utils::is_acceptable_length`, which no extraction path calls, so
+    /// Smallest input in bytes for `utils::text::is_acceptable_length`, which no extraction path calls, so
     /// extraction ignores it.
     pub min_file_size: usize,
     /// Element count above which a page is discarded; `None` = no limit.
