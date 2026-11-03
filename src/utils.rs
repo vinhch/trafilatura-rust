@@ -10,7 +10,7 @@ use regex::Regex;
 use crate::cancel::Call;
 use crate::dom::{ParseLimits, Tree, parse_document};
 use crate::error::{ExtractError, Rejection};
-use crate::pystr::{self};
+use crate::pystr;
 
 /// Input accepted by `load_html`.
 // upstream: utils.py::HtmlInput
