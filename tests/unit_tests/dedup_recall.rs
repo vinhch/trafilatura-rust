@@ -153,7 +153,7 @@ fn test_short_document_keeps_structure() {
 #[test]
 fn test_short_document_baseline_rescue_accepted() {
     // The other side of the #896 gate: when the rescue does add text, it must still win.
-    // Distinct sentences: a repeated one trips the body-level duplicate_test instead. The empty
+    // The sentences are distinct; no cache is passed, so duplicate_test flags nothing (D-22). The empty
     // <body> keeps the main extractor at zero, so the rescue is what supplies the text.
     let body = (0..6)
         .map(|i| format!("Sentence {i} of a body that arrives only as structured data."))

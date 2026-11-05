@@ -122,6 +122,7 @@ impl DedupCache {
     }
 
     fn lock(&self) -> MutexGuard<'_, Lru> {
+        // deviation: D-26 (upstream's RLock never poisons; a panic elsewhere leaves the cache usable)
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -141,6 +142,7 @@ impl Clone for DedupCache {
 }
 
 /// The digest of `text` as given. Callers pass the text already trimmed, as upstream does.
+// deviation: D-24 (the key is a 128-bit digest of the text, not the text: bounded memory)
 pub(crate) fn key_of(text: &str) -> Key {
     Blake2b::<U16>::digest(text.as_bytes()).into()
 }

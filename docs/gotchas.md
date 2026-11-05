@@ -266,7 +266,8 @@ function.
 ## Defaults, ordering and global state
 
 - Process-global state. `deduplication.py` keeps `LRU_TEST` as a module global, cleared by
-  `meta.reset_caches()`. It becomes caller-owned state here. `functools.lru_cache` on pure functions
+  `meta.reset_caches()`. Here the cache is caller-owned, passed on `Call` (D-22): a global would share
+  counts between unrelated calls. `functools.lru_cache` on pure functions
   is only memoization: drop it unless profiling says otherwise.
 - Defaults come from `settings.cfg` as well as `settings.py`: `MAX_FILE_SIZE = 20000000`,
   `MIN_FILE_SIZE = 10`, an empty `MAX_TREE_SIZE` meaning no limit.

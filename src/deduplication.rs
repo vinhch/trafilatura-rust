@@ -99,6 +99,7 @@ impl<'a> DedupScope<'a> {
     }
 
     fn lock(&self) -> MutexGuard<'_, Pending> {
+        // deviation: D-26 (upstream's RLock never poisons; a panic elsewhere leaves the scope usable)
         self.pending.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -107,6 +108,7 @@ impl<'a> DedupScope<'a> {
 /// cache when the body returns `Ok` or a rejection. Any other error, and a panic, drop them. Only a
 /// call that holds a cache and is not yet scoped opens a scope; every other call runs `body` on
 /// `call` itself, so the outermost entry point is the one that commits.
+// deviation: D-23 (counts reach the cache at commit, not per text: upstream's LRU updates in place)
 pub(crate) fn run_scoped<T>(
     call: &Call<'_>,
     body: impl FnOnce(&Call<'_>) -> Result<T, ExtractError>,
@@ -127,6 +129,7 @@ pub(crate) fn run_scoped<T>(
 /// counts the text, short ones included. Always `false` on a call without a cache. Checks no
 /// cancellation: its one walk is bounded by the element's subtree, and every caller sits in a loop
 /// that checks.
+// deviation: D-22 (no global cache: upstream's LRU_TEST is a module global, the cache is on Call)
 // upstream: deduplication.py::duplicate_test
 pub fn duplicate_test(tree: &Tree, element: NodeId, ctx: &Ctx<'_>) -> bool {
     let dedup = ctx.call.dedup_state();
