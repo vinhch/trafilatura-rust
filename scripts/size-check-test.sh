@@ -2,8 +2,9 @@
 #
 # Runs scripts/size-check.sh on generated fixtures, one per case of the size-check table: the production
 # and test caps and hard caps, the size: reason line and where it counts, generated files, CRLF and a
-# missing final newline, a missing file. Fixtures are written under .temp/size-check-test/ on every run, so
-# no large file is tracked. size-check-test.ps1 is the twin.
+# missing final newline, a missing file, the -h and unknown-flag exits, an empty file and an absolute path.
+# Fixtures are written under .temp/size-check-test/ on every run, so no large file is tracked.
+# size-check-test.ps1 is the twin.
 set -euo pipefail
 
 readonly script_name="size-check-test.sh"
@@ -39,6 +40,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 work=".temp/size-check-test"
+abs_work="$repo_root/$work"
 rm -rf "$work"
 mkdir -p "$work"
 
@@ -148,6 +150,7 @@ fixture src/m/tests.rs none 1001
 fixture tests/t1501r.rs x 1501
 fixture src/upper.rs upper 801
 fixture src/Tests/a.rs none 801
+fixture src/zero.rs none 0
 
 cat >"$work/src/crlf.rs" <<'EOF'
 //! size: crlf
@@ -182,6 +185,26 @@ run_case() {
   fi
 }
 
+# run_case_head <number> <expected exit> <expected stdout line prefix> <files...>: like run_case, but checks only
+# the start of the first stdout line (for -h, whose usage line names the script and differs per twin).
+run_case_head() {
+  local num="$1" want_exit="$2" want_head="$3" rc=0 problems="" first
+  shift 3
+  scripts/size-check.sh "$@" >"$work/out-$num" 2>"$work/err-$num" || rc=$?
+  first="$(head -n 1 "$work/out-$num")"
+  [ "$rc" -eq "$want_exit" ] || problems+="exit $rc, want $want_exit; "
+  case "$first" in
+    "$want_head"*) ;;
+    *) problems+="first stdout line '$first', want prefix '$want_head'; " ;;
+  esac
+  if [ -z "$problems" ]; then
+    passes=$((passes + 1))
+  else
+    echo "size-check-test.sh: case $num: $problems" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 ok1="size-check: 1 files checked, 0 generated skipped"
 
 run_case 1 0 "$ok1" "" "$work/src/p800.rs"
@@ -208,6 +231,10 @@ run_case 19 0 "$ok1" "" "$work/tests/t1000.rs"
 run_case 20 1 "" "$work/tests/t1501r.rs: 1501 lines, over the 1500-line test hard cap" "$work/tests/t1501r.rs"
 run_case 21 1 "" "$work/src/upper.rs: 801 lines, over the 800-line production cap without a size: line" "$work/src/upper.rs"
 run_case 22 1 "" "$work/src/Tests/a.rs: 801 lines, over the 800-line production cap without a size: line" "$work/src/Tests/a.rs"
+run_case_head 23 0 "Usage:" -h
+run_case 24 1 "" "unknown argument: --bogus" --bogus
+run_case 25 0 "$ok1" "" "$work/src/zero.rs"
+run_case 26 1 "" "$abs_work/src/p801.rs: 801 lines, over the 800-line production cap without a size: line" "$abs_work/src/p801.rs"
 
 if [ "$failures" -gt 0 ]; then
   exit 1

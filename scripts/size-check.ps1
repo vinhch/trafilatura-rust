@@ -86,7 +86,7 @@ $Checked = 0
 $GeneratedCount = 0
 $Violations = 0
 foreach ($Path in $Paths) {
-    $Full = Join-Path (Get-Location).ProviderPath $Path
+    $Full = if ([IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path (Get-Location).ProviderPath $Path }
     if (-not [IO.File]::Exists($Full)) {
         $Host.UI.WriteErrorLine("$ScriptName`: $($Path): no such file")
         $Violations++

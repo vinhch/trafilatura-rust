@@ -2,8 +2,9 @@
 
 # Runs scripts/size-check.ps1 on generated fixtures, one per case of the size-check table: the production
 # and test caps and hard caps, the size: reason line and where it counts, generated files, CRLF and a
-# missing final newline, a missing file. Fixtures are written under .temp/size-check-test/ on every run, so
-# no large file is tracked. size-check-test.sh is the twin.
+# missing final newline, a missing file, the -h and unknown-flag exits, an empty file and an absolute path.
+# Fixtures are written under .temp/size-check-test/ on every run, so no large file is tracked.
+# size-check-test.sh is the twin.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -68,7 +69,9 @@ function New-Fixture {
     $Lines = [Collections.Generic.List[string]]::new()
     $Lines.AddRange([string[]]@(Get-Block $Block))
     while ($Lines.Count -lt $Total) { $Lines.Add('x') }
-    [IO.File]::WriteAllText($Path, (($Lines -join "`n") + "`n"))
+    $Text = $Lines -join "`n"
+    if ($Lines.Count -gt 0) { $Text += "`n" }
+    [IO.File]::WriteAllText($Path, $Text)
 }
 
 New-Fixture 'src/p800.rs' 'none' 800
@@ -91,6 +94,7 @@ New-Fixture 'src/m/tests.rs' 'none' 1001
 New-Fixture 'tests/t1501r.rs' 'x' 1501
 New-Fixture 'src/upper.rs' 'upper' 801
 New-Fixture 'src/Tests/a.rs' 'none' 801
+New-Fixture 'src/zero.rs' 'none' 0
 [IO.File]::WriteAllText((Join-Path $WorkAbs 'src/crlf.rs'), ("//! size: crlf`r`n" + ('x' + "`r`n") * 800))
 [IO.File]::WriteAllText((Join-Path $WorkAbs 'src/noeol.rs'), ('x' + "`n") * 800 + 'x')
 
@@ -98,10 +102,10 @@ $Passes = 0
 $Failures = 0
 
 # Invoke-Case <number> <expected exit> <expected stdout> <expected stderr lines, newline-separated, or empty>
-# <files...>: runs size-check.ps1 in its own process and checks the exit code, the exact stdout and each
-# stderr line.
+# <files...> [-WantHead <prefix>]: runs size-check.ps1 in its own process and checks the exit code, the exact
+# stdout and each stderr line. With -WantHead only the start of the first stdout line is checked (for -h).
 function Invoke-Case {
-    param([int]$Num, [int]$WantExit, [string]$WantOut, [string]$WantErr, [string[]]$Files)
+    param([int]$Num, [int]$WantExit, [string]$WantOut, [string]$WantErr, [string[]]$Files, [string]$WantHead = '')
     $TwinPath = Join-Path $RepoRoot 'scripts/size-check.ps1'
     $OutFile = Join-Path $WorkAbs "out-$Num"
     $ErrFile = Join-Path $WorkAbs "err-$Num"
@@ -112,7 +116,12 @@ function Invoke-Case {
     $GotErr = [IO.File]::ReadAllText($ErrFile)
     $Problems = [Collections.Generic.List[string]]::new()
     if ($Proc.ExitCode -ne $WantExit) { $Problems.Add("exit $($Proc.ExitCode), want $WantExit") }
-    if ($Got -cne $WantOut) { $Problems.Add("stdout '$Got', want '$WantOut'") }
+    if ($WantHead) {
+        $First = ($Got -split "`n")[0]
+        if (-not $First.StartsWith($WantHead, [StringComparison]::Ordinal)) { $Problems.Add("first stdout line '$First', want prefix '$WantHead'") }
+    } elseif ($Got -cne $WantOut) {
+        $Problems.Add("stdout '$Got', want '$WantOut'")
+    }
     foreach ($Want in @($WantErr -split "`n" | Where-Object { $_ })) {
         if (-not $GotErr.Contains($Want)) { $Problems.Add("stderr lacks '$Want'") }
     }
@@ -152,6 +161,10 @@ Invoke-Case 19 0 $Ok1 '' @("$Prefix/tests/t1000.rs")
 Invoke-Case 20 1 '' "$Prefix/tests/t1501r.rs: 1501 lines, over the 1500-line test hard cap" @("$Prefix/tests/t1501r.rs")
 Invoke-Case 21 1 '' "$Prefix/src/upper.rs: 801 lines, over the 800-line production cap without a size: line" @("$Prefix/src/upper.rs")
 Invoke-Case 22 1 '' "$Prefix/src/Tests/a.rs: 801 lines, over the 800-line production cap without a size: line" @("$Prefix/src/Tests/a.rs")
+Invoke-Case 23 0 '' '' @('-h') -WantHead 'Usage:'
+Invoke-Case 24 1 '' 'unknown argument: --bogus' @('--bogus')
+Invoke-Case 25 0 $Ok1 '' @("$Prefix/src/zero.rs")
+Invoke-Case 26 1 '' "$WorkAbs/src/p801.rs: 801 lines, over the 800-line production cap without a size: line" @("$WorkAbs/src/p801.rs")
 
 if ($Failures -gt 0) { exit 1 }
 "size-check-test: $Passes cases passed"
