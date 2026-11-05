@@ -120,6 +120,11 @@ harness = false
 required-features = ["__internals"]
 
 [[test]]
+name = "measure_threads"
+harness = false
+required-features = ["__internals"]
+
+[[test]]
 name = "measure_sample"
 required-features = ["__internals"]
 

@@ -163,6 +163,12 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   `--docker`) in one Linux container built from `scripts/measure.Dockerfile`, so a table compares one
   system; its `Platform:` line says where. Run it by hand; the numbers depend on the machine. A full run of
   the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
+- Thread scaling: `scripts/measure.sh --threads-native` (or `.ps1`) runs `tests/measure_threads.rs` natively,
+  never in the container, and writes `.temp/measure/<version>-rust-threads.json`:
+  `threads_available` (logical threads, `available_parallelism`) and `runs`, one entry per count of 1, 2, 4
+  and 8 with `pages_per_sec` and `ratio` to one thread. The sample (`sample`) is extracted by scoped threads
+  sharing one extractor, each count for at least 2 s. The file has no digests and no dhat profile. Not gated:
+  host noise is too large.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
   ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing
   `.temp/measure/<version>-rust-<kind>-synthetic.json` beside the corpus file. `large_page` has 1.1M
@@ -225,7 +231,7 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
 | `TRAFILATURA_UPSTREAM` | Rust tests, scripts, `tools/parity/tests` (the generator takes `--upstream`) | upstream checkout; default `../trafilatura` |
 | `TRAFILATURA_FIXTURES` | tests | fixture directory instead of `.temp/fixtures/<version>` |
 | `PARITY_REQUIRE_FIXTURES` | parity test | missing fixtures fail instead of skip |
-| `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap` | `1` lets the targets run; they skip otherwise |
+| `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap`, `measure_threads` | `1` lets the targets run; they skip otherwise |
 | `TRAFILATURA_MEASURE_ONLY` | measure targets | unset: the corpus, then the synthetic pages; `synthetic`: only the synthetic pages, the corpus file untouched; `@sample`: only the sample of the corpus, into the `-sample` file; any other text: only the corpus pages whose source path contains it |
 | `TRAFILATURA_MEASURE_DHAT` | `measure_heap` | `1` with `--only` writes a dhat profile per profiled call to `.temp/measure/dhat/`; forwarded into the container by `scripts/measure.sh` and `.ps1` |
 | `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure`, measure targets | labels the host of a measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |

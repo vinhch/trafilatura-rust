@@ -16,7 +16,7 @@ readonly table_rows=15
 
 usage() {
   cat <<EOF
-Usage: scripts/$script_name [--upstream PATH] [--docker] [--only SUBSTRING]
+Usage: scripts/$script_name [--upstream PATH] [--docker] [--only SUBSTRING] [--threads-native]
 
 Runs tests/measure_time.rs and tests/measure_heap.rs (release build, feature __internals; two binaries,
 because the dhat allocator of the heap one would slow the timings), then tools/parity (parity.measure) against
@@ -28,6 +28,9 @@ elsewhere, so both sides always share a system. Absolute numbers still depend on
   --docker         Run both sides in the container even on Linux. On a Linux host the container runs as root, so
                    it leaves the .temp/measure outputs owned by root.
   --only SUBSTRING Keep pages whose upstream path contains SUBSTRING.
+  --threads-native Run only tests/measure_threads.rs, natively: no Python side, no merge, and never in the
+                   container, even off Linux or with --docker. Writes .temp/measure/<version>-rust-threads.json.
+                   Cannot be combined with --only.
   -h, --help       Show this message.
 EOF
 }
@@ -40,6 +43,7 @@ fail() {
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 upstream="${TRAFILATURA_UPSTREAM:-$repo_root/../trafilatura}"
 use_docker=false
+threads_native=false
 only=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -60,6 +64,9 @@ while [ "$#" -gt 0 ]; do
       only="$2"
       shift
       ;;
+    --threads-native)
+      threads_native=true
+      ;;
     *)
       fail "unknown argument: $1"
       ;;
@@ -67,10 +74,22 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+if [ "$threads_native" = true ] && [ -n "$only" ]; then
+  fail "--threads-native measures the corpus sample only; it cannot take --only"
+fi
+
 cd "$repo_root"
 [ -f "$upstream/trafilatura/utils.py" ] || fail "$upstream is not an upstream trafilatura checkout"
 upstream="$(cd "$upstream" && pwd)"
 mkdir -p .temp/measure
+
+# Thread scaling runs here, before the container branch: it is never re-run in Docker
+if [ "$threads_native" = true ]; then
+  echo "== Rust: thread scaling over the corpus sample (native) ==" >&2
+  TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 \
+    cargo test --locked --release --features __internals --test measure_threads -- --nocapture >&2
+  exit 0
+fi
 
 only_args=()
 rows=""

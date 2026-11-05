@@ -28,7 +28,7 @@ function Fail {
 
 function Show-Usage {
     @"
-Usage: scripts/$ScriptName [--upstream PATH] [--docker] [--only SUBSTRING]
+Usage: scripts/$ScriptName [--upstream PATH] [--docker] [--only SUBSTRING] [--threads-native]
 
 Runs tests/measure_time.rs and tests/measure_heap.rs (release build, feature __internals; two binaries,
 because the dhat allocator of the heap one would slow the timings), then tools/parity (parity.measure) against
@@ -40,6 +40,9 @@ elsewhere, so both sides always share a system. Absolute numbers still depend on
   --docker         Run both sides in the container even on Linux. On a Linux host the container runs as root, so
                    it leaves the .temp/measure outputs owned by root.
   --only SUBSTRING Keep pages whose upstream path contains SUBSTRING.
+  --threads-native Run only tests/measure_threads.rs, natively: no Python side, no merge, and never in the
+                   container, even off Linux or with --docker. Writes .temp/measure/<version>-rust-threads.json.
+                   Cannot be combined with --only.
   -h, --help       Show this message.
 "@
 }
@@ -47,6 +50,7 @@ elsewhere, so both sides always share a system. Absolute numbers still depend on
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Upstream = if ($env:TRAFILATURA_UPSTREAM) { $env:TRAFILATURA_UPSTREAM } else { Join-Path $RepoRoot '../trafilatura' }
 $UseDocker = $false
+$ThreadsNative = $false
 $Only = ''
 for ($Index = 0; $Index -lt $args.Count; $Index++) {
     switch ($args[$Index]) {
@@ -62,9 +66,12 @@ for ($Index = 0; $Index -lt $args.Count; $Index++) {
             $Index++
             $Only = $args[$Index]
         }
+        '--threads-native' { $ThreadsNative = $true }
         default { Fail "unknown argument: $($args[$Index])" }
     }
 }
+
+if ($ThreadsNative -and $Only) { Fail '--threads-native measures the corpus sample only; it cannot take --only' }
 
 Set-Location $RepoRoot
 if (-not (Test-Path (Join-Path $Upstream 'trafilatura/utils.py'))) { Fail "$Upstream is not an upstream trafilatura checkout" }
@@ -72,6 +79,20 @@ $Upstream = (Resolve-Path $Upstream).Path
 $null = New-Item -ItemType Directory -Force '.temp/measure'
 $OnlyArgs = if ($Only) { @('--only', $Only) } else { @() }
 $Rows = if ($Only) { $TableRows } else { 0 }
+
+# Thread scaling runs here, before the container branch: it is never re-run in Docker
+if ($ThreadsNative) {
+    [Console]::Error.WriteLine('== Rust: thread scaling over the corpus sample (native) ==')
+    $env:TRAFILATURA_UPSTREAM = $Upstream
+    $env:TRAFILATURA_MEASURE = '1'
+    try {
+        cargo test --locked --release --features __internals --test measure_threads -- --nocapture 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
+        if ($LASTEXITCODE -ne 0) { Fail 'the thread-scaling measurement failed' }
+    } finally {
+        Remove-Item Env:TRAFILATURA_MEASURE -ErrorAction SilentlyContinue
+    }
+    exit 0
+}
 
 if ($UseDocker -or -not $IsLinux) {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Fail 'docker is required on this platform (or run on Linux)' }

@@ -430,7 +430,8 @@ pub fn run_all(
     }
 }
 
-fn output_path(file: &str) -> PathBuf {
+/// `.temp/measure/<version>-rust-<file>.json`, the file a target writes its measurement to.
+pub fn output_path(file: &str) -> PathBuf {
     let out: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp/measure");
     std::fs::create_dir_all(&out).unwrap();
     out.join(format!("{}-rust-{file}.json", common::upstream_release()))
