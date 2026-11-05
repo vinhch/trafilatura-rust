@@ -1,28 +1,143 @@
 //! Duplicate detection of upstream `deduplication.py`: the content fingerprint, with its token
-//! sampling and Simhash. `duplicate_test` is a stub until the duplicate cache is ported.
+//! sampling and Simhash, and the duplicate test over a caller-owned cache.
+
+use std::collections::HashMap;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use blake2::digest::consts::{self, U8};
 use blake2::digest::typenum::Unsigned;
 use blake2::{Blake2b, Digest};
 
+use crate::cancel::Call;
 use crate::context::Ctx;
 use crate::dom::{NodeId, Tree};
+use crate::error::ExtractError;
 use crate::pystr;
+use crate::utils::trim;
 
 mod cache;
 
 pub use cache::{DedupCache, DedupError};
+use cache::{Key, key_of};
 
 /// Bits of a simhash, which is also the length upstream's `Simhash` defaults to. Fills a `u64`, the
 /// most a simhash can have.
 const HASH_BITS: usize = 64;
 
-/// Whether the text of `element` repeats too often to keep. Always `false` until phase 5 ports the
-/// duplicate cache.
+/// Where the duplicate counts of one call go.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) enum Dedup<'a> {
+    /// No cache: no text is flagged.
+    #[default]
+    Off,
+    /// A call outside any entry point: each count writes through to the cache.
+    Direct(&'a DedupCache),
+    /// A call inside an entry point: the counts wait in the scope until it commits them.
+    Scoped(&'a DedupScope<'a>),
+}
+
+impl Dedup<'_> {
+    /// Records one occurrence of `key` and returns the count before it, `None` when there was none.
+    fn record(self, key: Key) -> Option<u64> {
+        match self {
+            Self::Off => None,
+            Self::Direct(cache) => cache.increment_key(key),
+            Self::Scoped(scope) => scope.count_and_record(key),
+        }
+    }
+}
+
+/// The duplicate counts of one entry-point call, held until the call commits them to the cache.
+#[derive(Debug)]
+pub(crate) struct DedupScope<'a> {
+    cache: &'a DedupCache,
+    pending: Mutex<Pending>,
+}
+
+/// The increments a scope has made, in order, and how many it made to each text.
+#[derive(Debug, Default)]
+struct Pending {
+    ops: Vec<Key>,
+    added: HashMap<Key, u64>,
+}
+
+impl<'a> DedupScope<'a> {
+    fn new(cache: &'a DedupCache) -> Self {
+        Self {
+            cache,
+            pending: Mutex::new(Pending::default()),
+        }
+    }
+
+    /// Upstream's `increment` as the scope sees the cache: the count the cache holds for `key` plus
+    /// the increments this scope made, or `None` when neither has it. Records one increment.
+    fn count_and_record(&self, key: Key) -> Option<u64> {
+        let stored = self.cache.peek_key(&key);
+        let mut pending = self.lock();
+        let added = pending.added.get(&key).copied();
+        let previous = match (stored, added) {
+            (None, None) => None,
+            (stored, added) => Some(stored.unwrap_or(0).saturating_add(added.unwrap_or(0))),
+        };
+        let count = pending.added.entry(key).or_insert(0);
+        *count = count.saturating_add(1);
+        pending.ops.push(key);
+        previous
+    }
+
+    /// Applies the buffered increments to the cache, in order, once.
+    fn commit(&self) {
+        let ops = std::mem::take(&mut self.lock().ops);
+        self.cache.apply(&ops);
+    }
+
+    /// Drops the buffered increments, for the rerun of a pass.
+    pub(crate) fn reset(&self) {
+        let mut pending = self.lock();
+        pending.ops.clear();
+        pending.added.clear();
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Pending> {
+        self.pending.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// Runs `body` with the duplicate counts of `call` buffered in a scope, and commits them to the
+/// cache when the body returns `Ok` or a rejection. Any other error, and a panic, drop them. Only a
+/// call that holds a cache and is not yet scoped opens a scope; every other call runs `body` on
+/// `call` itself, so the outermost entry point is the one that commits.
+pub(crate) fn run_scoped<T>(
+    call: &Call<'_>,
+    body: impl FnOnce(&Call<'_>) -> Result<T, ExtractError>,
+) -> Result<T, ExtractError> {
+    let Dedup::Direct(cache) = call.dedup_state() else {
+        return body(call);
+    };
+    let scope = DedupScope::new(cache);
+    let result = body(&call.with_dedup(Dedup::Scoped(&scope)));
+    if matches!(result, Ok(_) | Err(ExtractError::Rejected(_))) {
+        scope.commit();
+    }
+    result
+}
+
+/// Whether the text of `element` repeats too often to keep: it was seen more than `max_repetitions`
+/// times before, and its trimmed text is longer than `min_duplcheck_size` characters. Every call
+/// counts the text, short ones included. Always `false` on a call without a cache. Checks no
+/// cancellation: its one walk is bounded by the element's subtree, and every caller sits in a loop
+/// that checks.
 // upstream: deduplication.py::duplicate_test
-pub fn duplicate_test(_tree: &Tree, _element: NodeId, _ctx: &Ctx<'_>) -> bool {
-    // todo(phase 5): deduplication
-    false
+pub fn duplicate_test(tree: &Tree, element: NodeId, ctx: &Ctx<'_>) -> bool {
+    let dedup = ctx.call.dedup_state();
+    if matches!(dedup, Dedup::Off) {
+        return false;
+    }
+    let pieces: Vec<&str> = tree.itertext_lxml(element).collect();
+    let text = trim(&pieces.join(" "));
+    let previous = dedup.record(key_of(&text));
+    previous.is_some_and(|previous| previous > ctx.options.max_repetitions as u64)
+        && text.chars().count() > ctx.options.min_duplcheck_size
 }
 
 /// The fingerprint of `content` that metadata carries: the hex simhash of its sampled tokens, with

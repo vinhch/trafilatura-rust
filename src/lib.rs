@@ -91,7 +91,7 @@ pub mod __internals {
     };
     pub use crate::context::Ctx;
     pub use crate::deduplication::{
-        HashInput, Simhash, content_fingerprint, generate_bow_hash, sample_tokens,
+        HashInput, Simhash, content_fingerprint, duplicate_test, generate_bow_hash, sample_tokens,
     };
     pub use crate::dom::{
         DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from,

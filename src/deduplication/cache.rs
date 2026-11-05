@@ -74,8 +74,7 @@ impl DedupCache {
     /// Adds one to the count of `text`, which becomes the most recently used. Returns the count
     /// before the add, or `None` when `text` was absent (its count is then 1).
     pub fn increment(&self, text: &str) -> Option<u64> {
-        let key = key_of(text);
-        self.lock().increment(key)
+        self.increment_key(key_of(text))
     }
 
     /// Removes every entry. `maxsize` is unchanged.
@@ -99,15 +98,16 @@ impl DedupCache {
     }
 
     /// The count stored for `key`, without making it the most recently used.
-    // Unused until the duplicate test batches its counts; remove the allow with its first caller.
-    #[allow(dead_code)]
     pub(crate) fn peek_key(&self, key: &Key) -> Option<u64> {
         self.lock().entries.get(key).map(|&(count, _)| count)
     }
 
+    /// `increment` for a digest of the text, as `key_of` gives it.
+    pub(crate) fn increment_key(&self, key: Key) -> Option<u64> {
+        self.lock().increment(key)
+    }
+
     /// Replays `increment` for each key in `ops`, in order, under one lock hold.
-    // Unused until the duplicate test batches its counts; remove the allow with its first caller.
-    #[allow(dead_code)]
     pub(crate) fn apply(&self, ops: &[Key]) {
         let mut lru = self.lock();
         for key in ops {

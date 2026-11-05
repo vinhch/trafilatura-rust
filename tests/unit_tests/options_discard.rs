@@ -212,7 +212,7 @@ fn extractor_resolves_like_upstream() {
     // the other defaults of upstream's Extractor
     let defaults = plain(Format::Txt);
     assert!(defaults.comments && defaults.tables);
-    assert!(!defaults.links && !defaults.images && !defaults.dedup);
+    assert!(!defaults.links && !defaults.images);
     assert_eq!(
         (defaults.min_extracted_size, defaults.min_duplcheck_size),
         (250, 100)

@@ -1,4 +1,5 @@
 use super::*;
+use crate::deduplication::{DedupCache, duplicate_test, run_scoped};
 
 type RetryResult = Result<(NodeId, String), ExtractError>;
 
@@ -228,4 +229,32 @@ fn escalate_input_follows_forum_and_comments() {
         assert_eq!(options.focus, Focus::Balanced);
         assert!(tree.text_content(root).contains("Div comment text"));
     }
+}
+
+#[test]
+fn escalate_retry_counts_in_the_same_scope() {
+    let cache = DedupCache::new(8).expect("maxsize 8 is valid");
+    let paragraph = "abcdefgh ".repeat(20);
+    let text = paragraph.trim().to_owned();
+    let options = cascade_options(false, false, true);
+    let result = run_scoped(&Call::default().dedup(&cache), |scoped| {
+        let result = run_escalate(
+            &options,
+            100,
+            |tree, _, retry_ctx, _| {
+                let element = tree.new_element("p");
+                tree.node_mut(element).text = Some(paragraph.clone());
+                // the retry counts the same element twice through its own Ctx
+                duplicate_test(tree, element, retry_ctx);
+                duplicate_test(tree, element, retry_ctx);
+                Ok((tree.new_element("body"), text.clone()))
+            },
+            scoped,
+        );
+        // the counts wait in the scope until the call returns
+        assert!(cache.is_empty());
+        result
+    });
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(cache.get(&text), Some(2));
 }

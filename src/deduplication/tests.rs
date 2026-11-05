@@ -1,7 +1,13 @@
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::panic::AssertUnwindSafe;
+
 use super::cache::key_of;
 use super::cases::{BOW_CASES, FINGERPRINT_CASES, VALIDATE_CASES};
 use super::*;
-use crate::settings::LRU_SIZE;
+use crate::dom::{LocalName, Ns};
+use crate::error::Rejection;
+use crate::settings::{Config, Extractor, Format, LRU_SIZE};
 
 #[test]
 fn fingerprint_matches_python() {
@@ -167,4 +173,106 @@ fn default_cache_uses_lru_size_and_is_empty() {
     let cache = DedupCache::default();
     assert_eq!(cache.maxsize(), LRU_SIZE);
     assert!(cache.is_empty());
+}
+
+/// Records one occurrence of `text` through `call`, as `duplicate_test` does for its element.
+fn record(call: &Call<'_>, text: &str) -> Option<u64> {
+    call.dedup_state().record(key_of(text))
+}
+
+#[test]
+fn run_scoped_discards_counts_on_cancel_and_deadline() {
+    for error in [ExtractError::Cancelled, ExtractError::DeadlineExceeded] {
+        let cache = DedupCache::new(8).expect("maxsize 8 is valid");
+        let call = Call::default().dedup(&cache);
+        let result: Result<(), ExtractError> = run_scoped(&call, |scoped| {
+            record(scoped, "text");
+            Err(error.clone())
+        });
+        assert_eq!(result, Err(error));
+        assert!(cache.is_empty());
+    }
+}
+
+#[test]
+fn run_scoped_commits_counts_on_ok_and_rejection() {
+    let outcomes: [Result<(), ExtractError>; 2] =
+        [Ok(()), Err(ExtractError::Rejected(Rejection::Duplicate))];
+    for outcome in outcomes {
+        let cache = DedupCache::new(8).expect("maxsize 8 is valid");
+        let call = Call::default().dedup(&cache);
+        let result = run_scoped(&call, |scoped| {
+            assert_eq!(record(scoped, "text"), None);
+            assert_eq!(record(scoped, "text"), Some(1));
+            outcome.clone()
+        });
+        assert_eq!(result, outcome);
+        assert_eq!(cache.get("text"), Some(2));
+    }
+}
+
+#[test]
+fn run_scoped_discards_counts_on_panic() {
+    let cache = DedupCache::new(8).expect("maxsize 8 is valid");
+    let call = Call::default().dedup(&cache);
+    let panicked = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        run_scoped::<()>(&call, |scoped| {
+            record(scoped, "text");
+            panic!("the body fails after counting");
+        })
+    }));
+    assert!(panicked.is_err());
+    assert!(cache.is_empty());
+}
+
+#[test]
+fn run_scoped_on_a_scoped_call_passes_through_and_commits_once() {
+    let cache = DedupCache::new(8).expect("maxsize 8 is valid");
+    let call = Call::default().dedup(&cache);
+    let result: Result<(), ExtractError> = run_scoped(&call, |outer| {
+        run_scoped(outer, |inner| {
+            record(inner, "text");
+            Ok(())
+        })?;
+        // the inner scope opened nothing: its count waits in the outer scope
+        assert!(cache.is_empty());
+        Ok(())
+    });
+    assert_eq!(result, Ok(()));
+    assert_eq!(cache.get("text"), Some(1));
+}
+
+#[test]
+fn run_scoped_without_cache_runs_the_body_as_it_is() {
+    let result: Result<(), ExtractError> = run_scoped(&Call::default(), |call| {
+        assert_eq!(record(call, "text"), None);
+        Ok(())
+    });
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn duplicate_test_without_cache_flags_nothing() {
+    let mut tree = Tree::new(LocalName::from("p"), Ns::Html, Vec::new());
+    let root = tree.root();
+    tree.add_text(root, &"x".repeat(200));
+    let options = Extractor::new(
+        Config::default(),
+        Format::Txt,
+        false,
+        false,
+        None,
+        false,
+        false,
+        HashSet::new(),
+        HashSet::new(),
+    );
+    let call = Call::default();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    for _ in 0..5 {
+        assert!(!duplicate_test(&tree, root, &ctx));
+    }
 }

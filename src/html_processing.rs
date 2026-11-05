@@ -689,7 +689,7 @@ pub fn handle_textnode(
 
     // filter content
     if (!has_content(tree.node(elem).text.as_deref()) && textfilter(tree, elem))
-        || (ctx.options.dedup && duplicate_test(tree, elem, ctx))
+        || duplicate_test(tree, elem, ctx)
     {
         return None;
     }
@@ -729,7 +729,7 @@ pub fn process_node(tree: &mut Tree, elem: NodeId, ctx: &Ctx<'_>) -> Option<Node
     // content checks
     let node = tree.node(elem);
     if (has_content(node.text.as_deref()) || has_content(node.tail.as_deref()))
-        && (textfilter(tree, elem) || (ctx.options.dedup && duplicate_test(tree, elem, ctx)))
+        && (textfilter(tree, elem) || duplicate_test(tree, elem, ctx))
     {
         return None;
     }

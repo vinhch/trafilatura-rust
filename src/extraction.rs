@@ -9,7 +9,7 @@ use regex::Regex;
 use crate::baseline::{baseline_tree, html2txt_tree};
 use crate::cancel::Call;
 use crate::context::Ctx;
-use crate::deduplication::{content_fingerprint, duplicate_test};
+use crate::deduplication::{content_fingerprint, duplicate_test, run_scoped};
 use crate::dom::{LocalName, NodeId, Ns, ParseLimits, Tree};
 use crate::error::{ExtractError, Rejection, caught};
 use crate::html_processing::{
@@ -475,6 +475,21 @@ pub fn bare_extraction(
     ctx: &Ctx<'_>,
     limits: &ParseLimits,
 ) -> Result<Document, ExtractError> {
+    run_scoped(ctx.call, |scoped| {
+        let scoped_ctx = Ctx {
+            options: Cow::Borrowed(&*ctx.options),
+            call: scoped,
+        };
+        bare_extraction_pass(source, &scoped_ctx, limits)
+    })
+}
+
+/// One pass of `bare_extraction`, run in the duplicate scope its caller opened.
+fn bare_extraction_pass(
+    source: Source<'_>,
+    ctx: &Ctx<'_>,
+    limits: &ParseLimits,
+) -> Result<Document, ExtractError> {
     let call = ctx.call;
     let options = &ctx.options;
     let (mut tree, root) = match source {
@@ -553,7 +568,10 @@ pub fn bare_extraction(
         drop(sequence);
         drop(document);
         drop(tree);
-        return bare_extraction(
+        // the first pass's duplicate counts are not the document's: the rerun counts from the cache as
+        // the first pass found it
+        call.dedup_reset();
+        return bare_extraction_pass(
             source,
             ctx,
             &ParseLimits {
@@ -571,7 +589,7 @@ pub fn bare_extraction(
     {
         return Err(ExtractError::Rejected(Rejection::TooShort));
     }
-    if options.dedup && duplicate_test(&tree, postbody, ctx) {
+    if duplicate_test(&tree, postbody, ctx) {
         return Err(ExtractError::Rejected(Rejection::Duplicate));
     }
     // todo(OI-4): language (the detected language goes into `document.language`)
@@ -618,21 +636,32 @@ pub fn internal_extraction(
     ctx: &Ctx<'_>,
     limits: &ParseLimits,
 ) -> Result<Document, ExtractError> {
-    let options = &ctx.options;
-    let mut document = bare_extraction(source, ctx, limits)?;
-    // the TXT formats show the ID and the fingerprint only in their metadata header
-    if !TXT_FORMATS.contains(&options.format) || options.with_metadata {
-        if options.format == Format::Python {
-            return Err(ExtractError::Rejected(Rejection::InvalidValue));
+    // the scope opens here, so the counts wait until `determine_returnstring` has run too
+    run_scoped(ctx.call, |scoped| {
+        let scoped_ctx = Ctx {
+            options: Cow::Borrowed(&*ctx.options),
+            call: scoped,
+        };
+        let options = &scoped_ctx.options;
+        let mut document = bare_extraction(source, &scoped_ctx, limits)?;
+        // the TXT formats show the ID and the fingerprint only in their metadata header
+        if !TXT_FORMATS.contains(&options.format) || options.with_metadata {
+            if options.format == Format::Python {
+                return Err(ExtractError::Rejected(Rejection::InvalidValue));
+            }
+            document.id = record_id.map(str::to_owned);
+            if let Some(raw_text) = &document.raw_text {
+                let title = document.title.as_deref().unwrap_or("None");
+                document.fingerprint = Some(content_fingerprint(&format!("{title} {raw_text}")));
+            }
         }
-        document.id = record_id.map(str::to_owned);
-        if let Some(raw_text) = &document.raw_text {
-            let title = document.title.as_deref().unwrap_or("None");
-            document.fingerprint = Some(content_fingerprint(&format!("{title} {raw_text}")));
-        }
-    }
-    document.text = Some(determine_returnstring(&mut document, options, ctx.call)?);
-    Ok(document)
+        document.text = Some(determine_returnstring(
+            &mut document,
+            options,
+            scoped_ctx.call,
+        )?);
+        Ok(document)
+    })
 }
 
 #[cfg(test)]

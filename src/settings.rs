@@ -44,10 +44,9 @@ pub struct Config {
     pub min_output_size: usize,
     /// Shortest comments text, in characters, that is kept.
     pub min_output_comm_size: usize,
-    /// Shortest text, in characters, that the duplicate test looks at. No effect until phase 5
-    /// ports the duplicate test.
+    /// Shortest text, in characters, that the duplicate test looks at.
     pub min_duplcheck_size: usize,
-    /// Number of repetitions after which a text counts as a duplicate. No effect until phase 5.
+    /// Number of repetitions after which a text counts as a duplicate.
     pub max_repetitions: usize,
     /// Largest decompressed size, in bytes, of byte input; only the `decompress` feature reads it,
     /// and a decoded string is never cut.
@@ -144,8 +143,6 @@ pub struct Extractor {
     pub images: bool,
     /// Whether tables are kept.
     pub tables: bool,
-    /// Whether duplicates are dropped (a caller-owned cache from Phase 5).
-    pub dedup: bool,
     /// Target language, a two-letter code.
     pub lang: Option<String>,
     /// See `Config::min_extracted_size`.
@@ -215,7 +212,6 @@ impl Extractor {
             links: false,
             images: false,
             tables: true,
-            dedup: false,
             lang: None,
             min_extracted_size: config.min_extracted_size,
             min_output_size: config.min_output_size,

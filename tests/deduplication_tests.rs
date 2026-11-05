@@ -7,18 +7,24 @@
 //! Port of upstream `tests/deduplication_tests.py`. Each test keeps its upstream name.
 //!
 //! Ported: `test_hashes`, `test_sample_tokens`, `test_lrucache_api`, `test_simhash`,
-//! `test_simhash_validate_pins`, `test_generate_bow_hash`.
+//! `test_simhash_validate_pins`, `test_generate_bow_hash`, `test_lrucache`, `test_dedup`,
+//! `test_duplicate_test_boundaries`, `test_dedup_cache_option`.
 //!
-//! Not ported yet: `test_lrucache`, `test_dedup`, `test_dedup_cache_option` and
-//! `test_duplicate_test_boundaries` test `duplicate_test` and `extract`, which wait for the duplicate
-//! check through `Call` (phase 5, task 3). `test_dedup_reset_caches` resets the process-global
-//! `LRU_TEST`, which has no counterpart: the caller owns the cache (AGENTS.md, no process-global state).
+//! Not ported: `test_dedup_reset_caches` resets the process-global `LRU_TEST`, which has no
+//! counterpart: the caller owns the cache (AGENTS.md, no process-global state).
 //! `generate_hash_filename` is in `cli_utils.py`, outside the port.
 
+#[allow(dead_code)]
+mod trees;
+
+use std::collections::HashSet;
+
 use trafilatura_rust::__internals::{
-    HashInput, Simhash, content_fingerprint, generate_bow_hash, sample_tokens,
+    Config, Extractor, Format, HashInput, NodeId, Simhash, Tree, content_fingerprint,
+    duplicate_test, generate_bow_hash, process_node, sample_tokens,
 };
-use trafilatura_rust::{DedupCache, DedupError};
+use trafilatura_rust::{Call, DedupCache, DedupError, ExtractError, Input, Options, Rejection};
+use trees::{ctx_for, lxml_fromstring};
 
 #[test]
 fn test_hashes() {
@@ -222,4 +228,183 @@ fn test_generate_bow_hash() {
     assert_eq!(generate_bow_hash("", 24).expect("24 is in range").len(), 24);
     assert_eq!(generate_bow_hash("", 24), generate_bow_hash("   ", 24));
     assert_eq!(generate_bow_hash("", 0), Err(DedupError::DigestSize));
+}
+
+/// The options `duplicate_test` reads: upstream's `Extractor()` defaults.
+fn default_options() -> Extractor {
+    Extractor::new(
+        Config::default(),
+        Format::Txt,
+        false,
+        false,
+        None,
+        false,
+        false,
+        HashSet::new(),
+        HashSet::new(),
+    )
+}
+
+/// Upstream's `_make_pair`: a paragraph and the body that holds it, in one tree.
+fn make_pair(text: &str) -> (Tree, NodeId, NodeId) {
+    let (tree, paragraph) = lxml_fromstring(&format!("<p>{text}</p>"));
+    let body = tree
+        .node(paragraph)
+        .parent()
+        .expect("a paragraph from lxml_fromstring sits in a body");
+    (tree, body, paragraph)
+}
+
+#[test]
+fn test_lrucache() {
+    let cache = DedupCache::new(2).expect("maxsize 2 is valid");
+    let call = Call::default().dedup(&cache);
+    let options = default_options();
+    let ctx = ctx_for(&options, &call);
+
+    let (my_tree, my_body, my_element) = make_pair(&"AAAA BBBB ".repeat(13));
+    let seq = [my_element, my_element, my_body, my_element];
+    let flags: Vec<bool> = seq
+        .iter()
+        .map(|&node| duplicate_test(&my_tree, node, &ctx))
+        .collect();
+    assert_eq!(flags, [false, false, false, true]);
+
+    let (other_tree, other_body, other_element) = make_pair(&"CCCC DDDD ".repeat(11));
+    let seq = [other_body, other_element, other_body, other_element];
+    let flags: Vec<bool> = seq
+        .iter()
+        .map(|&node| duplicate_test(&other_tree, node, &ctx))
+        .collect();
+    assert_eq!(flags, [false, false, false, true]);
+
+    let (yet_tree, yet_body, yet_element) = make_pair(&"EEEE FFFF ".repeat(13));
+    let flags: Vec<bool> = (0..3)
+        .map(|_| duplicate_test(&yet_tree, yet_body, &ctx))
+        .collect();
+    assert_eq!(flags, [false, false, false]);
+    // 2 elements in cache, original element has been cleared?
+    assert!(duplicate_test(&other_tree, other_element, &ctx));
+    assert!(duplicate_test(&yet_tree, yet_element, &ctx));
+    assert!(!duplicate_test(&my_tree, my_element, &ctx));
+    // clear the cache
+    cache.clear();
+    assert!(!duplicate_test(&other_tree, other_element, &ctx));
+}
+
+#[test]
+fn test_duplicate_test_boundaries() {
+    let cache = DedupCache::new(1024).expect("maxsize 1024 is valid");
+    let call = Call::default().dedup(&cache);
+    let options = default_options();
+    let ctx = ctx_for(&options, &call);
+    let limit = Config::default().min_duplcheck_size;
+
+    // the length bound is strict: at the limit nothing is flagged
+    let (at_tree, at_limit) = lxml_fromstring(&format!("<p>{}</p>", "x".repeat(limit)));
+    let flags: Vec<bool> = (0..6)
+        .map(|_| duplicate_test(&at_tree, at_limit, &ctx))
+        .collect();
+    assert_eq!(flags, [false; 6]);
+
+    // one past the limit: flagged once the previous count exceeds max_repetitions (2)
+    let (above_tree, above_limit) = lxml_fromstring(&format!("<p>{}</p>", "x".repeat(limit + 1)));
+    let flags: Vec<bool> = (0..6)
+        .map(|_| duplicate_test(&above_tree, above_limit, &ctx))
+        .collect();
+    assert_eq!(flags, [false, false, false, true, true, true]);
+}
+
+#[test]
+fn test_dedup() {
+    let page = format!("<html><body>{}</body></html>", "<p>abc</p>".repeat(50));
+    let input = Input::text(&page);
+    let extractor = Options::new().build();
+
+    let cache = DedupCache::new(2).expect("maxsize 2 is valid");
+    let call = Call::default().dedup(&cache);
+    let results: Vec<Result<String, ExtractError>> =
+        (0..4).map(|_| extractor.extract(&input, &call)).collect();
+    assert!(results[..3].iter().all(Result::is_ok));
+    assert_eq!(
+        results[3],
+        Err(ExtractError::Rejected(Rejection::Duplicate))
+    );
+
+    // paragraph level
+    let cache = DedupCache::new(2).expect("maxsize 2 is valid");
+    let call = Call::default().dedup(&cache);
+    let options = default_options();
+    let ctx = ctx_for(&options, &call);
+    let (mut tree, paragraph) = lxml_fromstring(&format!("<p>{}</p>", "abc".repeat(50)));
+    let flags: Vec<bool> = (0..4)
+        .map(|_| process_node(&mut tree, paragraph, &ctx).is_some())
+        .collect();
+    assert_eq!(flags, [true, true, true, false]);
+}
+
+#[test]
+fn test_dedup_cache_option() {
+    let page = format!("<html><body>{}</body></html>", "<p>abc</p>".repeat(50));
+    let input = Input::text(&page);
+    let extractor = Options::new().build();
+
+    // a fresh cache per call: deterministic, repeated extractions all succeed
+    let fresh: Vec<Result<String, ExtractError>> = (0..6)
+        .map(|_| {
+            let cache = DedupCache::new(1024).expect("maxsize 1024 is valid");
+            extractor.extract(&input, &Call::default().dedup(&cache))
+        })
+        .collect();
+    assert!(fresh.iter().all(Result::is_ok));
+    assert!(fresh.windows(2).all(|pair| pair[0] == pair[1]));
+
+    // one shared cache: accumulation triggers deduplication
+    let shared = DedupCache::new(1024).expect("maxsize 1024 is valid");
+    let call = Call::default().dedup(&shared);
+    let results: Vec<Result<String, ExtractError>> =
+        (0..6).map(|_| extractor.extract(&input, &call)).collect();
+    assert!(results[0].is_ok());
+    assert_eq!(
+        results[5],
+        Err(ExtractError::Rejected(Rejection::Duplicate))
+    );
+
+    // a cache no call received stays untouched
+    let untouched = DedupCache::new(1024).expect("maxsize 1024 is valid");
+    assert!(untouched.is_empty());
+    assert!(
+        extractor
+            .extract(&input, &Call::default().dedup(&untouched))
+            .is_ok()
+    );
+}
+
+#[test]
+fn empty_cache_enables_dedup() {
+    let cache = DedupCache::new(2).expect("maxsize 2 is valid");
+    assert!(cache.is_empty());
+    let call = Call::default().dedup(&cache);
+    let options = default_options();
+    let ctx = ctx_for(&options, &call);
+    let (tree, paragraph) = lxml_fromstring(&format!("<p>{}</p>", "abc ".repeat(40)));
+    let flags: Vec<bool> = (0..4)
+        .map(|_| duplicate_test(&tree, paragraph, &ctx))
+        .collect();
+    assert_eq!(flags, [false, false, false, true]);
+}
+
+#[test]
+fn whitespace_only_element_is_counted_and_never_flagged() {
+    let cache = DedupCache::new(2).expect("maxsize 2 is valid");
+    let call = Call::default().dedup(&cache);
+    let options = default_options();
+    let ctx = ctx_for(&options, &call);
+    let (tree, paragraph) = lxml_fromstring("<p>   </p>");
+    let flags: Vec<bool> = (0..6)
+        .map(|_| duplicate_test(&tree, paragraph, &ctx))
+        .collect();
+    assert_eq!(flags, [false; 6]);
+    // the trimmed text is empty, so the count sits under the empty key
+    assert_eq!(cache.get(""), Some(6));
 }

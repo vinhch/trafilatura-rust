@@ -1,4 +1,5 @@
 mod caller_tree;
+mod dedup;
 mod escalate;
 mod formats;
 mod forum;
@@ -104,12 +105,21 @@ fn bare_options(format: Format, comments: bool) -> Extractor {
 }
 
 fn bare(source: Source<'_>, options: &Extractor) -> Result<Document, ExtractError> {
-    let call = Call::default();
+    bare_with(source, options, &Call::default(), &ParseLimits::default())
+}
+
+/// `bare_extraction` with the call and the limits given, so a test can carry a cache or a limit.
+fn bare_with(
+    source: Source<'_>,
+    options: &Extractor,
+    call: &Call<'_>,
+    limits: &ParseLimits,
+) -> Result<Document, ExtractError> {
     let ctx = Ctx {
         options: Cow::Borrowed(options),
-        call: &call,
+        call,
     };
-    bare_extraction(source, &ctx, &ParseLimits::default())
+    bare_extraction(source, &ctx, limits)
 }
 
 fn bare_page(html: &str, options: &Extractor) -> Result<Document, ExtractError> {

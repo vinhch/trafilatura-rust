@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+use crate::deduplication::{Dedup, DedupCache};
 use crate::error::ExtractError;
 
 /// How many nodes a loop visits between two `Call::check` calls; tuned by benchmarks
@@ -31,13 +32,14 @@ impl CancelToken {
     }
 }
 
-/// Per-call context: an optional cancellation token, an optional deadline and an optional latest
-/// date for the metadata.
+/// Per-call context: an optional cancellation token, an optional deadline, an optional latest date
+/// for the metadata and an optional duplicate cache.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Call<'a> {
     cancel: Option<&'a CancelToken>,
     deadline: Option<Instant>,
     pub(crate) max_date: Option<&'a str>,
+    dedup: Dedup<'a>,
 }
 
 impl<'a> Call<'a> {
@@ -61,6 +63,15 @@ impl<'a> Call<'a> {
         self
     }
 
+    /// Counts repeated texts in `cache` (upstream's `deduplicate`), so a later call sharing the
+    /// cache sees them. Without a cache no text is flagged. The counts of a call reach the cache
+    /// when the call returns `Ok` or a rejection; a cancellation, a deadline or any other error
+    /// leaves none.
+    pub fn dedup(mut self, cache: &'a DedupCache) -> Self {
+        self.dedup = Dedup::Direct(cache);
+        self
+    }
+
     /// Returns the error to stop with, `Cancelled` before `DeadlineExceeded` when both apply.
     pub(crate) fn check(&self) -> Result<(), ExtractError> {
         if self.cancel.is_some_and(CancelToken::is_cancelled) {
@@ -73,5 +84,23 @@ impl<'a> Call<'a> {
             return Err(ExtractError::DeadlineExceeded);
         }
         Ok(())
+    }
+
+    /// Where this call's duplicate counts go.
+    pub(crate) fn dedup_state(&self) -> Dedup<'a> {
+        self.dedup
+    }
+
+    /// This call with its duplicate counts going to `dedup`, the rest unchanged.
+    pub(crate) fn with_dedup(mut self, dedup: Dedup<'a>) -> Self {
+        self.dedup = dedup;
+        self
+    }
+
+    /// Drops the counts a scoped call has buffered, for the rerun of a pass. No-op otherwise.
+    pub(crate) fn dedup_reset(&self) {
+        if let Dedup::Scoped(scope) = self.dedup {
+            scope.reset();
+        }
     }
 }
