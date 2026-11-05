@@ -4,13 +4,20 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Port of upstream `tests/deduplication_tests.py` (trafilatura 2.3.1). Each test keeps its upstream name.
-//! Not ported: `test_simhash`, `test_simhash_validate_pins` and `test_generate_bow_hash`. They test
-//! `Simhash.similarity`, `Simhash.validate` and `generate_bow_hash`, which wait for phase 5 (the
-//! last only has a caller in `cli_utils.py`, outside the port), and `generate_hash_filename` is
-//! `cli_utils.py` as well.
+//! Port of upstream `tests/deduplication_tests.py`. Each test keeps its upstream name.
+//!
+//! Ported: `test_hashes`, `test_sample_tokens`, `test_lrucache_api`, `test_simhash`,
+//! `test_simhash_validate_pins`, `test_generate_bow_hash`.
+//!
+//! Not ported yet: `test_lrucache`, `test_dedup`, `test_dedup_cache_option` and
+//! `test_duplicate_test_boundaries` test `duplicate_test` and `extract`, which wait for the duplicate
+//! check through `Call` (phase 5, task 3). `test_dedup_reset_caches` resets the process-global
+//! `LRU_TEST`, which has no counterpart: the caller owns the cache (AGENTS.md, no process-global state).
+//! `generate_hash_filename` is in `cli_utils.py`, outside the port.
 
-use trafilatura_rust::__internals::{content_fingerprint, sample_tokens};
+use trafilatura_rust::__internals::{
+    HashInput, Simhash, content_fingerprint, generate_bow_hash, sample_tokens,
+};
 use trafilatura_rust::{DedupCache, DedupError};
 
 #[test]
@@ -105,4 +112,114 @@ fn test_lrucache_api() {
     lru.increment("y");
     lru.increment("z");
     assert_eq!(lru.get("x"), None); // evicted as oldest
+}
+
+/// The hash `existing` gives for the empty text: a valid `existing` is kept, anything else is re-hashed.
+fn hash_of_empty(existing: HashInput<'_>) -> u64 {
+    Simhash::from_parts("", 64, Some(existing))
+        .expect("64 is in range")
+        .hash()
+}
+
+#[test]
+fn test_simhash() {
+    // https://en.wiktionary.org/wiki/put_lipstick_on_a_pig
+    let hashes = [
+        Simhash::new("This is like putting lipstick on a pig."),
+        Simhash::new("This is just like putting lipstick on a pig."),
+        Simhash::new("Putting lipstick on a pig is what this is about."),
+        Simhash::new("The words are completely different but let's see."),
+    ];
+    let sims: Vec<f64> = hashes
+        .iter()
+        .map(|other| hashes[0].similarity(other))
+        .collect();
+    assert_eq!(sims[0], 1.0);
+    let minimum = sims.iter().copied().fold(f64::INFINITY, f64::min);
+    assert_eq!(minimum, sims[3]);
+
+    // sanity checks; upstream's `int(hex(hash), 0) == hash` is a Python-only check
+    let hex = hashes[0].to_hex();
+    let round_trip =
+        Simhash::from_parts("", 64, Some(HashInput::Str(&hex))).expect("64 is in range");
+    assert_eq!(round_trip.hash(), hashes[0].hash());
+
+    // re-hashed: the empty text sets every bit
+    assert_eq!(hash_of_empty(HashInput::Str("aghj")), u64::MAX);
+    assert_eq!(
+        hash_of_empty(HashInput::Str("18446744073709551615")),
+        u64::MAX
+    );
+    assert_eq!(
+        hash_of_empty(HashInput::Str("18446744073709551616")),
+        u64::MAX
+    );
+    assert_eq!(hash_of_empty(HashInput::Int(123)), 123);
+    assert_eq!(
+        hash_of_empty(HashInput::Int(18446744073709551615)),
+        u64::MAX
+    );
+    assert_eq!(hash_of_empty(HashInput::Int(1 << 64)), u64::MAX);
+    assert_eq!(hash_of_empty(HashInput::Int(-1)), u64::MAX);
+    assert_eq!(
+        Simhash::from_parts("", 64, None)
+            .expect("64 is in range")
+            .hash(),
+        u64::MAX
+    );
+
+    // similarity
+    let abcde = Simhash::new("abcde");
+    assert_eq!(abcde.similarity(&Simhash::new("abcde")), 1.0);
+    let short = Simhash::from_parts("abcde", 2, None).expect("2 is in range");
+    assert_ne!(abcde.similarity(&short), 1.0);
+    // a shorter self counts the bits it has, so the value goes negative (oracle: upstream -12.5 and 0.578125)
+    assert_eq!(short.similarity(&abcde), -12.5);
+    assert_eq!(abcde.similarity(&short), 0.578125);
+    assert!(abcde.similarity(&Simhash::new("fghij")) < 0.6);
+    assert_eq!(Simhash::new(&"abcde ".repeat(100)).similarity(&abcde), 1.0);
+}
+
+/// The hash of `text` with `existing` as the existing hash.
+fn hash_of(text: &str, existing: HashInput<'_>) -> u64 {
+    Simhash::from_parts(text, 64, Some(existing))
+        .expect("64 is in range")
+        .hash()
+}
+
+#[test]
+fn test_simhash_validate_pins() {
+    let reference = Simhash::new("abcde").hash();
+    // negative integers are rejected and trigger re-hashing
+    assert_eq!(
+        hash_of("abcde", HashInput::Int(-1_000_000_000_000_000_000)),
+        reference
+    );
+    // upstream's booleans-are-rejected line has no counterpart: HashInput has no bool variant
+    // existing_hash="0" is deliberately re-hashed (kept for backward compatibility)
+    assert_eq!(hash_of_empty(HashInput::Str("0")), u64::MAX);
+    // non-decimal Unicode digits fall through to re-hashing instead of crashing int()
+    assert_eq!(
+        hash_of("abcde", HashInput::Str(&"\u{b9}".repeat(18))),
+        reference
+    );
+    // hex strings outside the 64-bit hash range are rejected and re-hashed
+    assert_eq!(hash_of("abcde", HashInput::Str("-ff")), reference);
+    assert_eq!(hash_of("abcde", HashInput::Str(&"f".repeat(17))), reference);
+    // small hex values as produced by to_hex() still round-trip
+    assert_eq!(hash_of_empty(HashInput::Str("ff")), 255);
+}
+
+#[test]
+fn test_generate_bow_hash() {
+    // digest size parameter and degenerate inputs
+    assert_eq!(
+        generate_bow_hash("Hello world this is a test", 12)
+            .expect("12 is in range")
+            .len(),
+        12
+    );
+    assert_eq!(generate_bow_hash("", 24).expect("24 is in range").len(), 24);
+    assert_eq!(generate_bow_hash("", 24), generate_bow_hash("   ", 24));
+    assert_eq!(generate_bow_hash("", 0), Err(DedupError::DigestSize));
 }

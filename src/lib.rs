@@ -90,7 +90,9 @@ pub mod __internals {
         baseline, baseline_tree, basic_cleaning, block_text, build_body, html2txt, html2txt_tree,
     };
     pub use crate::context::Ctx;
-    pub use crate::deduplication::{content_fingerprint, sample_tokens};
+    pub use crate::deduplication::{
+        HashInput, Simhash, content_fingerprint, generate_bow_hash, sample_tokens,
+    };
     pub use crate::dom::{
         DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from,
         parse_document, parse_fragment,

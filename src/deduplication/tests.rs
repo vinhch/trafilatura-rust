@@ -1,5 +1,5 @@
 use super::cache::key_of;
-use super::cases::FINGERPRINT_CASES;
+use super::cases::{BOW_CASES, FINGERPRINT_CASES, VALIDATE_CASES};
 use super::*;
 use crate::settings::LRU_SIZE;
 
@@ -9,6 +9,85 @@ fn fingerprint_matches_python() {
         assert_eq!(sample_tokens(input, HASH_BITS), tokens, "{input:?}");
         assert_eq!(content_fingerprint(input), fingerprint, "{input:?}");
     }
+}
+
+#[test]
+fn validate_matches_python() {
+    for &(input, length, expected) in VALIDATE_CASES {
+        assert_eq!(
+            Simhash::validate(length, input),
+            expected,
+            "{input:?} at length {length}"
+        );
+    }
+}
+
+#[test]
+fn generate_bow_hash_matches_python() {
+    for &(input, length, expected) in BOW_CASES {
+        let digest = generate_bow_hash(input, length).expect("length is in range");
+        assert_eq!(hex(&digest), expected, "{input:?} at length {length}");
+    }
+}
+
+#[test]
+fn validate_rejects_length_outside_1_to_64() {
+    assert_eq!(Simhash::validate(0, HashInput::Int(0)), None);
+    assert_eq!(Simhash::validate(65, HashInput::Int(0)), None);
+    assert_eq!(Simhash::validate(64, HashInput::Int(i128::MAX)), None);
+}
+
+#[test]
+fn from_parts_rejects_length_outside_1_to_64() {
+    assert_eq!(
+        Simhash::from_parts("abcde", 0, None).err(),
+        Some(DedupError::SimhashLength)
+    );
+    assert_eq!(
+        Simhash::from_parts("abcde", 65, None).err(),
+        Some(DedupError::SimhashLength)
+    );
+    assert_eq!(
+        Simhash::from_parts("abcde", 1, None).map(|s| s.length()),
+        Ok(1)
+    );
+    assert_eq!(
+        Simhash::from_parts("abcde", 64, None).map(|s| s.length()),
+        Ok(64)
+    );
+}
+
+#[test]
+fn generate_bow_hash_rejects_length_outside_1_to_64() {
+    assert_eq!(generate_bow_hash("abcde", 0), Err(DedupError::DigestSize));
+    assert_eq!(generate_bow_hash("abcde", 65), Err(DedupError::DigestSize));
+    assert_eq!(
+        generate_bow_hash("abcde", 1).map(|digest| digest.len()),
+        Ok(1)
+    );
+    assert_eq!(
+        generate_bow_hash("abcde", 64).map(|digest| digest.len()),
+        Ok(64)
+    );
+}
+
+#[test]
+fn generate_bow_hash_returns_requested_length_for_every_size() {
+    for length in 1..=HASH_BITS {
+        let digest =
+            generate_bow_hash("Hello world this is a test", length).expect("length is in range");
+        assert_eq!(digest.len(), length, "length {length}");
+    }
+}
+
+#[test]
+fn validate_rejects_string_past_i128() {
+    // 33 hex digits need 132 bits, more than i128 holds, so the value is None
+    assert_eq!(Simhash::validate(64, HashInput::Str(&"f".repeat(33))), None);
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[test]

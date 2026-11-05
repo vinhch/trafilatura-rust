@@ -90,13 +90,7 @@ pub(crate) fn rstrip(s: &str) -> &str {
 // upstream: int (CPython)
 pub(crate) fn int_str(s: &str) -> Result<String, ExtractError> {
     let invalid = || ExtractError::Rejected(Rejection::InvalidValue);
-    let trimmed = s.trim_matches(|c: char| {
-        if c.is_ascii() {
-            matches!(c, ' ' | '\t' | '\n' | '\x0b' | '\x0c' | '\r')
-        } else {
-            is_space(c)
-        }
-    });
+    let trimmed = s.trim_matches(is_int_space);
     let (negative, body) = match trimmed.strip_prefix('-') {
         Some(rest) => (true, rest),
         None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
@@ -128,6 +122,63 @@ pub(crate) fn int_str(s: &str) -> Result<String, ExtractError> {
     } else {
         magnitude.to_owned()
     })
+}
+
+/// The characters `int` strips from both ends: ASCII `" \t\n\v\f\r"` and the non-ASCII `isspace` ones.
+fn is_int_space(c: char) -> bool {
+    if c.is_ascii() {
+        matches!(c, ' ' | '\t' | '\n' | '\x0b' | '\x0c' | '\r')
+    } else {
+        is_space(c)
+    }
+}
+
+/// Python `int(s, 16)`: the value of `s`, or `None` where `int` raises `ValueError` or the value
+/// leaves `i128`.
+///
+/// Takes the whitespace and sign of [`int_str`], an optional `0x` or `0X` prefix that one `_` may
+/// follow, and single `_` between digits. A digit is a `decimal_value` digit or one of `a` to `f`
+/// in either case; the prefix is read after Unicode digits become ASCII, as `int` does.
+// upstream: int (CPython, base 16)
+pub(crate) fn int_hex(s: &str) -> Option<i128> {
+    let trimmed = s.trim_matches(is_int_space);
+    let (negative, body) = match trimmed.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let mut chars = body.chars();
+    let mut digits = body;
+    if chars.next().and_then(decimal_value) == Some(0) && matches!(chars.next(), Some('x' | 'X')) {
+        let after_prefix = chars.as_str();
+        digits = after_prefix.strip_prefix('_').unwrap_or(after_prefix);
+    }
+    let mut value = 0i128;
+    // A `_` is valid only right after a digit, and the string must end on a digit.
+    let mut after_digit = false;
+    for c in digits.chars() {
+        if c == '_' {
+            if !after_digit {
+                return None;
+            }
+            after_digit = false;
+            continue;
+        }
+        let digit = match c {
+            'a'..='f' => u32::from(c) - u32::from('a') + 10,
+            'A'..='F' => u32::from(c) - u32::from('A') + 10,
+            _ => decimal_value(c)?,
+        };
+        value = value.checked_mul(16)?.checked_add(i128::from(digit))?;
+        after_digit = true;
+    }
+    if !after_digit {
+        return None;
+    }
+    if negative {
+        value.checked_neg()
+    } else {
+        Some(value)
+    }
 }
 
 fn is_line_break(c: char) -> bool {

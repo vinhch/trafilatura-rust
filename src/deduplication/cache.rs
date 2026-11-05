@@ -18,9 +18,9 @@ pub(crate) type Key = [u8; 16];
 pub enum DedupError {
     /// The cache size is below 1.
     CacheSize,
-    /// The simhash length is out of range.
+    /// The simhash length is outside 1..=64, the bits of the `u64` hash.
     SimhashLength,
-    /// The digest size is out of range.
+    /// The digest size is outside 1..=64 bytes.
     DigestSize,
 }
 
