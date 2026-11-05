@@ -47,6 +47,7 @@ function Get-Block {
         'none' { @() }
         'one' { @('//! size: one long ported function') }
         'x' { @('//! size: x') }
+        'upper' { @('//! Size: x') }
         'nodoc' { @('// size: table of cases', 'use x;') }
         'late' { @('use x;', '//! size: late') }
         'item' { @('//! Module.', '/// size: x', 'fn a() {}') }
@@ -88,6 +89,8 @@ New-Fixture 'tests/t1001.rs' 'none' 1001
 New-Fixture 'src/m/tests/a.rs' 'none' 1001
 New-Fixture 'src/m/tests.rs' 'none' 1001
 New-Fixture 'tests/t1501r.rs' 'x' 1501
+New-Fixture 'src/upper.rs' 'upper' 801
+New-Fixture 'src/Tests/a.rs' 'none' 801
 [IO.File]::WriteAllText((Join-Path $WorkAbs 'src/crlf.rs'), ("//! size: crlf`r`n" + ('x' + "`r`n") * 800))
 [IO.File]::WriteAllText((Join-Path $WorkAbs 'src/noeol.rs'), ('x' + "`n") * 800 + 'x')
 
@@ -147,6 +150,8 @@ Invoke-Case 17 1 '' "$Prefix/src/docmix.rs: 801 lines, over the 800-line product
 Invoke-Case 18 0 $Ok1 '' @("$Prefix/src/p1200r.rs")
 Invoke-Case 19 0 $Ok1 '' @("$Prefix/tests/t1000.rs")
 Invoke-Case 20 1 '' "$Prefix/tests/t1501r.rs: 1501 lines, over the 1500-line test hard cap" @("$Prefix/tests/t1501r.rs")
+Invoke-Case 21 1 '' "$Prefix/src/upper.rs: 801 lines, over the 800-line production cap without a size: line" @("$Prefix/src/upper.rs")
+Invoke-Case 22 1 '' "$Prefix/src/Tests/a.rs: 801 lines, over the 800-line production cap without a size: line" @("$Prefix/src/Tests/a.rs")
 
 if ($Failures -gt 0) { exit 1 }
 "size-check-test: $Passes cases passed"

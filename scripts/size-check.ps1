@@ -28,15 +28,15 @@ in AGENTS.md. Exits 1 on any violation.
 }
 
 if ($args.Count -gt 0) {
-    switch ($args[0]) {
-        { $_ -in '-h', '--help' } { Show-Usage; exit 0 }
-        { $_ -like '-*' } { Fail "unknown argument: $_" }
+    switch -CaseSensitive ($args[0]) {
+        { $_ -cin '-h', '--help' } { Show-Usage; exit 0 }
+        { $_ -clike '-*' } { Fail "unknown argument: $_" }
     }
 }
 
 function Remove-Cr {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Line)
-    if ($Line.EndsWith("`r")) { return $Line.Substring(0, $Line.Length - 1) }
+    if ($Line.EndsWith("`r", [StringComparison]::Ordinal)) { return $Line.Substring(0, $Line.Length - 1) }
     return $Line
 }
 
@@ -47,8 +47,8 @@ function Get-FileStats {
     if ($Text.Length -eq 0) {
         return [pscustomobject]@{ Lines = 0; Generated = $false; Reason = $false }
     }
-    $Split = $Text -split "`n"
-    $Lines = if ($Text.EndsWith("`n")) { $Split.Count - 1 } else { $Split.Count }
+    $Split = $Text -csplit "`n"
+    $Lines = if ($Text.EndsWith("`n", [StringComparison]::Ordinal)) { $Split.Count - 1 } else { $Split.Count }
     $Generated = (Remove-Cr ($Split[0])).Contains('@generated')
 
     $OpenAttr = $false
@@ -58,15 +58,15 @@ function Get-FileStats {
     foreach ($Raw in $Split) {
         $Trim = (Remove-Cr $Raw).TrimStart(' ')
         if ($OpenAttr) {
-            if ($Trim -match '\]$') { $OpenAttr = $false }
-        } elseif ($Trim -eq '' -or $Trim -match '^(//|#!\[)') {
-            if ($Trim -match '^#!\[' -and $Trim -notmatch '\]$') { $OpenAttr = $true }
+            if ($Trim -cmatch '\]$') { $OpenAttr = $false }
+        } elseif ($Trim -ceq '' -or $Trim -cmatch '^(//|#!\[)') {
+            if ($Trim -cmatch '^#!\[' -and $Trim -cnotmatch '\]$') { $OpenAttr = $true }
         } else {
             break
         }
-        if ($Trim -match '^//!') { $HasModDoc = $true }
-        if ($Trim -match '^//! size: [^ \t\n\v\f\r]') { $DocReason = $true }
-        if ($Trim -match '^// size: [^ \t\n\v\f\r]') { $SlashReason = $true }
+        if ($Trim -cmatch '^//!') { $HasModDoc = $true }
+        if ($Trim -cmatch '^//! size: [^ \t\n\v\f\r]') { $DocReason = $true }
+        if ($Trim -cmatch '^// size: [^ \t\n\v\f\r]') { $SlashReason = $true }
     }
     $Reason = $DocReason -or ($SlashReason -and -not $HasModDoc)
     return [pscustomobject]@{ Lines = $Lines; Generated = $Generated; Reason = $Reason }
@@ -98,8 +98,8 @@ foreach ($Path in $Paths) {
         continue
     }
     $Checked++
-    if ($Path -match '(^|/)tests(/|\.rs$)') { $Kind = 'test' } else { $Kind = 'production' }
-    if ($Kind -eq 'test') { $Cap = 1000 } else { $Cap = 800 }
+    if ($Path -cmatch '(^|/)tests(/|\.rs$)') { $Kind = 'test' } else { $Kind = 'production' }
+    if ($Kind -ceq 'test') { $Cap = 1000 } else { $Cap = 800 }
     $Hard = [int]($Cap * 3 / 2)
     if ($Stats.Lines -gt $Hard) {
         $Host.UI.WriteErrorLine("$ScriptName`: $($Path): $($Stats.Lines) lines, over the $Hard-line $Kind hard cap")

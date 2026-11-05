@@ -56,6 +56,11 @@ EOF
 //! size: x
 EOF
       ;;
+    upper)
+      cat >>"$2" <<'EOF'
+//! Size: x
+EOF
+      ;;
     nodoc)
       cat >>"$2" <<'EOF'
 // size: table of cases
@@ -141,6 +146,8 @@ fixture tests/t1001.rs none 1001
 fixture src/m/tests/a.rs none 1001
 fixture src/m/tests.rs none 1001
 fixture tests/t1501r.rs x 1501
+fixture src/upper.rs upper 801
+fixture src/Tests/a.rs none 801
 
 cat >"$work/src/crlf.rs" <<'EOF'
 //! size: crlf
@@ -199,6 +206,8 @@ run_case 17 1 "" "$work/src/docmix.rs: 801 lines, over the 800-line production c
 run_case 18 0 "$ok1" "" "$work/src/p1200r.rs"
 run_case 19 0 "$ok1" "" "$work/tests/t1000.rs"
 run_case 20 1 "" "$work/tests/t1501r.rs: 1501 lines, over the 1500-line test hard cap" "$work/tests/t1501r.rs"
+run_case 21 1 "" "$work/src/upper.rs: 801 lines, over the 800-line production cap without a size: line" "$work/src/upper.rs"
+run_case 22 1 "" "$work/src/Tests/a.rs: 801 lines, over the 800-line production cap without a size: line" "$work/src/Tests/a.rs"
 
 if [ "$failures" -gt 0 ]; then
   exit 1
