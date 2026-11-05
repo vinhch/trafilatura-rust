@@ -5,6 +5,7 @@ use std::thread;
 
 use super::*;
 use crate::deduplication::DedupCache;
+use crate::dom::parse_document;
 
 /// The paragraph the duplicate counts are read under: trimmed, as `duplicate_test` keys it.
 fn long_paragraph() -> String {
@@ -30,6 +31,29 @@ fn rerun_leaves_counts_of_one_pass() {
     let key = paragraph.trim();
     let page = rerun_page(&paragraph);
     let options = cascade_options(false, true, false);
+
+    // the rerun fires only when cleaning leaves a dropped script to the readers (`needs_script_text`),
+    // so the guard runs the same cleaning on a dropped-script parse and reads that flag
+    let call = Call::default();
+    let mut dropped = parse_document(
+        &page,
+        &ParseLimits {
+            drop_script_text: true,
+            ..ParseLimits::default()
+        },
+        &call,
+    )
+    .expect("the rerun page parses");
+    let root = dropped.root();
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    tree_cleaning(&mut dropped, root, &ctx).expect("the rerun page cleans");
+    assert!(
+        dropped.needs_script_text,
+        "the fixture takes the script-text rerun"
+    );
 
     let cache = DedupCache::new(64).expect("maxsize 64 is valid");
     let with_rerun = bare_with(
