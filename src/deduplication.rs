@@ -127,8 +127,9 @@ pub(crate) fn run_scoped<T>(
 /// Whether the text of `element` repeats too often to keep: it was seen more than `max_repetitions`
 /// times before, and its trimmed text is longer than `min_duplcheck_size` characters. Every call
 /// counts the text, short ones included. Always `false` on a call without a cache. Checks no
-/// cancellation: its one walk is bounded by the element's subtree, and every caller sits in a loop
-/// that checks.
+/// cancellation: its one walk is bounded by the element's subtree. Callers check: the node loops that
+/// reach it through `process_node` and `handle_textnode` tick the call, and `bare_extraction_pass`
+/// checks before its body-level call.
 // deviation: D-22 (no global cache: upstream's LRU_TEST is a module global, the cache is on Call)
 // upstream: deduplication.py::duplicate_test
 pub fn duplicate_test(tree: &Tree, element: NodeId, ctx: &Ctx<'_>) -> bool {
@@ -239,6 +240,7 @@ impl Simhash {
     /// 1..=64, else the result is `None`.
     // upstream: deduplication.py::Simhash.validate
     pub fn validate(length: usize, input: HashInput<'_>) -> Option<u64> {
+        // deviation: D-25
         if !(1..=HASH_BITS).contains(&length) {
             return None;
         }

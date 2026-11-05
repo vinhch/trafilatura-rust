@@ -94,11 +94,13 @@ upstream has no equivalent.
   function that loops over nodes checks it itself, and `convert_tags`, which runs several walks in a
   row, checks it before each one. A single `dom` walk runs unchecked; its bound is `max_nodes` (D-5).
   The handle is `Call` (`cancel.rs`): an optional borrowed `CancelToken` (`Arc<AtomicBool>`, no
-  dependency) and an optional deadline `Instant`. Loops check it about every 256 nodes
+  dependency) and an optional deadline `Instant`. Loops check both about every 256 nodes
   (`CHECK_INTERVAL`: one atomic load and one `Instant::now()`), a constant tuned by benchmarks; cancel
   gives `ExtractError::Cancelled`, the deadline `ExtractError::DeadlineExceeded`. A check only returns
   early with a distinct error; it never changes a branch, so a run that completes gives the same
-  output as one without a handle.
+  output as one with no token and no deadline. `Call` also carries `max_date`, which sets the latest
+  date the metadata accepts, and an optional duplicate cache (`Call::dedup`): with a cache, a completed
+  run's output depends on the cache's state (D-22).
 - Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them
   (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
   means no limit). Nesting depth stops at 256 as libxml2 does (`MAX_DEPTH` in `dom/parse.rs`): parsing
