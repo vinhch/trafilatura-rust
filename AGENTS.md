@@ -39,7 +39,8 @@ not when it looks similar or scores well on a benchmark.
 - File size guide: production files 800 lines, test files 1,000. Past the guide, split by concern, or
   keep the file with a `//! size: <reason>` line in its module doc (`// size: <reason>` in a file with
   no module doc). A file never exceeds 1.5 times the guide, reason or not. Generated files are exempt
-  and never read whole. Unit tests sit in a sibling `tests.rs` or `tests/`, never inline.
+  and never read whole. `scripts/size-check.sh` enforces this guide. Unit tests sit in a sibling `tests.rs`
+  or `tests/`, never inline.
 - Names follow Rust style, not upstream spelling: rename where it reads better (`xmltotxt` becomes
   `xml_to_text`), drop the leading `_` of private helpers (visibility says private), `HtmlParser`
   not `HTMLParser`, a suffix for a Rust keyword (`ref_`). The trace comment below is the link to

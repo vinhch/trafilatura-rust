@@ -35,7 +35,7 @@ function Show-Usage {
     @"
 Usage: scripts/$ScriptName [--no-deny]
 
-Runs scripts/version.ps1 --check, cargo fmt --check,
+Runs scripts/version.ps1 --check, the size check (scripts/size-check.ps1), cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
 items only the tests use), cargo test --locked --all-features (doc tests included), the stack tests again
@@ -69,6 +69,13 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $global:LASTEXITCODE = 0
 & (Join-Path $PSScriptRoot 'version.ps1') --check
 if ($global:LASTEXITCODE -ne 0) { Fail "'version.ps1 --check' exited with $global:LASTEXITCODE" }
+# The size-check scripts also call exit only on failure, so each code is reset before its call.
+$global:LASTEXITCODE = 0
+& (Join-Path $PSScriptRoot 'size-check-test.ps1')
+if ($global:LASTEXITCODE -ne 0) { Fail "'size-check-test.ps1' exited with $global:LASTEXITCODE" }
+$global:LASTEXITCODE = 0
+& (Join-Path $PSScriptRoot 'size-check.ps1')
+if ($global:LASTEXITCODE -ne 0) { Fail "'size-check.ps1' exited with $global:LASTEXITCODE" }
 Invoke-Checked @('cargo', 'fmt', '--check')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--all-targets', '--all-features', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--', '-D', 'warnings')
