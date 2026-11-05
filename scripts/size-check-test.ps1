@@ -27,8 +27,8 @@ Runs scripts/size-check.ps1 on generated fixtures and checks the exit code and m
 }
 
 if ($args.Count -gt 0) {
-    switch ($args[0]) {
-        { $_ -in '-h', '--help' } { Show-Usage; exit 0 }
+    switch -CaseSensitive ($args[0]) {
+        { $_ -cin '-h', '--help' } { Show-Usage; exit 0 }
         default { Fail "unknown argument: $($args[0])" }
     }
 }
