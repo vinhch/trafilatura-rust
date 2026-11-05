@@ -12,7 +12,7 @@ not when it looks similar or scores well on a benchmark.
 | `docs/architecture.md` | before touching module layout, the public API, cancellation, limits or performance: module map, runtime contract, planned API |
 | `docs/gotchas.md` | before porting any upstream function: traps that silently change output |
 | `docs/upstream-sync.md` | when syncing to a new upstream release |
-| `docs/parity-harness.md` | when touching fixtures, `tools/parity/`, `tests/parity.rs`, `tests/common/` or measurement |
+| `docs/parity-harness.md` | when touching fixtures, `tools/parity/`, `tests/parity/`, `tests/common/` or measurement |
 | `docs/dependencies.md` | before adding, changing or removing a dependency: policy and one row per dependency |
 | `docs/deviations.md` | before departing from upstream, and when a `// deviation: D-n` comment appears |
 | `docs/phase-plan.md` | to find what ships next, the open items (OI-n) and the followups (F-n) |

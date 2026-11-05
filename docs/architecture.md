@@ -17,7 +17,7 @@ exists today; phases are in `phase-plan.md`.
 | `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), `Focus`, `Format`, `Document` (with `clean_and_trim`), `set_date_params`, the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, `Document` (the result: metadata fields, texts and an owned compact tree of the body and comments body), the `settings.cfg` defaults and the shared tag lists |
 | `main_extractor.py` | `main_extractor.rs`, `main_extractor/tables.rs`, `main_extractor/content.rs` | exists: every constant, helper and handler, `prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`; `extract_body` is upstream's `_extract`, private because `extract` names the public entry point | content and comment extraction, the element handlers |
 | `htmlprocessing.py` | `html_processing.rs`, `html_processing/convert.rs` | exists: tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions, `convert_tags` and the HTML output (`HTML_TAG_MAPPING`, `HTML_CONVERSIONS` as `html_conversion`, `convert_to_html`, `build_html_output`) | tree cleaning, pruning, link density, text-node handling, `convert_tags`, HTML output |
-| `xpaths.py` | `xpaths.rs`, `xpaths/discard.rs` | exists: the content, comment, discard and metadata selectors (`AUTHOR_XPATHS`, `AUTHOR_DISCARD_XPATHS`, `CATEGORIES_XPATHS`, `TAGS_XPATHS`, `TITLE_XPATHS`) | the content, comment, discard and metadata selectors |
+| `xpaths.py` | `xpaths.rs`, `xpaths/discard.rs`, `xpaths/select.rs` | exists: the content, comment, discard and metadata selectors (`AUTHOR_XPATHS`, `AUTHOR_DISCARD_XPATHS`, `CATEGORIES_XPATHS`, `TAGS_XPATHS`, `TITLE_XPATHS`) | the content, comment, discard and metadata selectors |
 | `baseline.py` | `baseline.rs` | exists: `baseline`, `baseline_tree`, `html2txt`, `html2txt_tree`, `basic_cleaning`, `build_body`, `block_text` and the JSON-LD readers; only `html2txt` is public (`api.rs`) | `baseline`, `html2txt` |
 | `external.py`, `readability_lxml.py` | none | not ported | the readability and jusText fallbacks run only when `fast=False` (D-1) |
 | `metadata.py` | `metadata.rs`, `metadata/page.rs` | exists: `extract_metadata` and the meta tag, JSON-LD, title, author, URL, sitename, category, tag and license readers; the date comes from `find_date` (`htmldate/core.rs`) | metadata from meta tags and the tree |
@@ -45,9 +45,9 @@ exists today; phases are in `phase-plan.md`.
 | none | `cancel.rs`, `error.rs` | exists | `CancelToken` and `Call`, `ExtractError` and `Rejection` |
 | none | `async_api.rs` | planned | `extract_async` (feature `tokio`) |
 
-Unit tests (`src/**/tests.rs`) and generated case tables (`src/**/*cases.rs`) sit beside their module
+Unit tests (`src/**/tests.rs` or `src/**/tests/`) and generated case tables (`src/**/*cases.rs`) sit beside their module
 because they reach private items; `#[cfg(test)]` keeps them out of the library build. Integration tests
-under `tests/` reach internals through `__internals`.
+under `tests/` reach internals through `__internals`. The generated case tables of the integration targets sit in `tests/<target>/cases.rs`.
 
 The hidden feature `__internals` exposes, for the crate's own integration tests only and unstable, the tree types
 (`LiveIter` included), `parse_document`, `parse_fragment`, `dump`, `dump_from`, `ParseLimits`, `Ctx`, the

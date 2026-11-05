@@ -1,7 +1,7 @@
 # Parity harness
 
 How crate output is compared with upstream Python: the fixture generator, the archive, the classes of
-mismatch, the test and the measurement. Read it before touching `tools/parity/`, `tests/parity.rs`,
+mismatch, the test and the measurement. Read it before touching `tools/parity/`, `tests/parity/`,
 `tests/common/`, `scripts/fixtures.*`, `scripts/measure.*`, `scripts/oracle.*` or the fixture archive.
 
 Two tests compare the crate with the fixtures: the parsed tree and the `txt`, `markdown` and `html` output.
@@ -96,7 +96,7 @@ pages that differ, pages with a `port-bug` hunk first.
 
 ## Output check
 
-`outputs_match_html5_fixture` in `tests/parity.rs` runs `Extractor::extract` over every page in `txt`,
+`outputs_match_html5_fixture` in `tests/parity/main.rs` runs `Extractor::extract` over every page in `txt`,
 `markdown` and `html` and compares the text with `fixture["html5"]["formats"][format]`. The input is
 `Input::bytes` of the upstream file and the options are the ones the fixtures were generated with
 (`fast=True`, `dedup=False`, no metadata, no URL). A page whose fixture holds no text and no error must be
@@ -123,7 +123,7 @@ first outputs that differ, outputs with a `port-bug` hunk first.
 
 ## Metadata check
 
-`metadata_matches_html5_fixture` in `tests/parity.rs` runs `bare_extraction` with `with_metadata(true)`,
+`metadata_matches_html5_fixture` in `tests/parity/main.rs` runs `bare_extraction` with `with_metadata(true)`,
 `keep_script_text(true)` and `Call::max_date` set to the index's `max_date`, and no URL. It compares each
 field of `fixture["html5"]["metadata"]` with the same field of the crate's `Document`. Values compare as
 JSON: strings or `null`, and `categories` and `tags` as arrays, `None` as `[]`.
@@ -280,7 +280,7 @@ copy (`Tree::tostring` with `pretty_print`, stripped). The crate has one error, 
 for the `ValueError` and the `KeyError` upstream raises, so either name in a case matches it. The
 generator rejects an xml snippet that `xml_tree` would read differently from `etree.fromstring`: one
 with `&#`, a carriage return, a tab or newline in an attribute value, or an `svg` or `math` element.
-The escapes those would test are unit tests of `Tree::tostring` in `src/dom/tests.rs`. In an html
+The escapes those would test are unit tests of `Tree::tostring` in `src/dom/tests/tostring.rs`. In an html
 case a foreign element reaches the output because the html5 tree keeps it; `Tree::tostring` writes it by
 its local name, as a libxml2 tree does, while lxml on the oracle's html5 tree writes `ns0:` prefixes, so the
 generator strips them from the expected HTML (D-2) and prints how many cases it touched.

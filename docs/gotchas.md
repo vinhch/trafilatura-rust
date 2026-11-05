@@ -67,11 +67,11 @@ function.
   2.14.6 on Linux and macOS but 2.11.9 on Windows, so upstream itself differs by platform: fixtures
   come from Linux. Upstream may switch parsers (OI-5, checked in `upstream-sync.md`).
 - html5ever's tree sink cannot stop the parse. After the depth cut, a node-limit abort (D-5), a
-  cancellation or a deadline, the sink in `dom/parse.rs` must ignore every later call, and depth is
+  cancellation or a deadline, the sink in `dom/parse/sink.rs` must ignore every later call, and depth is
   checked again when html5ever moves a subtree (reparenting, foster parenting, the adoption agency).
   html5ever clones open formatting elements, attributes included, so attribute values are shared
   `Arc<str>`, never copied per clone (`StrTendril` is not `Send`). The doc comments in
-  `dom/parse.rs` give the chunking and sharing details.
+  `dom/parse.rs` give the chunking and sharing details, and `dom/parse/sink.rs` holds the driver that feeds the pieces.
 - Decode strictly. Upstream tries each guessed codec and falls back to UTF-8 with replacement only
   when all fail; `encoding_rs`'s `Encoding::decode` sniffs a BOM and replaces silently, which skips
   that fallback. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
@@ -122,7 +122,7 @@ function.
   included) and `_`, without combining marks; Rust `\w` includes marks and connector punctuation but
   not `No`. `\W` and `\b` follow from `\w`; `\s` is Python's whitespace set (whitespace bullet below).
   Interpolate `pystr::PY_SPACE_CLASS` and `pystr::PY_WORD_CLASS` into the pattern where upstream
-  writes `\s` or `\w` (`IMAGE_EXTENSION` and `RE_FILTER` in `utils.rs`).
+  writes `\s` or `\w` (`IMAGE_EXTENSION` and `RE_FILTER` in `utils/text.rs`).
 - `\d` is any `Nd` digit in Python: the ordered-list block-start pattern of `xml.py` turns `"١. x"`
   into `"١\. x"`. The hand-written scanner reads digits with `pystr::decimal_value`, the oracle
   image's Unicode data, not the `regex` crate's.
