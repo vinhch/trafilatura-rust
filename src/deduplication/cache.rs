@@ -128,6 +128,7 @@ impl DedupCache {
 }
 
 impl Default for DedupCache {
+    // LRU_SIZE, as upstream's LRU_TEST uses; the LRUCache() default of 128 is not followed
     fn default() -> Self {
         Self::with_maxsize(LRU_SIZE)
     }

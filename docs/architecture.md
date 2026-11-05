@@ -60,7 +60,8 @@ and `extract_comments`, the `baseline` functions, the `extraction` entry points 
 `extract_json_parse_error`, `normalize_authors`, `normalize_json`, `process_parent`, `JSON_AUTHOR_1`,
 `JSON_AUTHOR_2`), the `metadata` functions (`extract_metadata`, `extract_meta_json`, `extract_metainfo`,
 `extract_title`, `extract_url`, `normalize_tags`, `check_authors`, `JSON_MINIFY`), `set_date_params`,
-`DateParams`, `pyhtml::unescape`, `pyjson` (`loads`, `dumps_str`, `Json`, `JsonRef`, `Kind`),
+`DateParams`, the `deduplication` items `HashInput`, `Simhash`, `duplicate_test` and `generate_bow_hash`,
+`pyhtml::unescape`, `pyjson` (`loads`, `dumps_str`, `Json`, `JsonRef`, `Kind`),
 `pystr::{PY_WORD_CLASS, is_alpha, repr, splitlines}`, `pyunicodedata::normalize_nfc` and the `xpaths` items (`Selector`, `alt`,
 `BODY_XPATH`, `OVERALL_DISCARD_XPATH`, `PRECISION_DISCARD_XPATH`). `Document` has accessors for its tree under
 it (`body_tree`, `body`, `comments_body`).
