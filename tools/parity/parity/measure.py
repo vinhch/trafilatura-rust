@@ -3,6 +3,7 @@
     python -m parity.measure --upstream PATH --out DIR [--only SUBSTRING]
     python -m parity.measure --merge --out DIR [--rows N]
     python -m parity.measure --compare DIR [--head-only REASON]
+    python -m parity.measure --check-digests BASE_DIR --out DIR
 
 The first form times `trafilatura.utils.load_html(bytes)` and `extract(bytes)` (TXT, fast mode, dedup off:
 the fixture options; 5-run medians) and measures the heap of `load_html` with tracemalloc, per page of the
@@ -20,6 +21,10 @@ The third form compares DIR/base and DIR/head, each holding `heap-sample.json` a
 prints a Markdown summary and returns 1 when the summed extraction allocation count or peak bytes over the
 pages on both sides grow by more than GATE_PERCENT. Times are reported only. `--head-only` lists the head
 numbers and never fails (no base to compare with).
+
+The fourth form compares every `*_digest` key of the crate's time files in DIR with BASE_DIR, corpus pages
+by id and synthetic pages by name. It prints each difference as `page key base head` and returns 1 on any;
+a page or key on one side only is a difference.
 """
 
 import argparse
@@ -200,12 +205,32 @@ def _extract_totals(rows: list[dict], side: str) -> dict:
     return result
 
 
+RICH_FORMATS = ("md", "html")
+RICH_FIELDS = ("median_ns", "alloc_count", "alloc_bytes", "peak_bytes")
+
+
+def _rich_totals(rows: list[dict]) -> dict:
+    "Per rich format (Markdown, HTML) when every row measured both: summed median time, allocations and peak heap. Empty for an older run."
+    if not rows or not all(f"rich_{fmt}_{field}" in r for r in rows for fmt in RICH_FORMATS for field in RICH_FIELDS):
+        return {}
+    return {
+        fmt: {
+            "median_ms": sum(r[f"rich_{fmt}_median_ns"] for r in rows) / 1e6,
+            "alloc_count": sum(r[f"rich_{fmt}_alloc_count"] for r in rows),
+            "alloc_bytes": sum(r[f"rich_{fmt}_alloc_bytes"] for r in rows),
+            "peak_bytes": sum(r[f"rich_{fmt}_peak_bytes"] for r in rows),
+        }
+        for fmt in RICH_FORMATS
+    }
+
+
 def totals(pages: list[dict]) -> dict:
-    "Per side over the loaded pages: summed median time and retained heap, summed allocations (Rust only), peaks, extraction."
+    "Per side over the loaded pages: summed median time and retained heap, summed allocations (Rust only), peaks, extraction, rich options (Rust only)."
     result = {}
     for side in ("rust", "python"):
         rows = [p[side] for p in loaded_pages(pages)]
         peaks = [r["peak_bytes"] for r in rows]
+        rich = _rich_totals(rows) if side == "rust" else {}
         result[side] = {
             "median_ms": sum(r["median_ns"] for r in rows) / 1e6,
             "alloc_bytes": sum(r["alloc_bytes"] for r in rows) if side == "rust" else None,
@@ -215,6 +240,7 @@ def totals(pages: list[dict]) -> dict:
             "peak_max_bytes": max(peaks, default=0),
             "peak_mean_bytes": sum(peaks) / len(peaks) if peaks else 0,
             **_extract_totals(rows, side),
+            **({"rich": rich} if rich else {}),
         }
     return result
 
@@ -255,6 +281,23 @@ def _extraction_block(r: dict, y: dict, pages: int) -> list[str]:
         f"| extraction peak heap, largest page (KiB) | {r['extract_peak_max_bytes'] / 1024:.0f} | n/a | n/a |",
         f"| extraction allocated, total (KiB) | {r['extract_alloc_bytes'] / 1024:.0f} | n/a | n/a |",
         f"| extraction allocation count, total | {r['extract_alloc_count']} | n/a | n/a |",
+        "",
+    ]
+
+
+def _rich_block(rich: dict, pages: int) -> list[str]:
+    "The rich option totals of the Rust run, one column per format."
+    md, html = rich["md"], rich["html"]
+    return [
+        "",
+        f"Rich options (metadata, images, links), {pages} pages, summed:",
+        "",
+        "| metric | Markdown | HTML |",
+        "| --- | ---: | ---: |",
+        f"| rich median time, sum (ms) | {md['median_ms']:.1f} | {html['median_ms']:.1f} |",
+        f"| rich allocation count, total | {md['alloc_count']} | {html['alloc_count']} |",
+        f"| rich allocated, total (KiB) | {md['alloc_bytes'] / 1024:.0f} | {html['alloc_bytes'] / 1024:.0f} |",
+        f"| rich peak heap, sum (KiB) | {md['peak_bytes'] / 1024:.0f} | {html['peak_bytes'] / 1024:.0f} |",
         "",
     ]
 
@@ -309,6 +352,7 @@ def format_table(pages: list[dict], rows: int = 0, dropped: int = 0, hosts: dict
         "",
         f"(*) {HEAP_NOTE}.",
         *(_extraction_block(r, y, len(usable)) if extracted else []),
+        *(_rich_block(r["rich"], len(usable)) if r.get("rich") else []),
         f"Pages: {len(usable)} compared, {len(pages) - len(usable)} excluded (not loaded on one side), "
         f"{dropped} dropped (on one side only).",
     ]
@@ -468,6 +512,59 @@ def _time_rows(base_times: dict[str, float], head_times: dict[str, float], head_
     ]
 
 
+TIME_SUFFIX = "-rust-time.json"
+
+
+def _digest_rows(directory: Path) -> tuple[dict, dict]:
+    "The corpus rows by id and the synthetic rows by name of a crate run. A run with no synthetic file (`--only`, `@sample`) has no synthetic rows."
+    found = sorted(directory.glob(f"*{TIME_SUFFIX}"))
+    if len(found) != 1:
+        raise ValueError(f"{directory} holds {len(found)} crate time files, expected one")
+    version = found[0].name[: -len(TIME_SUFFIX)]
+    pages = {p["id"]: p for p in _read(found[0])["pages"]}
+    synthetic_path = directory / f"{version}-rust-time-synthetic.json"
+    synthetic = {p["name"]: p for p in _read(synthetic_path)["pages"]} if synthetic_path.exists() else {}
+    return pages, synthetic
+
+
+def _digests(row: dict) -> dict[str, str]:
+    return {key: value for key, value in row.items() if key.endswith("_digest")}
+
+
+def digest_differences(base: dict[str, dict], head: dict[str, dict]) -> list[tuple[str, str, str, str]]:
+    "(page, key, base, head) for each digest that differs; a page or key on one side only reads `missing` on that side."
+    diffs = []
+    for page in sorted(base.keys() | head.keys()):
+        if page not in base or page not in head:
+            diffs.append((page, "-", "present" if page in base else "missing", "present" if page in head else "missing"))
+            continue
+        base_digests, head_digests = _digests(base[page]), _digests(head[page])
+        for key in sorted(base_digests.keys() | head_digests.keys()):
+            base_value, head_value = base_digests.get(key, "missing"), head_digests.get(key, "missing")
+            if base_value != head_value:
+                diffs.append((page, key, base_value, head_value))
+    return diffs
+
+
+def check_digests(base: Path, out: Path) -> int:
+    "Print the digests of `base` that `out` does not reproduce; 1 on any difference, a missing or malformed file."
+    try:
+        base_pages, base_synthetic = _digest_rows(base)
+        out_pages, out_synthetic = _digest_rows(out)
+    except (OSError, ValueError, KeyError) as err:
+        print(f"measure: {err}; run scripts/measure.sh first", file=sys.stderr)
+        return 1
+    diffs = digest_differences(base_pages, out_pages) + digest_differences(base_synthetic, out_synthetic)
+    if not diffs:
+        print(f"digests equal: {len(base_pages)} pages, {len(base_synthetic)} synthetic pages")
+        return 0
+    print("page key base head")
+    for row in diffs:
+        print(" ".join(row))
+    print(f"{len(diffs)} digest differences")
+    return 1
+
+
 def regression_summary(heap: dict, head_heap: dict, base_times: dict[str, float], head_times: dict[str, float], head_only: str | None) -> tuple[str, bool]:
     """Markdown of the base against head comparison, and whether the heap gate failed. `heap` is
     `heap_change`'s result, `head_heap` the head's heap file (listed alone in head-only mode)."""
@@ -522,6 +619,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rows", type=int, default=0, help="with --merge: list this many pages before the totals")
     parser.add_argument("--compare", type=Path, metavar="DIR", help="compare DIR/base with DIR/head and apply the heap gate")
     parser.add_argument("--head-only", metavar="REASON", help="with --compare: list the head numbers only, never fail")
+    parser.add_argument("--check-digests", type=Path, metavar="BASE_DIR", help="compare the digests in --out with BASE_DIR and return 1 on any difference")
     args = parser.parse_args(argv)
     if args.head_only is not None and args.compare is None:
         parser.error("--head-only needs --compare")
@@ -529,6 +627,10 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--head-only needs a non-empty REASON")
     if args.compare:
         return compare(args.compare, args.head_only)
+    if args.check_digests is not None:
+        if args.out is None:
+            parser.error("--check-digests needs --out")
+        return check_digests(args.check_digests, args.out)
     if args.out is None:
         parser.error("--out is required unless --compare")
     if args.merge:

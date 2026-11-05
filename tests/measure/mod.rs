@@ -14,6 +14,8 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use blake2::digest::consts::U16;
+use blake2::{Blake2b, Digest};
 use serde_json::{Value, json};
 use trafilatura_rust::__internals::{HtmlInput, MAX_FILE_SIZE, ParseLimits, Tree, load_html};
 use trafilatura_rust::{Call, ExtractError, Extractor, Focus, Format, Input, Options, Rejection};
@@ -46,6 +48,73 @@ pub fn extract(bytes: &[u8]) -> Result<String, ExtractError> {
     EXTRACTOR
         .get_or_init(|| Options::new().format(Format::Txt).build())
         .extract(&Input::bytes(bytes), &Call::default())
+}
+
+/// The `max_date` of the rich runs. Fixed, so the date search does not depend on the day of the run.
+pub const RICH_MAX_DATE: &str = "2026-11-06";
+
+/// `extract` with the rich option set in Markdown: metadata, images and links on.
+pub fn extract_rich_md(bytes: &[u8]) -> Result<String, ExtractError> {
+    static EXTRACTOR: OnceLock<Extractor> = OnceLock::new();
+    extract_rich(&EXTRACTOR, Format::Markdown, bytes)
+}
+
+/// `extract` with the rich option set in HTML: metadata, images and links on.
+pub fn extract_rich_html(bytes: &[u8]) -> Result<String, ExtractError> {
+    static EXTRACTOR: OnceLock<Extractor> = OnceLock::new();
+    extract_rich(&EXTRACTOR, Format::Html, bytes)
+}
+
+fn extract_rich(
+    slot: &OnceLock<Extractor>,
+    format: Format,
+    bytes: &[u8],
+) -> Result<String, ExtractError> {
+    slot.get_or_init(|| {
+        Options::new()
+            .format(format)
+            .with_metadata(true)
+            .images(true)
+            .links(true)
+            .build()
+    })
+    .extract(
+        &Input::bytes(bytes),
+        &Call::default().max_date(RICH_MAX_DATE),
+    )
+}
+
+/// Blake2b of `output` as 16 bytes in lowercase hex: the value `parity.measure --check-digests` compares.
+pub fn digest(output: &str) -> String {
+    let bytes: [u8; 16] = Blake2b::<U16>::digest(output.as_bytes()).into();
+    let mut hex = String::with_capacity(32);
+    for byte in bytes {
+        write!(hex, "{byte:02x}").unwrap();
+    }
+    hex
+}
+
+/// `digest` of a result's output, or of its `outcome` word when the call failed.
+pub fn digest_of(result: &Result<String, ExtractError>) -> String {
+    match result {
+        Ok(output) => digest(output),
+        Err(_) => digest(&outcome(result)),
+    }
+}
+
+/// Whether `TRAFILATURA_MEASURE_DHAT=1` asks `measure_heap` for one dhat profile per profiled call.
+pub fn dhat_requested() -> bool {
+    std::env::var("TRAFILATURA_MEASURE_DHAT").is_ok_and(|value| value == "1")
+}
+
+/// The dhat profile file of one call when `dhat_requested`: `.temp/measure/dhat/<page>-<run>.json`.
+pub fn dhat_file(page: &str, run: &str) -> Option<PathBuf> {
+    if !dhat_requested() {
+        return None;
+    }
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp/measure/dhat");
+    std::fs::create_dir_all(&dir).unwrap();
+    Some(dir.join(format!("{page}-{run}.json")))
 }
 
 /// What a synthetic page must give.
@@ -339,7 +408,7 @@ const ONLY_SAMPLE: &str = "@sample";
 pub fn run_all(
     kind: &str,
     extra: Value,
-    measure_page: impl Fn(&[u8]) -> Value,
+    measure_page: impl Fn(&str, &[u8]) -> Value,
     include: impl Fn(&Synthetic) -> bool,
     synthetic: impl Fn(&Synthetic) -> Value,
 ) {
@@ -424,7 +493,7 @@ fn run_synthetic(
 fn run(
     file: &str,
     extra: Value,
-    measure: impl Fn(&[u8]) -> Value,
+    measure: impl Fn(&str, &[u8]) -> Value,
     select: impl for<'a> Fn(&'a [CorpusPage]) -> Vec<&'a CorpusPage>,
 ) {
     common::upstream_root().expect("upstream checkout not found");
@@ -434,7 +503,7 @@ fn run(
         .into_iter()
         .map(|entry| {
             let bytes = std::fs::read(&entry.path).unwrap();
-            let mut page = measure(&bytes);
+            let mut page = measure(&entry.id, &bytes);
             page["id"] = json!(entry.id);
             page["source"] = json!(entry.source);
             page["input_bytes"] = json!(bytes.len());

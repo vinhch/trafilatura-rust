@@ -96,7 +96,7 @@ if [ "$use_docker" = true ] || [ "$(uname -s)" != "Linux" ]; then
     -v trafilatura-measure-target:/work/target \
     -v trafilatura-measure-cargo:/usr/local/cargo/registry \
     -v trafilatura-measure-uv:/root/.cache/uv \
-    -e TRAFILATURA_MEASURE_RUNTIME=docker -e TRAFILATURA_UPSTREAM=/upstream \
+    -e TRAFILATURA_MEASURE_RUNTIME=docker -e TRAFILATURA_UPSTREAM=/upstream -e TRAFILATURA_MEASURE_DHAT \
     -e UV_PROJECT_ENVIRONMENT=/tmp/venv -e UV_LINK_MODE=copy -e PYTHONDONTWRITEBYTECODE=1 \
     -w /work "$docker_image" \
     scripts/measure.sh ${only_args[@]+"${only_args[@]}"}

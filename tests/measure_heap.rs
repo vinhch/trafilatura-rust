@@ -4,13 +4,18 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Heap of `load_html` (decode + parse) and of `extract` (which includes both) per corpus page, and
-//! of each synthetic page but the ordered lists: allocation count and bytes, retained heap and peak,
-//! from dhat. A measurement, not a test: it runs only with `TRAFILATURA_MEASURE=1` (see
-//! `scripts/measure.sh`). The dhat allocator slows every allocation, so the timings come from
-//! `measure_time`, which also times the ordered lists (dhat would multiply their minutes).
+//! Heap of `load_html` (decode + parse) and of `extract` (which includes both) per corpus page, of the
+//! rich option set (metadata, images, links) in Markdown and HTML, and of each synthetic page but the
+//! ordered lists: allocation count and bytes, retained heap and peak, from dhat. A measurement, not a
+//! test: it runs only with `TRAFILATURA_MEASURE=1` (see `scripts/measure.sh`). The dhat allocator slows
+//! every allocation, so the timings come from `measure_time`, which also times the ordered lists (dhat
+//! would multiply their minutes). With `TRAFILATURA_MEASURE_DHAT=1` and `--only`, each profiled call
+//! also writes its dhat profile to `.temp/measure/dhat/`.
 
+#[allow(dead_code)]
 mod measure;
+
+use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use trafilatura_rust::ExtractError;
@@ -30,12 +35,20 @@ struct Heap {
 
 /// A fresh profiler per call (dhat allows one at a time): its peak, `max_bytes`, covers only this
 /// call. The input is already read, as on the Python side. With `warm_up`, one unprofiled call
-/// comes first, so lazily built statics (compiled regexes) are not charged to the first page.
-fn profiled<T>(warm_up: bool, call: impl Fn() -> Result<T, ExtractError>) -> Heap {
+/// comes first, so lazily built statics (compiled regexes, the extractors) are not charged to the
+/// first page. With `file`, the profile is written there when the call ends; otherwise nothing is.
+fn profiled<T>(
+    warm_up: bool,
+    file: Option<PathBuf>,
+    call: impl Fn() -> Result<T, ExtractError>,
+) -> Heap {
     if warm_up {
         drop(call());
     }
-    let profiler = dhat::Profiler::builder().testing().build();
+    let profiler = match file {
+        Some(path) => dhat::Profiler::builder().file_name(path).build(),
+        None => dhat::Profiler::builder().testing().build(),
+    };
     let before = dhat::HeapStats::get();
     let result = call();
     let after = dhat::HeapStats::get();
@@ -51,9 +64,19 @@ fn profiled<T>(warm_up: bool, call: impl Fn() -> Result<T, ExtractError>) -> Hea
     }
 }
 
-fn measure_page(bytes: &[u8]) -> Value {
-    let load = profiled(true, || measure::load(bytes));
-    let extract = profiled(true, || measure::extract(bytes));
+fn measure_page(id: &str, bytes: &[u8]) -> Value {
+    let load = profiled(true, measure::dhat_file(id, "load"), || {
+        measure::load(bytes)
+    });
+    let extract = profiled(true, measure::dhat_file(id, "extract"), || {
+        measure::extract(bytes)
+    });
+    let md = profiled(true, measure::dhat_file(id, "rich-md"), || {
+        measure::extract_rich_md(bytes)
+    });
+    let html = profiled(true, measure::dhat_file(id, "rich-html"), || {
+        measure::extract_rich_html(bytes)
+    });
     json!({
         "loaded": load.outcome.is_ok(),
         "alloc_bytes": load.alloc_bytes,
@@ -65,12 +88,20 @@ fn measure_page(bytes: &[u8]) -> Value {
         "extract_alloc_bytes": extract.alloc_bytes,
         "extract_alloc_count": extract.alloc_count,
         "extract_peak_bytes": extract.peak_bytes,
+        "rich_md_alloc_bytes": md.alloc_bytes,
+        "rich_md_alloc_count": md.alloc_count,
+        "rich_md_peak_bytes": md.peak_bytes,
+        "rich_html_alloc_bytes": html.alloc_bytes,
+        "rich_html_alloc_count": html.alloc_count,
+        "rich_html_peak_bytes": html.peak_bytes,
     })
 }
 
 /// One profiled run, no warm-up.
 fn measure_synthetic(page: &measure::Synthetic) -> Value {
-    let extract = profiled(false, || page.extract());
+    let extract = profiled(false, measure::dhat_file(page.name, "extract"), || {
+        page.extract()
+    });
     json!({
         "outcome": measure::outcome(&extract.outcome),
         "alloc_bytes": extract.alloc_bytes,
@@ -80,13 +111,20 @@ fn measure_synthetic(page: &measure::Synthetic) -> Value {
 }
 
 fn main() {
-    if measure::requested("measure_heap") {
-        measure::run_all(
-            "heap",
-            json!({ "peak_scope": "page" }),
-            measure_page,
-            |page| !page.name.starts_with("ordered_list"),
-            measure_synthetic,
-        );
+    if !measure::requested("measure_heap") {
+        return;
     }
+    // One profile per call, so a run without `--only` would write one per page of the corpus.
+    let only = std::env::var("TRAFILATURA_MEASURE_ONLY").unwrap_or_default();
+    if measure::dhat_requested() && only.is_empty() {
+        println!("measure_heap: TRAFILATURA_MEASURE_DHAT needs --only; skipped");
+        return;
+    }
+    measure::run_all(
+        "heap",
+        json!({ "peak_scope": "page" }),
+        measure_page,
+        |page| !page.name.starts_with("ordered_list"),
+        measure_synthetic,
+    );
 }

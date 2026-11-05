@@ -395,3 +395,69 @@ def test_time_table_counts_benches_on_one_side_only():
     text = _time_summary({"g/x": 1e6, "g/old": 1e6}, {"g/x": 1e6, "g/new": 1e6, "g/newer": 1e6})
     assert "3 benches on one side only, not compared." in text
     assert "benches on one side only" not in _time_summary({"g/x": 1e6}, {"g/x": 1e6})
+
+
+def _rust_rich(page_id, md_ns, html_ns):
+    row = _rust(page_id, 1_000_000, 100)
+    for fmt, ns in (("md", md_ns), ("html", html_ns)):
+        row |= {f"rich_{fmt}_median_ns": ns, f"rich_{fmt}_alloc_count": 3, f"rich_{fmt}_alloc_bytes": 2048, f"rich_{fmt}_peak_bytes": 1024}
+    return row
+
+
+def test_merge_table_has_rich_sums():
+    pages, dropped = _merged(
+        [_rust_rich("a", 2_000_000, 4_000_000), _rust_rich("b", 1_000_000, 1_000_000)],
+        [_python("a", 1, 1), _python("b", 1, 1)],
+    )
+    table = measure.format_table(pages, dropped=dropped)
+    assert "Rich options (metadata, images, links), 2 pages, summed:" in table
+    assert "| rich median time, sum (ms) | 3.0 | 5.0 |" in table
+    assert "| rich allocation count, total | 6 | 6 |" in table
+    assert "| rich allocated, total (KiB) | 4 | 4 |" in table
+    assert "| rich peak heap, sum (KiB) | 2 | 2 |" in table
+
+
+def _time_run(directory, pages, synthetic=None):
+    "Writes the time files of a crate run for version 1.0.0: corpus pages by id, synthetic pages by name."
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "1.0.0-rust-time.json").write_text(json.dumps({"pages": pages}), encoding="utf-8")
+    if synthetic is not None:
+        (directory / "1.0.0-rust-time-synthetic.json").write_text(json.dumps({"pages": synthetic}), encoding="utf-8")
+
+
+def test_check_digests_equal_returns_0(tmp_path):
+    rows = [{"id": "a", "output_digest": "1f", "rich_md_digest": "2e"}]
+    synthetic = [{"name": "large_page", "output_digest": "3d"}]
+    _time_run(tmp_path / "base", rows, synthetic)
+    _time_run(tmp_path / "run", rows, synthetic)
+    assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 0
+
+
+def test_check_digests_reports_changed_page(tmp_path, capsys):
+    _time_run(tmp_path / "base", [{"id": "page__a.html", "output_digest": "aa", "rich_md_digest": "bb"}, {"id": "page__b.html", "output_digest": "cc"}])
+    _time_run(tmp_path / "run", [{"id": "page__a.html", "output_digest": "aa", "rich_md_digest": "xx"}, {"id": "page__b.html", "output_digest": "cc"}])
+    assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 1
+    out = capsys.readouterr().out
+    assert "page__a.html rich_md_digest bb xx" in out
+    assert "page__b.html" not in out
+
+
+def test_check_digests_reports_changed_synthetic(tmp_path, capsys):
+    _time_run(tmp_path / "base", [], [{"name": "large_page", "output_digest": "aa"}])
+    _time_run(tmp_path / "run", [], [{"name": "large_page", "output_digest": "bb"}])
+    assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 1
+    assert "large_page output_digest aa bb" in capsys.readouterr().out
+
+
+def test_check_digests_missing_page_is_difference(tmp_path, capsys):
+    _time_run(tmp_path / "base", [{"id": "a", "output_digest": "1"}, {"id": "b", "output_digest": "2"}])
+    _time_run(tmp_path / "run", [{"id": "a", "output_digest": "1"}])
+    assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 1
+    assert "b - present missing" in capsys.readouterr().out
+
+
+def test_check_digests_missing_key_is_difference(tmp_path, capsys):
+    _time_run(tmp_path / "base", [{"id": "a", "output_digest": "1", "rich_md_digest": "2"}])
+    _time_run(tmp_path / "run", [{"id": "a", "output_digest": "1"}])
+    assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 1
+    assert "a rich_md_digest 2 missing" in capsys.readouterr().out

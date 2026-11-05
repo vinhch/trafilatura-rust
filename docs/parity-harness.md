@@ -151,7 +151,11 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   and heap per page of the corpus. The Rust side covers `load_html` (decode plus parse) and `extract`
   (TXT, which repeats both) with the keys `loaded`, `median_ns`, `extract_ok`, `extract_median_ns`,
   `extract_alloc_bytes`, `extract_alloc_count` and `extract_peak_bytes`, and also the synthetic pages
-  below. The Python side covers `load_html` (keys `loaded`, `median_ns` and the heap) and `extract` with
+  below. It runs a second option set too, the rich one: metadata, images and links on, in Markdown
+  (`rich_md_*`) and HTML (`rich_html_*`), with `max_date` fixed to `RICH_MAX_DATE` so the date search
+  does not depend on the run day. The time file has `rich_*_median_ns`, the heap file `rich_*_alloc_count`,
+  `rich_*_alloc_bytes` and `rich_*_peak_bytes`. This is the option set the binding pays for.
+  The Python side covers `load_html` (keys `loaded`, `median_ns` and the heap) and `extract` with
   the fixture options (TXT, fast mode, dedup off; keys `extract_ok`, `extract_median_ns`), and clears
   the two `lru_cache`s of upstream's text helpers before each timed call. Time is comparable on both
   steps. Heap is comparable only on the Rust side: tracemalloc misses the lxml tree, and upstream's
@@ -171,8 +175,8 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   Markdown lists of 50,000 and 200,000 items inside `<article>` (a bare `<ol>` in `<body>` is flattened
   and never reaches `xml::list_marker`); the heap target skips them, because dhat would multiply their
   runtime (the 200k list alone takes about 150 s). A synthetic entry holds `name`, `input_bytes`,
-  `expected`, `outcome`, and `output_bytes` and `elapsed_ns` (time) or `alloc_bytes`, `alloc_count` and
-  `peak_bytes` (heap).
+  `expected`, `outcome`, and `output_bytes`, `elapsed_ns` and `output_digest` (time) or `alloc_bytes`,
+  `alloc_count` and `peak_bytes` (heap).
   The large-page pages have the shapes of large real pages, and `Nm` in a name means N MiB of input:
   `inline_script_20m` and `inline_script_50m` (one `<script>` of JavaScript), `json_ld_20m` and
   `json_ld_50m` (one JSON-LD script), `csv_pre_20m`, `csv_pre_33m` and `csv_pre_50m` (one `<pre>` of
@@ -186,6 +190,16 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   criterion (`cargo bench --features __internals --bench extract`): the groups `load_html` and
   `extract` hold one benchmark per sample page, and the group `synthetic` holds `ordered_list_50k`.
   Without fixtures it prints a notice and exits.
+- Output digests: each corpus row of the time file has `output_digest` (TXT) and `rich_md_digest` and
+  `rich_html_digest`; each synthetic row has `output_digest`. A digest is Blake2b over the output, 16
+  bytes in lowercase hex; a failed call digests its `outcome` word. Check a run against a stored baseline
+  with `uv run --frozen --no-dev --directory tools/parity python -m parity.measure --check-digests $PWD/BASE --out $PWD/RUN`
+  (absolute paths). It compares every `*_digest` key by page id and by synthetic name, prints each
+  difference as `page key base head` and exits 1 on any; a page or key on one side only is a difference.
+  Compare runs made with the same `--only`: a corpus subset has no synthetic rows.
+- Heap profile: `TRAFILATURA_MEASURE_DHAT=1` with `--only` makes `measure_heap` write one dhat profile per
+  profiled call to `.temp/measure/dhat/<page>-<run>.json`, `run` being `load`, `extract`, `rich-md` or
+  `rich-html`. The profile is written after the call's heap is read. Without `--only` the target skips.
 - Heap numbers are close to deterministic, not identical: the per-page peak varies by about 1% between
   runs of the same commit. Over five runs the min-to-max spread of the sample's summed
   `extract_alloc_count` was about 0.02% and of its summed `extract_peak_bytes` about 0.3%. The
@@ -213,6 +227,7 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
 | `PARITY_REQUIRE_FIXTURES` | parity test | missing fixtures fail instead of skip |
 | `TRAFILATURA_MEASURE` | `measure_time`, `measure_heap` | `1` lets the targets run; they skip otherwise |
 | `TRAFILATURA_MEASURE_ONLY` | measure targets | unset: the corpus, then the synthetic pages; `synthetic`: only the synthetic pages, the corpus file untouched; `@sample`: only the sample of the corpus, into the `-sample` file; any other text: only the corpus pages whose source path contains it |
+| `TRAFILATURA_MEASURE_DHAT` | `measure_heap` | `1` with `--only` writes a dhat profile per profiled call to `.temp/measure/dhat/`; forwarded into the container by `scripts/measure.sh` and `.ps1` |
 | `TRAFILATURA_MEASURE_RUNTIME` | `parity.measure`, measure targets | labels the host of a measurement: `docker` inside the container, `native` by default, so a table says when the two sides ran on different runtimes |
 
 ## Generated test data
