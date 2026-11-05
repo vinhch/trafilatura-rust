@@ -551,6 +551,10 @@ pub const MIN_DUPLICATE_LENGTH: usize = 50;
 // upstream: settings.py::DEDUPE_SCAN_CAP
 pub const DEDUPE_SCAN_CAP: usize = 200_000;
 
+/// Entries the duplicate cache keeps when the caller gives no size.
+// upstream: settings.py::LRU_SIZE
+pub const LRU_SIZE: usize = 4096;
+
 /// Inline tags that fold their children into their own text.
 // upstream: settings.py::INLINE_CONSUMING
 pub const INLINE_CONSUMING: &[&str] = &["hi", "ref", "del"];

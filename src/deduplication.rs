@@ -8,6 +8,10 @@ use crate::context::Ctx;
 use crate::dom::{NodeId, Tree};
 use crate::pystr;
 
+mod cache;
+
+pub use cache::{DedupCache, DedupError};
+
 /// Bits of a simhash, which is also the length upstream's `Simhash` defaults to. Fills a `u64`.
 const HASH_BITS: usize = 64;
 

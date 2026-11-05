@@ -77,6 +77,7 @@ mod xpaths;
 
 pub use api::{Extractor, Format, Input, Options, html2txt};
 pub use cancel::{Call, CancelToken};
+pub use deduplication::{DedupCache, DedupError};
 pub use error::{ExtractError, Rejection};
 pub use settings::{Config, Document, Focus};
 
