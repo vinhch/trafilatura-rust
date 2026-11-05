@@ -70,11 +70,11 @@ jobs:
           path: fuzz/artifacts/
 
   mutants:
-    name: mutants (shard ${{ matrix.shard }} of 20, 0-based)
+    name: mutants (shard ${{ matrix.shard }} of 17, 0-based)
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     runs-on: ubuntu-latest
     timeout-minutes: 140
     steps:
@@ -105,10 +105,10 @@ jobs:
           PARITY_REQUIRE_FIXTURES: '1'
         run: |
           status=0
-          cargo mutants --in-place --shard ${{ matrix.shard }}/20 --sharding round-robin || status=$?
+          cargo mutants --in-place --shard ${{ matrix.shard }}/17 --sharding round-robin || status=$?
           out=mutants.out
           {
-            echo "### mutants shard ${{ matrix.shard }} of 20 (0-based): exit $status"
+            echo "### mutants shard ${{ matrix.shard }} of 17 (0-based): exit $status"
             for kind in caught missed timeout unviable; do
               echo "- $kind: $(cat "$out/$kind.txt" 2>/dev/null | wc -l)"
             done
