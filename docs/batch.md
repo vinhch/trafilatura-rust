@@ -111,8 +111,8 @@ the whole batch. A .NET binding should use a thread created with `TaskCreationOp
 not a thread-pool thread.
 
 A binding should convert each `Document` into its own form inside `op`, on the workers. The
-`on_result` callback should only hand the result to managed code, catch every managed exception,
-because none may cross a reverse P/Invoke, and cancel the token to stop the batch.
+`on_result` callback should only hand the result to managed code. It should catch every managed
+exception, because none may cross a reverse P/Invoke, and cancel the token to stop the batch.
 
 The allocator belongs to the binary or the binding, never to the library. The thread-scaling target
 of `scripts/measure.sh --threads-native` measures a choice on the corpus sample.
