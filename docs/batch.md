@@ -104,13 +104,15 @@ deadline. Run it as `cargo run --example batch -- examples/batch`. It prints one
 
 ## Bindings
 
-A binding runs `extract_batch` on a thread it owns, so the calling thread does not block for the
-whole batch. A .NET binding uses a thread created with `TaskCreationOptions.LongRunning`, not a
-thread-pool thread.
+This crate ships no binding. The rules below are guidance for a binding author.
 
-Conversion of each `Document` into the binding's form runs inside `op`, on the workers. The
-`on_result` callback only hands the result to managed code. It catches every managed exception,
-because none may cross a reverse P/Invoke. To stop a batch, the callback cancels the token.
+A binding should run `extract_batch` on a thread it owns, so the calling thread does not block for
+the whole batch. A .NET binding should use a thread created with `TaskCreationOptions.LongRunning`,
+not a thread-pool thread.
+
+A binding should convert each `Document` into its own form inside `op`, on the workers. The
+`on_result` callback should only hand the result to managed code, catch every managed exception,
+because none may cross a reverse P/Invoke, and cancel the token to stop the batch.
 
 The allocator belongs to the binary or the binding, never to the library. The thread-scaling target
 of `scripts/measure.sh --threads-native` measures a choice on the parity corpus.
