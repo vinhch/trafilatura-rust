@@ -92,10 +92,12 @@ BLANK_SNIPPETS: list[tuple[str, str]] = [
 
 
 def check_blank_snippet(source: str) -> None:
-    "`check_snippet` of gen_xml_output_cases without its `&#` rule: CR needs `&#13;`, which tests/trees decodes."
+    "`check_snippet` of gen_xml_output_cases; `&#13;` is the only character reference allowed, as tests/trees decodes it."
     from lxml import etree
 
     assert "\r" not in source and "<!--" not in source and "<?" not in source, repr(source[:200])
+    references = [ref for ref in re.findall(r"&#\w*;?", source) if ref != "&#13;"]
+    assert not references, f"character reference other than &#13;: {references}"
     for tag in re.findall(r"<[A-Za-z][^<>]*>", source):
         for double, single in re.findall(r"""=\s*(?:"([^"]*)"|'([^']*)')""", tag):
             assert not re.search(r"[\t\n\r]", double + single), repr(tag)
