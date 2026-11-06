@@ -140,7 +140,7 @@ fn keep_chunks(text: &str, end_tag: bool, frame: &mut Frame) -> String {
         // chunk. A run that starts with a non-ASCII byte is never blank.
         let chunk_start = kept.len();
         let ascii = first.is_ascii();
-        let mut blank = ascii && is_blank(first);
+        let mut blank = is_blank(first);
         kept.push(first);
         while let Some(&next) = chars.peek() {
             if is_reference(next) || (ascii && !next.is_ascii()) {
