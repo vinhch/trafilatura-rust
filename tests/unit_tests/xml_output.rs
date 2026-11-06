@@ -17,7 +17,7 @@ fn children_named(tree: &Tree, id: NodeId, tag: &str) -> Vec<NodeId> {
 
 // upstream: unit_tests.py::test_yoast_faq_block
 // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_yoast_faq_block"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_yoast_faq_block"))'
 #[test]
 fn test_yoast_faq_block() {
     // Yoast FAQ block questions are bold but act as headers and must be kept (issue #471).
@@ -58,7 +58,7 @@ fn test_yoast_faq_block() {
 
 // upstream: unit_tests.py::test_linebreak_before_inline_kept_in_xml
 // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_linebreak_before_inline_kept_in_xml"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_linebreak_before_inline_kept_in_xml"))'
 #[test]
 fn test_linebreak_before_inline_kept_in_xml() {
     // XML/TEI keep a tail-less <lb/> before inline content.
@@ -85,7 +85,7 @@ fn test_nested_element_tail_kept() {
     // Nested lists, formatted paragraphs and dropped src-less images inside an item or a quote keep
     // their structure and tail.
     // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-    // oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_nested_element_tail_kept"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+    // oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_nested_element_tail_kept"))'
     let cases = [
         (
             "list-in-quote",
@@ -190,9 +190,11 @@ fn test_check_tei_loose_text() {
 // upstream: unit_tests.py::test_extract_div_keeps_inline_link
 // D-1: upstream extracts with fast=False, through its Readability fallback, which keeps the link. The
 // crate's fast mode drops the link and joins the lines, so the asserted values are that fast-mode output.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_extract_div_keeps_inline_link"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)" -> FAIL (the upstream assertion)
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_extract_div_keeps_inline_link"))' -> FAIL (the upstream assertion)
 // fast-mode markdown (the document of the test, include_links=True): 'The garden team measured\nthree plots\nbefore planting ...'
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_extract_div_keeps_inline_link_markdown"))'
 // fast-mode xml: <p>The garden team measured three plots before planting ...</p>, no ref element
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_extract_div_keeps_inline_link_xml"))'
 #[test]
 fn test_extract_div_keeps_inline_link() {
     // Exercise the Readability fallback with default size thresholds and self-created HTML.
@@ -225,8 +227,9 @@ fn test_extract_div_keeps_inline_link() {
 // upstream: unit_tests.py::test_lb_only_subtree_stays_one_paragraph
 // D-1: upstream extracts with fast=False, which emits the lb-only subtree as one paragraph. The fast
 // mode extracts nothing from this body, so the asserted output is the empty main.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_lb_only_subtree_stays_one_paragraph"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)" -> FAIL (the upstream assertion)
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_lb_only_subtree_stays_one_paragraph"))' -> FAIL (the upstream assertion)
 // fast-mode xml with config=ZERO: <doc fingerprint="...">\n  <main/>\n  <comments/>\n</doc>
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_lb_only_subtree_stays_one_paragraph_xml"))'
 #[test]
 fn test_lb_only_subtree_stays_one_paragraph() {
     let html_str = "<html><body><div class=\"entry-content\">\
@@ -372,7 +375,7 @@ fn test_table_processing() {
 
 // upstream: unit_tests.py::test_xml_table_preserves_empty_cells
 // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_xml_table_preserves_empty_cells"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_xml_table_preserves_empty_cells"))'
 #[test]
 fn test_xml_table_preserves_empty_cells() {
     // XML cleanup keeps blank cells so the following values stay in their columns.
@@ -456,7 +459,7 @@ fn test_table_cell_escaping_stays_out_of_xml() {
 
 // upstream: unit_tests.py::test_short_document_fallback_preserves_image
 // D-1: upstream extracts with fast=False in its first and its loops; the fast-mode output satisfies every assertion.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_short_document_fallback_preserves_image"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_short_document_fallback_preserves_image"))'
 #[test]
 fn test_short_document_fallback_preserves_image() {
     // A text-only fallback must not erase a requested image when it recovers no text.
@@ -538,7 +541,7 @@ fn test_short_document_fallback_preserves_image() {
 
 // upstream: unit_tests.py::test_longer_fallback_can_replace_requested_image
 // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-// oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_longer_fallback_can_replace_requested_image"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+// oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_longer_fallback_can_replace_requested_image"))'
 #[test]
 fn test_longer_fallback_can_replace_requested_image() {
     // A real content recovery still wins even when its source cannot preserve an image.
@@ -564,7 +567,7 @@ fn test_recall_escalation_captured_comment_list() {
     // A captured ol/ul comment list must not come back in the body through the recall escalation
     // (#881). Upstream runs both fast=False and fast=True; the crate has the fast mode only (D-1), so
     // both cases assert the fast-mode output.
-    // oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_recall_escalation_captured_comment_list"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+    // oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_recall_escalation_captured_comment_list"))'
     let intro: String = (0..5)
         .map(|i| {
             format!(
@@ -600,7 +603,7 @@ fn test_table_nested_in_cell_pipeline() {
     // End-to-end: nested table is extracted as a separate table by the main walk, not inlined, so
     // there is no duplication.
     // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-    // oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_table_nested_in_cell_pipeline"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+    // oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_table_nested_in_cell_pipeline"))'
     let outer_text = "This is the outer row with plenty of text to survive readability. ".repeat(2);
     let inner_text = "Inner nested table cell with sufficient content for extraction. ".repeat(2);
     let doc = format!(
@@ -621,7 +624,7 @@ fn test_table_nested_in_cell_pipeline() {
 fn test_list_item_attr_whitelist() {
     // Nested elements in a list item keep meaningful attrs only (no stray class/width leak).
     // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-    // oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_list_item_attr_whitelist"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+    // oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_list_item_attr_whitelist"))'
     let body = "<ul><li>x <img src=\"p.jpg\" class=\"c\" width=\"9\" alt=\"a\"/> <a href=\"http://x.io\" class=\"q\">lnk</a> y</li></ul>";
     let out = extract_doc(
         body,
@@ -727,7 +730,7 @@ fn test_list_processing() {
 fn test_nested_list_first_item_not_duplicated() {
     // The first item of a nested list must not come back as an extra item of the parent list.
     // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-    // oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_nested_list_first_item_not_duplicated"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+    // oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_nested_list_first_item_not_duplicated"))'
     let three_levels =
         "<ul><li>a<ul><li>b<ul><li>c</li></ul></li><li>b2</li></ul></li><li>d</li></ul>";
     assert_eq!(
@@ -751,7 +754,7 @@ fn test_nested_list_first_item_not_duplicated() {
 #[test]
 fn test_code_blocks() {
     // D-1: upstream extracts with fast=False; the fast-mode output satisfies every assertion.
-    // oracle: scripts/oracle.sh "$(sed 's/NAMES_PLACEHOLDER/["test_code_blocks"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-unit.py)"
+    // oracle: scripts/oracle.sh 'from parity.oracle_fast_unit import run; print(run("test_code_blocks"))'
     let xml = Kw::zero().format(ApiFormat::Xml);
     let highlightjs = "<div class=\"s-prose js-post-body\" itemprop=\"text\">\n\
         <p>Code:</p>\n\

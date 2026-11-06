@@ -12,8 +12,9 @@
 //! an assertion that holds is ported as it is, one that does not asserts that result with a
 //! `deviation: D-1` comment (the slow path of `fast=False` is not ported), or `D-2` where the html5
 //! and libxml2 trees differ. Every explicit `fast=False` call has a D-1 comment, even when the
-//! value is the same. Lines that need the XML or JSON output are in `<test>_phase_6_lines` tests;
-//! the whole tests of the XML, XML-TEI, JSON and CSV output are in `xml_output.rs`.
+//! value is the same. Assertions that need the XML or JSON output are in separate tests, named for
+//! the upstream test they split; the whole tests of the XML, XML-TEI, JSON and CSV output are in
+//! `xml_output.rs`.
 //!
 //! Not ported, and why:
 //! - `test_deprecations` (Python-only parameters), `test_incompatible_options` (a `Focus` makes the

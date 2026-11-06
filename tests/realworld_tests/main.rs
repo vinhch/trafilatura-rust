@@ -252,8 +252,8 @@ fn test_extract() {
 
 /// The `xmloutput=True` variant of upstream's `test_extract`: the same assertions, with the ones
 /// made for `xmloutput is False` left out. Upstream's assertions that fail under fast mode (lines
-/// 334-335 and 855-861) fail the same way for the XML output, so the D-1 values of `extract_cases`
-/// hold here too. Oracle: `scripts/oracle.sh "$(sed -e 's/FILE_PLACEHOLDER/realworld_tests.py/' -e 's/NAMES_PLACEHOLDER/["test_extract"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-asserts.py)"`,
+/// 334, 335, 855, 856, 860 and 861) fail the same way for the XML output, so the D-1 values of
+/// `extract_cases` hold here too. Oracle: `scripts/oracle.sh 'from parity.oracle_fast_unit import run_realworld; print(run_realworld("test_extract"))'`,
 /// which lists the failing assert lines per case (`xmloutput` True and False give the same lines).
 // upstream: realworld_tests.py::test_extract
 #[test]
