@@ -4,9 +4,9 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Shared by `measure_time.rs`, `measure_heap.rs`, `measure_sample.rs` and `benches/extract.rs`: the
-//! page list and its sample, the `load_html` and `extract` calls, the synthetic pages and the JSON
-//! files. The two measure targets are separate binaries because the heap one installs the dhat
+//! Shared by `measure_time.rs`, `measure_heap.rs`, `measure_sample.rs`, `resource_guards.rs` and
+//! `benches/extract.rs`: the page list and its sample, the `load_html` and `extract` calls, the
+//! synthetic pages and the JSON files. The two measure targets are separate binaries because the heap one installs the dhat
 //! allocator, which locks on every allocation and would inflate the timings.
 
 use std::collections::BTreeSet;
