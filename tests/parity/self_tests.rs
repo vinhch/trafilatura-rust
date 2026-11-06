@@ -239,7 +239,7 @@ fn tei_date(date: &str, paragraph: &str) -> String {
 
 #[test]
 fn known_metadata_header_only() {
-    // Oracle: the METADATA_KNOWN entry of this page and field, and the fixture's date value.
+    // Oracle: the METADATA_KNOWN entry of this page and field, and its fixture date 2016-08-15.
     const KNOWN_PAGE: &str = "tests__eval__football.ua.podolski.html";
     let known = known_values(KNOWN_PAGE, &json!({"date": "2016-08-15", "author": null}));
     assert_eq!(known, ["2016-08-15"]);
@@ -257,6 +257,7 @@ fn known_metadata_header_only() {
         classify_output(&case, &[])
     };
     let fixture_header = tei_date("2016-08-15", "Body");
+    // Synthetic classifier input, not an upstream value: no oracle command backs this date.
     let crate_header = tei_date("2007-12-16", "Body");
     let (classes, hunks) = check(KNOWN_PAGE, &known, &fixture_header, &crate_header);
     assert_eq!(classes, ["known-metadata"]);
@@ -298,6 +299,28 @@ fn known_metadata_header_only() {
 }
 
 #[test]
+fn known_metadata_ignores_a_value_inside_other_text() {
+    // "T" is a known value inside "Today" and "Tomorrow". A value this short cannot say which
+    // line it explains.
+    let known = ["T".to_string()];
+    let note = |text: &str| {
+        format!("<TEI>\n  <teiHeader>\n    <note>{text}</note>\n  </teiHeader>\n</TEI>\n")
+    };
+    let expected = note("Tomorrow");
+    let actual: Result<String, ExtractError> = Ok(note("Today"));
+    let case = OutputCase {
+        id: "page.html",
+        source: "page.html",
+        valid_utf8: true,
+        expected: Some(&expected),
+        upstream_error: false,
+        actual: &actual,
+        known_values: &known,
+    };
+    assert_eq!(classify_output(&case, &[]).0, ["port-bug"]);
+}
+
+#[test]
 fn fingerprint_on_encoding_page() {
     let check = |valid_utf8: bool, expected: &str, actual: &str| {
         let result: Result<String, ExtractError> = Ok(actual.to_string());
@@ -332,4 +355,28 @@ fn fingerprint_on_encoding_page() {
     let fingerprint_only = "<note type=\"fingerprint\">aa</note>\n";
     let other = "<note type=\"fingerprint\">bb</note>\n";
     assert_eq!(check(true, fingerprint_only, other).0, ["port-bug"]);
+}
+
+#[test]
+fn fingerprint_only_is_port_bug() {
+    // No text hunk carries the D-3 difference, so the fingerprint is unexplained on either encoding.
+    let expected = "<note type=\"fingerprint\">aa</note>\n<p>same</p>\n";
+    let result: Result<String, ExtractError> =
+        Ok("<note type=\"fingerprint\">bb</note>\n<p>same</p>\n".to_string());
+    for valid_utf8 in [false, true] {
+        let case = OutputCase {
+            id: "page.html",
+            source: "page.html",
+            valid_utf8,
+            expected: Some(expected),
+            upstream_error: false,
+            actual: &result,
+            known_values: &[],
+        };
+        assert_eq!(
+            classify_output(&case, &[]).0,
+            ["port-bug"],
+            "valid_utf8 {valid_utf8}"
+        );
+    }
 }

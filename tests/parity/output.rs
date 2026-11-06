@@ -48,8 +48,9 @@ pub(crate) fn known_values(id: &str, metadata: &Value) -> Vec<String> {
 /// Classes of one output and its classified hunks, first match wins: `match`, `decompress`,
 /// `upstream-error`, `normalized` (a page in `normalized_rejects` only, whole output), then, when both
 /// sides have text, per hunk `encoding` (page not valid UTF-8), `known-metadata`, or `port-bug`. A
-/// fingerprint hunk is `encoding` when the page is not valid UTF-8 and every other hunk is `encoding`,
-/// else `port-bug`. Text on one side only is a whole-output `port-bug`.
+/// fingerprint hunk is `encoding` when the page is not valid UTF-8, the output has an `encoding` hunk,
+/// and every hunk is `encoding` or a fingerprint; else `port-bug`. Text on one side only is a
+/// whole-output `port-bug`.
 pub(crate) fn classify_output(
     case: &OutputCase,
     normalized_rejects: &[(&str, &str)],
@@ -98,9 +99,10 @@ pub(crate) fn classify_output(
             (hunk, class)
         })
         .collect();
-    // A fingerprint follows the text of its page: D-3 changes both, and a fingerprint next to any
-    // other kind of difference is not explained.
+    // A fingerprint follows the text of its page: D-3 changes both. A fingerprint with no encoding
+    // hunk to follow, or next to any other kind of difference, is not explained.
     let fingerprint_class = if !case.valid_utf8
+        && classified.iter().any(|(_, class)| *class == "encoding")
         && classified
             .iter()
             .all(|(_, class)| matches!(*class, "encoding" | "fingerprint"))
@@ -159,9 +161,13 @@ fn known_metadata_hunk(
     }
     let left = expected.get(hunk.expected.clone()).unwrap_or_default();
     let right = actual.get(hunk.actual.clone()).unwrap_or_default();
+    // Values under four characters occur inside ordinary header words (`T` in "Today"), so they
+    // cannot tell which line they explain. shortcut: a longer value can still sit inside a longer
+    // word; a whole-word match would close that.
     let mentions = |line: &str| {
         known_values
             .iter()
+            .filter(|value| value.chars().count() >= 4)
             .any(|value| line.contains(value.as_str()))
     };
     !left.is_empty()

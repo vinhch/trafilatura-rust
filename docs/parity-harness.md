@@ -115,12 +115,12 @@ classified; the first rule that applies decides the output, and the test fails o
 | `upstream-error` | upstream raised and the crate returned a `Rejected` error, whole output |
 | `normalized` | the page is listed in `NORMALIZED_REJECTS`: the crate rejects it with `InvalidValue` where upstream extracted text, because the oracle's normalized tree dropped an element whose name is not an XML Name (D-2), whole output (empty list today) |
 | `encoding` | per hunk: input is not valid UTF-8 (D-3), as many removed as inserted lines, and each pair equal once non-ASCII chars are removed, or once a run of whitespace and non-ASCII chars counts as one space (upstream decodes some bytes to characters Python's `str.split()` counts as whitespace, where the crate's cp1252 guess gives a printable one); whitespace not next to a non-ASCII char must match |
-| `known-metadata` | `xmltei` only, per hunk: both sides of the hunk lie inside their `teiHeader`, and each line pair holds the fixture value of a field `METADATA_KNOWN` lists for the page (the metadata check pins those fields). The text part is outside the header, so it is still compared exactly |
+| `known-metadata` | `xmltei` only, per hunk: both sides of the hunk lie inside their `teiHeader`, and each line pair holds a fixture value of four characters or more, of a field `METADATA_KNOWN` lists for the page, on one side (the metadata check pins those fields). The text part is outside the header, so it is still compared exactly |
 | `port-bug` | any other hunk, or text on one side only |
 
 A fingerprint hunk (`<note type="fingerprint">` in `xmltei`, the `fingerprint` attribute of the `xml` `<doc>`)
-is `encoding` when the page is not valid UTF-8 and every other hunk of that output is `encoding`; otherwise
-`port-bug`. Both D-3 pages and the fingerprint of their text change together.
+is `encoding` when the page is not valid UTF-8, the output has an `encoding` hunk, and every other hunk of that
+output is `encoding`; otherwise `port-bug`. Both D-3 pages and the fingerprint of their text change together.
 
 The report is `.temp/parity/output-report.md`: per format the outputs and hunks of each class, the
 outputs of each class other than `match` (with the reason of a `normalized` page) and the diffs of the
