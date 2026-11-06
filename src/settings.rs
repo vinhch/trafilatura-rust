@@ -378,14 +378,16 @@ impl Document {
         self.comments_body
     }
 
-    /// Replaces the main text with a copy of `root` in `src`; a failed copy returns its error instead of keeping the old body.
+    /// Replaces the main text with a copy of `root` in `src`; a failed copy returns its error
+    /// instead of keeping the old body.
     #[cfg(feature = "__internals")]
     pub fn set_body(&mut self, src: &Tree, root: NodeId) -> Result<(), ExtractError> {
         self.body = src.copy_into(root, &mut self.tree, &Call::default())?;
         Ok(())
     }
 
-    /// Replaces the comments with a copy of `root` in `src`; a failed copy returns its error instead of keeping the old comments.
+    /// Replaces the comments with a copy of `root` in `src`; a failed copy returns its error
+    /// instead of keeping the old comments.
     #[cfg(feature = "__internals")]
     pub fn set_comments_body(&mut self, src: &Tree, root: NodeId) -> Result<(), ExtractError> {
         self.comments_body = src.copy_into(root, &mut self.tree, &Call::default())?;

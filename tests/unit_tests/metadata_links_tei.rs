@@ -432,7 +432,7 @@ fn test_links_xml_output() {
 }
 
 // Upstream's `test_tei`: its extract lines are in `test_tei_tree`, its `validate_tei` lines
-// in `test_tei_validation_tei_output` (D-27).
+// in `test_tei_validation` (D-27).
 #[test]
 fn test_tei() {
     let call = Call::default();
@@ -525,7 +525,7 @@ fn test_tei() {
 /// entities need a validator the crate does not have), so these stay ignored.
 #[test]
 #[ignore = "D-27"]
-fn test_tei_validation_tei_output() {
+fn test_tei_validation() {
     // open local resources to avoid redownloading at each run
     if let Some(page) = resource_text("httpbin_sample.html") {
         let result = extract_xmltei(&page, &Kw::new().url("mocked")).unwrap();
