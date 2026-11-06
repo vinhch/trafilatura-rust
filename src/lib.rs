@@ -101,12 +101,12 @@ pub mod __internals {
         Source, bare_extraction, determine_returnstring, internal_extraction, yaml_scalar,
     };
     pub use crate::html_processing::{
-        CODE_INDICATORS, HTML_TAG_MAPPING, REND_TAG_MAPPING, build_html_output, collect_link_info,
-        convert_deletions, convert_details, convert_headings, convert_line_breaks, convert_link,
-        convert_lists, convert_quotes, convert_tags, convert_to_html, delete_by_link_density,
-        handle_textnode, is_paragraph_listing, link_density_test, link_density_test_tables,
-        process_node, prune_html, prune_unwanted_nodes, recover_math, tree_cleaning,
-        tree_cleaning_with,
+        CODE_INDICATORS, HTML_TAG_MAPPING, REND_TAG_MAPPING, build_html_output, char_len,
+        collect_link_info, convert_deletions, convert_details, convert_headings,
+        convert_line_breaks, convert_link, convert_lists, convert_quotes, convert_tags,
+        convert_to_html, delete_by_link_density, handle_textnode, is_paragraph_listing,
+        link_density_test, link_density_test_tables, process_node, prune_html,
+        prune_unwanted_nodes, recover_math, tree_cleaning, tree_cleaning_with,
     };
     pub use crate::json_metadata::{
         JSON_AUTHOR_1, JSON_AUTHOR_2, extract_json, extract_json_author, extract_json_parse_error,

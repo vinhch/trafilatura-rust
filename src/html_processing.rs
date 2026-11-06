@@ -374,9 +374,9 @@ pub fn prune_unwanted_nodes(
             outer.push(element);
         }
     }
-    let old_len = tree.text_content(root).chars().count();
+    let old_len = char_len(tree, root);
     let removed = outer.iter().fold(0usize, |sum, &element| {
-        sum.saturating_add(tree.text_content(element).chars().count())
+        sum.saturating_add(char_len(tree, element))
     });
     // todo: adjust for recall and precision settings
     if old_len as f64 - removed as f64 > old_len as f64 / 7.0 {
@@ -472,7 +472,7 @@ fn trimmed_len(tree: &Tree, id: NodeId) -> usize {
 }
 
 /// Characters in `tree.text_content(id)`, counted without building the string.
-fn char_len(tree: &Tree, id: NodeId) -> usize {
+pub fn char_len(tree: &Tree, id: NodeId) -> usize {
     tree.itertext(id).fold(0usize, |sum, piece| {
         sum.saturating_add(piece.chars().count())
     })
