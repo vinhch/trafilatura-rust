@@ -237,6 +237,22 @@ fn remove_empty_elements_stops_when_cancelled() {
 }
 
 #[test]
+fn check_tei_stops_when_cancelled() {
+    let items = "<p>x</p>".repeat(CHECK_INTERVAL + 1);
+    let mut tree = xml(&format!(
+        "<TEI><text><body><div>{items}</div></body></text></TEI>"
+    ));
+    assert!(tree.len() > CHECK_INTERVAL);
+    let token = CancelToken::new();
+    token.cancel();
+    let root = tree.root();
+    assert_eq!(
+        check_tei(&mut tree, root, None, &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
 fn keeps_empty_root_graphic_and_code_child() {
     // oracle: keeps_empty(etree.fromstring("<p/>"))
     assert_eq!(flags("<p/>", &[]), (true, false, false));

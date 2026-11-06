@@ -248,9 +248,8 @@ fn test_htmlprocessing_phase_6_lines() {
     );
 }
 
-// The TEI line of `test_htmlprocessing`: the XML-TEI output comes with Task 6.
+// The TEI line of `test_htmlprocessing`.
 #[test]
-#[ignore = "phase 6"]
 fn test_htmlprocessing_tei_phase_6_lines() {
     let html = "<html><body><article><h1>Test headline</h1><p>Test</p></article></body></html>";
     assert!(

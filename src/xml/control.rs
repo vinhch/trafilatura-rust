@@ -9,7 +9,10 @@ use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
 
-use super::{delete_element, keeps_empty, meta_items, remove_empty_elements, strip_double_tags};
+use super::{
+    build_tei_output, delete_element, keeps_empty, meta_items, remove_empty_elements,
+    strip_double_tags,
+};
 use crate::cancel::Call;
 use crate::dom::{NodeId, Tree};
 use crate::error::ExtractError;
@@ -259,9 +262,9 @@ fn build_xml_output(doc: &mut Document, call: &Call<'_>) -> Result<NodeId, Extra
     Ok(output)
 }
 
-/// The XML output of `doc`: the `doc` tree of `build_xml_output`, sanitized, reparsed without the
-/// blank text libxml2 drops, pretty printed and stripped. The XML-TEI format is empty until its
-/// builder is ported (Task 6); `doc` is left as it is then.
+/// The XML output of `doc`: the `doc` tree of `build_xml_output` (or the TEI tree of
+/// `build_tei_output` for the XML-TEI format), sanitized, reparsed without the blank text libxml2
+/// drops, pretty printed and stripped.
 ///
 /// Checks `call` in each step; see the functions it runs.
 // upstream: xml.py::control_xml_output
@@ -270,14 +273,14 @@ pub fn control_xml_output(
     options: &Extractor,
     call: &Call<'_>,
 ) -> Result<String, ExtractError> {
-    if options.format == Format::XmlTei {
-        // todo(phase 6): build_tei_output (Task 6)
-        return Ok(String::new());
-    }
     let body = doc.body;
     strip_double_tags(&mut doc.tree, body, call)?;
     remove_empty_elements(&mut doc.tree, body, call)?;
-    let output = build_xml_output(doc, call)?;
+    let output = if options.format == Format::XmlTei {
+        build_tei_output(doc, call)?
+    } else {
+        build_xml_output(doc, call)?
+    };
     sanitize_tree(&mut doc.tree, output, call)?;
     remove_blank_text(&mut doc.tree, output, call)?;
     Ok(strip(&doc.tree.tostring(output, true, false)).to_owned())

@@ -112,7 +112,7 @@ fn test_input_phase_6_lines() {
 
 #[test]
 fn test_exotic_tags() {
-    // `check_tei` and the TEI output come with phase 6 (`test_exotic_tags_phase_6_lines`)
+    // the TEI line is `test_exotic_tags_phase_6_lines`
     let options = default_options();
     let call = Call::default();
     let ctx = ctx_for(&options, &call);
@@ -214,7 +214,6 @@ fn test_exotic_tags() {
 }
 
 #[test]
-#[ignore = "phase 6"]
 fn test_exotic_tags_phase_6_lines() {
     // `load_mock_page("http://exotic_tags", tei_output=True)`: the page is read from the checkout
     let Some(page) = resource_text("exotic_tags.html") else {
@@ -223,7 +222,6 @@ fn test_exotic_tags_phase_6_lines() {
     let result = extract_xmltei_with_id(&page, "http://exotic_tags", "0000").unwrap();
     assert!(result.contains("Teletype text"));
     assert!(result.contains("My new car is silver."));
-    // `xml.check_tei` on `exotic_tags_tei.html` is `check_tei`, ported in Phase 6
 }
 
 #[test]

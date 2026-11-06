@@ -1,6 +1,6 @@
 //! The part of upstream `xml.py` that serves the plain-text, Markdown and XML output: removing and
 //! merging elements, the empty-element pass, the element text and `xml_to_text`, plus `meta_items`.
-//! The XML-TEI, JSON and CSV builders and the TEI checks are stubs until phase 6.
+//! The XML-TEI tree is in `tei`. The JSON and CSV builders are stubs until phase 6.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -693,9 +693,19 @@ pub fn build_json_output(_doc: &Document, _with_metadata: bool) -> String {
 
 mod control;
 mod markdown;
+mod tei;
 mod to_text;
-pub use control::{control_xml_output, drop_empty_body_elements, remove_blank_text};
+pub use control::{control_xml_output, drop_empty_body_elements};
+// the crate's own tests reach these through `__internals`
+#[cfg(feature = "__internals")]
+pub use control::remove_blank_text;
 pub use markdown::md_link;
+pub use tei::build_tei_output;
+#[cfg(feature = "__internals")]
+pub use tei::{
+    HeaderFields, PKG_VERSION, check_tei, handle_unwanted_tails, move_element_one_level_up,
+    wrap_unwanted_siblings_of_div, write_fullheader,
+};
 pub use to_text::xml_to_text;
 
 #[cfg(test)]

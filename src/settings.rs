@@ -321,6 +321,13 @@ pub(crate) enum Field<'a> {
 }
 
 impl Document {
+    /// An empty document, as upstream's `Document()`: no metadata and an empty `body` for the text
+    /// and for the comments.
+    #[cfg(feature = "__internals")]
+    pub fn empty() -> Self {
+        Self::new()
+    }
+
     /// An empty document: no metadata and an empty `body` for the text and for the comments
     /// (upstream's defaults, two separate elements).
     pub(crate) fn new() -> Self {

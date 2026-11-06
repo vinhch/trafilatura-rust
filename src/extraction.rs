@@ -96,7 +96,7 @@ fn metadata_header(doc: &Document) -> String {
 }
 
 /// Converts the body of `doc` to the output format of `options`, as a string in Unicode normal
-/// form NFC. The XML-TEI, CSV and JSON formats are stubs until phase 6. Fails with
+/// form NFC. The CSV and JSON formats are stubs until phase 6. Fails with
 /// `Rejection::InvalidValue` where `xml_to_text` and `build_html_output` do.
 // upstream: core.py::determine_returnstring
 pub fn determine_returnstring(

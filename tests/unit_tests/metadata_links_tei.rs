@@ -1,19 +1,19 @@
 use super::*;
 
 /// `extract(html, url, output_format="xmltei", **kw)`.
-// todo(phase 6): xml output
-fn extract_xmltei(_html: &str, _kw: &Kw) -> Option<String> {
-    None
+fn extract_xmltei(html: &str, kw: &Kw) -> Option<String> {
+    xmltei_output(Source::Input(HtmlInput::Str(html)), kw, None)
 }
 
 /// `extract(html.fromstring(html), output_format="xml", with_metadata=True, **kw)`.
-// todo(phase 6): xml output
-fn extract_xml_with_metadata_tree(_html: &str, _kw: &Kw) -> Option<String> {
-    None
+fn extract_xml_with_metadata_tree(html: &str, kw: &Kw) -> Option<String> {
+    let (tree, root) = lxml_fromstring(html);
+    internal_document(Source::Tree(&tree, root), kw, Format::Xml, true, None)
+        .map(|document| document.text.unwrap_or_default())
 }
 
-/// `xml.validate_tei(etree.fromstring(xml))`.
-// todo(phase 6): TEI validation
+/// `xml.validate_tei(etree.fromstring(xml))`. The validator is not ported (D-27), so the
+/// assertions that use it are in the `#[ignore = "D-27"]` test.
 fn validate_tei(_xml: &str) -> bool {
     false
 }
@@ -28,11 +28,11 @@ fn metadata_document(html: &str, kw: &Kw, record_id: Option<&str>) -> Option<Doc
     )
 }
 
-/// The document of `extract_with_metadata(html, output_format="xml", **kw)`, which upstream returns
-/// for the XML output; its `raw_text` and `fingerprint` are read from it.
-// todo(phase 6): xml output
-fn extract_xml_document(_html: &str, _kw: &Kw) -> Option<Document> {
-    None
+/// The document of `extract_with_metadata(html.fromstring(html), output_format="xml", **kw)`, which
+/// upstream returns for the XML output; its `raw_text` and `fingerprint` are read from it.
+fn extract_xml_document(html: &str, kw: &Kw) -> Option<Document> {
+    let (tree, root) = lxml_fromstring(html);
+    internal_document(Source::Tree(&tree, root), kw, Format::Xml, true, None)
 }
 
 /// `handle_image(html.fromstring(html))`: the tree and the new element, `None` for no image.
@@ -160,10 +160,18 @@ fn test_extract_with_metadata() {
 
 // The XML lines of `test_extract_with_metadata`.
 #[test]
-#[ignore = "phase 6"]
 fn test_extract_with_metadata_phase_6_lines() {
-    let html =
-        "<html><head></head><body><article><p>AAA, <p>BBB</p>, CCC.</p></article></body></html>";
+    // upstream's `my_document`: the title and the date feed the record's fingerprint
+    let html = r#"<html>
+        <head><title>title</title></head>
+        <body>
+        <article>
+        <div>May 24, 2021</div>
+        <p>AAA, <p>BBB</p>, CCC.</p>
+        </article>
+        </body>
+        </html>
+    "#;
     // oracle: extract_with_metadata(my_document, output_format="xml", config=ZERO_CONFIG)
     let parsed = extract_xml_document(html, &Kw::zero()).unwrap();
     assert_eq!(parsed.raw_text.as_deref(), Some("AAA, BBB , CCC."));
@@ -302,7 +310,6 @@ fn test_images() {
 
 // The XML line of `test_images`.
 #[test]
-#[ignore = "phase 6"]
 fn test_images_phase_6_lines() {
     if let Some(page) = resource_text("http_sample.html") {
         assert!(
@@ -402,7 +409,6 @@ fn test_links() {
 
 // The XML lines of `test_links`.
 #[test]
-#[ignore = "phase 6"]
 fn test_links_phase_6_lines() {
     let html = "<html><body><article><a>Segment 1</a><h1><a>Segment 2</a></h1><p>Segment 3</p></article></body></html>";
     let result = extract_xml_tree(html, &Kw::zero().links(true)).unwrap();
@@ -425,7 +431,7 @@ fn test_links_phase_6_lines() {
     );
 }
 
-// Upstream's other blocks call `extract`, `validate_tei` and `write_fullheader`: 3f and Phase 6.
+// Upstream's other blocks call `extract` and `validate_tei` (D-27): see `test_tei_phase_6_lines`.
 #[test]
 fn test_tei() {
     let call = Call::default();
@@ -514,15 +520,14 @@ fn test_tei() {
     assert_eq!(whitelisted_parents_with_p(&tree, root), expected);
 }
 
-// The `extract` and TEI lines of `test_tei`; `test_tei` itself holds the parts that need neither.
+/// The `validate_tei` lines of `test_tei`. The validator is not ported (D-27: the DTD parameter
+/// entities need a validator the crate does not have), so these stay ignored.
 #[test]
-#[ignore = "phase 6"]
-fn test_tei_phase_6_lines() {
+#[ignore = "D-27"]
+fn test_tei_validation_phase_6_lines() {
     // open local resources to avoid redownloading at each run
     if let Some(page) = resource_text("httpbin_sample.html") {
-        let kw = Kw::new().url("mocked");
-        // `tei_validation=True` is an option of the TEI output, so `result2` is not compared yet
-        let result = extract_xmltei(&page, &kw).unwrap();
+        let result = extract_xmltei(&page, &Kw::new().url("mocked")).unwrap();
         assert!(validate_tei(&result));
         assert!(!validate_tei(&page));
     }
@@ -538,14 +543,18 @@ fn test_tei_phase_6_lines() {
         let result = extract_xmltei_with_id(&page, "mocked", "0001").unwrap();
         assert!(validate_tei(&result));
     }
-    // `xml.write_fullheader` is a Phase 6 function as well
-    let kw = Kw::zero().url("mocked");
     let extracted = extract_xmltei_tree(
         "<html><head/><body><div><h2><p>text</p></h2></div></body></html>",
-        &kw,
+        &Kw::zero().url("mocked"),
     )
     .unwrap();
     assert!(validate_tei(&extracted));
+}
+
+// The `extract` lines of `test_tei`; `test_tei` itself holds the parts that need neither.
+#[test]
+fn test_tei_phase_6_lines() {
+    let kw = Kw::zero().url("mocked");
     let extracted = extract_xmltei_tree(
         "<html><body><article><h1>title</h1><h2>subtitle</h2><p>text</p></article></body></html>",
         &kw,

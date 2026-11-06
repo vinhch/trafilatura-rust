@@ -253,13 +253,18 @@ impl Kw {
 
     /// The same settings as the crate's internal `Extractor`, for the tree entry point.
     fn settings(&self) -> Extractor {
+        self.settings_as(settings_format(self.format), false)
+    }
+
+    /// The internal settings of `format`, with the metadata flag as the constructor takes it.
+    fn settings_as(&self, format: Format, with_metadata: bool) -> Extractor {
         let mut settings = Extractor::new(
             self.config.clone(),
-            settings_format(self.format),
+            format,
             self.focus == Focus::Precision,
             self.focus == Focus::Recall,
             self.formatting,
-            false,
+            with_metadata,
             self.only_with_metadata,
             HashSet::new(),
             HashSet::new(),
@@ -305,8 +310,8 @@ fn extract_tree(html: &str, kw: &Kw) -> Option<String> {
     or_none(document).map(|document| document.text.unwrap_or_default())
 }
 
-// The stubs below stand for calls that need a later phase. They have upstream's shape and give the
-// neutral value; the tests that use them are `#[ignore = "phase N"]`.
+// The XML and XML-TEI entry points. The public `Format` has no XML variant, so the internal
+// `Extractor` carries the format.
 
 /// `extract(html, output_format="xml", **kw)`. The public `Format` has no XML variant, so the
 /// internal `Extractor` carries it.
@@ -335,15 +340,43 @@ fn xml_output(source: Source<'_>, kw: &Kw) -> Option<String> {
 }
 
 /// `extract(html.fromstring(html), output_format="xmltei", **kw)`.
-// todo(phase 6): xml output
-fn extract_xmltei_tree(_html: &str, _kw: &Kw) -> Option<String> {
-    None
+fn extract_xmltei_tree(html: &str, kw: &Kw) -> Option<String> {
+    let (tree, root) = lxml_fromstring(html);
+    xmltei_output(Source::Tree(&tree, root), kw, None)
 }
 
-/// `extract(html, url, record_id=..., output_format="xmltei")`.
-// todo(phase 6): xml output
-fn extract_xmltei_with_id(_html: &str, _url: &str, _record_id: &str) -> Option<String> {
-    None
+/// `extract(html, url, record_id=..., output_format="xmltei")`, with the default config.
+fn extract_xmltei_with_id(html: &str, url: &str, record_id: &str) -> Option<String> {
+    xmltei_output(
+        Source::Input(HtmlInput::Str(html)),
+        &Kw::new().url(url),
+        Some(record_id),
+    )
+}
+
+/// The XML-TEI output of `source` with the settings of `kw`.
+fn xmltei_output(source: Source<'_>, kw: &Kw, record_id: Option<&str>) -> Option<String> {
+    internal_document(source, kw, Format::XmlTei, false, record_id)
+        .map(|document| document.text.unwrap_or_default())
+}
+
+/// The document of `source` in the internal `format` with the settings of `kw`. The XML-TEI format
+/// forces the metadata in the constructor, so `with_metadata` only matters for the other formats.
+fn internal_document(
+    source: Source<'_>,
+    kw: &Kw,
+    format: Format,
+    with_metadata: bool,
+    record_id: Option<&str>,
+) -> Option<Document> {
+    let settings = kw.settings_as(format, with_metadata);
+    let call = Call::default();
+    or_none(internal_extraction(
+        source,
+        record_id,
+        &ctx_for(&settings, &call),
+        &ParseLimits::default(),
+    ))
 }
 
 /// `extract(html, with_metadata=True, record_id=..., **kw)` in the format of `kw`.

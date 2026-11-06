@@ -217,8 +217,9 @@ pub fn sanitize_tree(tree: &mut Tree, root: NodeId, call: &Call<'_>) -> Result<(
         let node = tree.node_mut(elem);
         // A colon is reserved for namespaces in XML; the attribute stays only when its prefix is
         // declared and its value is not empty.
-        // shortcut: the tree declares no namespaces (lxml's `nsmap` is empty for a parsed page), so
-        // every attribute with a colon goes; revisit when XML-TEI trees with declarations are built.
+        // shortcut: no tree declares a namespace (lxml's `Element("TEI", xmlns=...)` has an empty
+        // `nsmap`, and parsed pages declare none), so every attribute with a colon goes; revisit
+        // when a namespace is declared.
         node.attrs.retain(|(name, _)| !name.contains(':'));
         let text = node
             .text

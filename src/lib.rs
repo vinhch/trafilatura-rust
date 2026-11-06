@@ -138,8 +138,10 @@ pub mod __internals {
         safe_relative_url, sanitize, textfilter, trim,
     };
     pub use crate::xml::{
-        delete_element, md_link, merge_with_parent, remove_blank_text, remove_empty_elements,
-        replace_element_text, strip_double_tags, xml_to_text,
+        HeaderFields, PKG_VERSION, build_tei_output, check_tei, delete_element,
+        handle_unwanted_tails, md_link, merge_with_parent, move_element_one_level_up,
+        remove_blank_text, remove_empty_elements, replace_element_text, strip_double_tags,
+        wrap_unwanted_siblings_of_div, write_fullheader, xml_to_text,
     };
     pub use crate::xpaths::{
         BODY_XPATH, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, Selector, alt,

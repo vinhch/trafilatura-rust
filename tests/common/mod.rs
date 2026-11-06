@@ -127,7 +127,8 @@ fn upstream_commit(manifest: &str) -> Option<String> {
     upstream_value(manifest, "commit")
 }
 
-fn upstream_version(manifest: &str) -> Option<String> {
+/// The `version` of `[package.metadata.upstream]` in `manifest`.
+pub fn upstream_version(manifest: &str) -> Option<String> {
     upstream_value(manifest, "version")
 }
 
