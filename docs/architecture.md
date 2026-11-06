@@ -226,8 +226,8 @@ The library starts no thread except in `Extractor::extract_batch`. Its workers a
 items from the batch's iterator, and the call joins all of them before it returns (`docs/batch.md`).
 Every other entry point runs on the caller's thread.
 
-Thread scaling is measured natively on the Windows 11 host (20 logical threads, `scripts/measure.sh
---threads-native`): eight threads give 6.0 times the pages per second of one thread. The count is not
+Thread scaling is measured through `extract_batch` on the Windows 11 host (20 logical threads, `scripts/measure.sh
+--threads-native`): eight threads give 5.8 times the pages per second of one thread. The count is not
 gated, because host noise is too large (`parity-harness.md`).
 
 ### Measurement
@@ -245,11 +245,9 @@ gated, because host noise is too large (`parity-harness.md`).
   Docker build within 0.3% in bytes.
 - The Windows host has no sampling profiler, so per-site time shares are not measured. Time is judged on
   the summed medians only.
-- The reference for time and heap is the Docker run (`scripts/measure.sh --docker`). A full run of the
-  Rust targets takes about six minutes on that host.
-- A site's share of one page's dhat peak does not carry to the summed measured peak: the character count
-  that built `text_content` was 9.9% of one profiled page's TXT peak, and removing it moved the summed TXT
-  peak by 0.19%.
+- The reference for time and heap is the Docker run (`scripts/measure.sh --docker`).
+- A site's share of one page's dhat peak does not carry to the summed measured peak: a site at 9.9% of one
+  page's TXT peak moved the summed TXT peak by 0.19% when removed.
 
 ### Findings
 
@@ -266,5 +264,5 @@ not to one function. Allocation shares are of the option set's blocks over the e
   and 14% of the TXT blocks. The tree-builder call (`process_token`, same file) is 14% and 5%. These
   allocations belong to the dependency; changing them means changing the parser (`docs/dependencies.md`).
 
-Text sharing between a node and its copy, and arena compaction, are proposals tracked as F-25 in
-`docs/phase-plan.md`. Neither is implemented.
+Text sharing between a node and its copy is tracked as F-25 in `docs/phase-plan.md`. Arena compaction has
+no register entry. Neither is implemented.

@@ -81,5 +81,6 @@ fn char_len_equals_text_content_chars_on_synthetic_pages() {
         .unwrap();
         nodes_checked += assert_char_len_matches_text_content(&tree, page.name);
     }
+    assert!(nodes_checked > 0, "no synthetic node was checked");
     eprintln!("resource_guards: synthetic pages, {nodes_checked} nodes checked");
 }

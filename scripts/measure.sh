@@ -122,6 +122,8 @@ if [ "$use_docker" = true ] || [ "$(uname -s)" != "Linux" ]; then
 fi
 
 echo "== Rust: load_html and extract over the corpus (time, then heap) ==" >&2
+# A partial run must not leave the last full run's time files for --check-digests to compare
+rm -f .temp/measure/*-rust-time*.json
 TRAFILATURA_UPSTREAM="$upstream" TRAFILATURA_MEASURE=1 TRAFILATURA_MEASURE_ONLY="$only" \
   cargo test --locked --release --features __internals --test measure_time --test measure_heap -- --nocapture >&2
 

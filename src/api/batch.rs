@@ -16,9 +16,6 @@ use crate::error::ExtractError;
 /// Most workers one batch spawns, whatever `threads` asks for.
 pub(super) const MAX_WORKERS: usize = 256;
 
-/// Most results the channel holds between the workers and the calling thread.
-const MAX_CHANNEL: usize = 1024;
-
 /// Stack of each worker: four times the 512 KiB that the recursion proofs in `scripts/test.sh` fit.
 const WORKER_STACK_BYTES: usize = 2 * 1024 * 1024;
 
@@ -76,8 +73,9 @@ pub enum BatchError {
     /// A worker thread could not be started. The items already pulled still ran and reached the
     /// callback. The error kind is kept, since an `io::Error` is neither `Clone` nor `Eq`.
     Spawn(io::ErrorKind),
-    /// `op` or the iterator panicked on a worker. Every other item pulled got its callback; with
-    /// fewer workers than items left, the rest are never pulled.
+    /// `op` or the iterator panicked on a worker. Every other item that was pulled got its callback;
+    /// the items left are pulled by the workers that did not panic, and none are pulled once every
+    /// worker has panicked or `next()` panicked.
     WorkerPanicked,
 }
 
@@ -103,8 +101,9 @@ impl Extractor {
     /// pulled, when that comes first. Before each pull a worker checks the token and the batch
     /// deadline and stops pulling when either has passed, so an endless iterator ends at a cancel.
     /// An item pulled when the cancel or deadline arrives gets `Err(Skipped)` without running `op`.
-    /// Finished results wait in a channel of at most `2 * threads` (up to 1,024) slots, so memory
-    /// stays bounded by the threads, not by the batch.
+    /// Finished results wait in a channel of `2 * workers` slots, at most 512, where `workers` is the
+    /// number of workers the batch plans to spawn. Memory stays bounded by the threads, not by the
+    /// batch.
     ///
     /// `next()` of `items` runs under a lock, one worker at a time, so it must be cheap and must
     /// not block on what `on_result` or `op` produce. Keep the I/O in `op`. Each concurrent call
@@ -173,7 +172,7 @@ where
     let upper = items.size_hint().1;
     let wanted = options.threads.get().min(MAX_WORKERS);
     let workers = upper.map_or(wanted, |upper| upper.min(wanted));
-    let capacity = workers.saturating_mul(2).min(MAX_CHANNEL);
+    let capacity = workers.saturating_mul(2);
     let per_item = options.per_item;
 
     let source = Mutex::new(Source {

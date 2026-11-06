@@ -433,6 +433,13 @@ def test_check_digests_equal_returns_0(tmp_path):
     assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 0
 
 
+def test_check_digests_no_keys_compared_is_failure(tmp_path, capsys):
+    _time_run(tmp_path / "base", [{"id": "a", "output_bytes": 3}], [{"name": "large_page", "output_bytes": 9}])
+    _time_run(tmp_path / "run", [{"id": "a", "output_bytes": 3}], [{"name": "large_page", "output_bytes": 9}])
+    assert measure.main(["--check-digests", str(tmp_path / "base"), "--out", str(tmp_path / "run")]) == 1
+    assert "no *_digest keys compared" in capsys.readouterr().out
+
+
 def test_check_digests_reports_changed_page(tmp_path, capsys):
     _time_run(tmp_path / "base", [{"id": "page__a.html", "output_digest": "aa", "rich_md_digest": "bb"}, {"id": "page__b.html", "output_digest": "cc"}])
     _time_run(tmp_path / "run", [{"id": "page__a.html", "output_digest": "aa", "rich_md_digest": "xx"}, {"id": "page__b.html", "output_digest": "cc"}])

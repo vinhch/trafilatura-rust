@@ -114,6 +114,8 @@ if ($UseDocker -or -not $IsLinux) {
 }
 
 [Console]::Error.WriteLine('== Rust: load_html and extract over the corpus (time, then heap) ==')
+# A partial run must not leave the last full run's time files for --check-digests to compare
+Remove-Item -Path '.temp/measure/*-rust-time*.json' -ErrorAction SilentlyContinue
 $env:TRAFILATURA_UPSTREAM = $Upstream
 $env:TRAFILATURA_MEASURE = '1'
 $env:TRAFILATURA_MEASURE_ONLY = $Only

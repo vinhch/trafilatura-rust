@@ -115,4 +115,4 @@ A binding should convert each `Document` into its own form inside `op`, on the w
 because none may cross a reverse P/Invoke, and cancel the token to stop the batch.
 
 The allocator belongs to the binary or the binding, never to the library. The thread-scaling target
-of `scripts/measure.sh --threads-native` measures a choice on the parity corpus.
+of `scripts/measure.sh --threads-native` measures a choice on the corpus sample.

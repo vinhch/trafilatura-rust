@@ -36,7 +36,8 @@ fn run(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let paths = html_files(dir)?;
     let extractor = Options::new().build();
     let threads = NonZeroUsize::new(4).ok_or("thread count is zero")?;
-    // The deadline covers the whole batch: files not yet pulled when it passes are skipped.
+    // The deadline covers the whole batch: files not yet pulled when it passes are never pulled; a
+    // file pulled as it passes reports `Skipped`.
     let call = Call::default().deadline(Instant::now() + Duration::from_secs(30));
 
     // One slot per file, filled as results arrive: the collect pattern. It holds a label per file,

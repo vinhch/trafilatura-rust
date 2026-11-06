@@ -516,7 +516,7 @@ TIME_SUFFIX = "-rust-time.json"
 
 
 def _digest_rows(directory: Path) -> tuple[dict, dict]:
-    "The corpus rows by id and the synthetic rows by name of a crate run. A run with no synthetic file (`--only`, `@sample`) has no synthetic rows."
+    "The corpus rows by id and the synthetic rows by name of a crate run. A run with no synthetic file (`--only`, `@sample`) has no synthetic rows; a partial run fails `check_digests` on the pages it lacks."
     found = sorted(directory.glob(f"*{TIME_SUFFIX}"))
     if len(found) != 1:
         raise ValueError(f"{directory} holds {len(found)} crate time files, expected one")
@@ -547,7 +547,7 @@ def digest_differences(base: dict[str, dict], head: dict[str, dict]) -> list[tup
 
 
 def check_digests(base: Path, out: Path) -> int:
-    "Print the digests of `base` that `out` does not reproduce; 1 on any difference, a missing or malformed file."
+    "Print the digests of `base` that `out` does not reproduce; 1 on any difference, when no digest is compared, or on a missing or malformed file."
     try:
         base_pages, base_synthetic = _digest_rows(base)
         out_pages, out_synthetic = _digest_rows(out)
@@ -556,7 +556,11 @@ def check_digests(base: Path, out: Path) -> int:
         return 1
     diffs = digest_differences(base_pages, out_pages) + digest_differences(base_synthetic, out_synthetic)
     if not diffs:
-        print(f"digests equal: {len(base_pages)} pages, {len(base_synthetic)} synthetic pages")
+        compared = sum(len(_digests(row)) for row in [*base_pages.values(), *base_synthetic.values()])
+        if compared == 0:
+            print(f"no *_digest keys compared: {len(base_pages)} pages, {len(base_synthetic)} synthetic pages carry none")
+            return 1
+        print(f"digests equal: {compared} digests on {len(base_pages)} pages, {len(base_synthetic)} synthetic pages")
         return 0
     print("page key base head")
     for row in diffs:

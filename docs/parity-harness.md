@@ -162,12 +162,13 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   extract heap is not measured. Both sides run in the same place: natively on Linux, off Linux (or with
   `--docker`) in one Linux container built from `scripts/measure.Dockerfile`, so a table compares one
   system; its `Platform:` line says where. Run it by hand; the numbers depend on the machine. A full run of
-  the Rust targets (`scripts/measure.sh --docker`) takes about six minutes on a Windows 11 host, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
+  the Rust targets (`scripts/measure.sh --docker`) takes about six minutes on a Windows 11 host, and the
+  largest page (`data_table_20m`) peaks at about 1 GB of heap.
 - Thread scaling: `scripts/measure.sh --threads-native` (or `.ps1`) runs `tests/measure_threads.rs` natively,
   never in the container, and writes `.temp/measure/<version>-rust-threads.json`:
   `threads_available` (logical threads, `available_parallelism`) and `runs`, one entry per count of 1, 2, 4
-  and 8 with `pages_per_sec` and `ratio` to one thread. The sample (`sample`) is extracted by scoped threads
-  sharing one extractor, each count for at least 2 s. The file has no digests and no dhat profile. Not gated:
+  and 8 with `pages_per_sec` and `ratio` to one thread. The sample (`sample`) is extracted through
+  `extract_batch`, each count for at least 2 s. The file has no digests and no dhat profile. Not gated:
   host noise is too large.
 - Synthetic pages: `tests/measure/mod.rs` builds the pages no corpus page reaches (D-5, D-9, the
   ordered-list numbering of Phase 8) and each target runs them once, without warm-up, writing
@@ -201,8 +202,9 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   bytes in lowercase hex; a failed call digests its `outcome` word. Check a run against a stored baseline
   with `uv run --frozen --no-dev --directory tools/parity python -m parity.measure --check-digests $PWD/BASE --out $PWD/RUN`
   (absolute paths). It compares every `*_digest` key by page id and by synthetic name, prints each
-  difference as `page key base head` and exits 1 on any; a page or key on one side only is a difference.
-  Compare runs made with the same `--only`: a corpus subset has no synthetic rows.
+  difference as `page key base head` and exits 1 on any; a page or key on one side only is a difference,
+  and so is a run with no digest key to compare. A partial run (`--only`) cannot be compared with a full
+  baseline: the check fails on the pages it lacks.
 - Heap profile: `TRAFILATURA_MEASURE_DHAT=1` with `--only` makes `measure_heap` write one dhat profile per
   profiled call to `.temp/measure/dhat/<page>-<run>.json`, `run` being `load`, `extract`, `rich-md` or
   `rich-html`. The profile is written after the call's heap is read. Without `--only` the target skips.

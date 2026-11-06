@@ -91,7 +91,7 @@ impl<'a> Call<'a> {
         self.dedup
     }
 
-    /// The batch deadline of this call, when one is set.
+    /// This call's deadline, when one is set.
     pub(crate) fn deadline_at(&self) -> Option<Instant> {
         self.deadline
     }

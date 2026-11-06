@@ -48,7 +48,7 @@ expect_used = "deny"
 panic = "deny"
 indexing_slicing = "warn"
 string_slice = "deny"
-# Perf lints from phase 13: no site in the crate, so they stay on as guards.
+# Perf guards: warn on any new site.
 inefficient_to_string = "warn"
 large_types_passed_by_value = "warn"
 
