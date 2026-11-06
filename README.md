@@ -36,6 +36,7 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 ## Documents
 
 - `docs/architecture.md`: module map, runtime contract, public API, performance rules.
+- `docs/batch.md`: running many extractions: sharing an `Extractor`, `extract_batch`, thread counts.
 - `docs/gotchas.md`: traps found reading upstream.
 - `docs/upstream-sync.md`: how to move to a new upstream release.
 - `docs/parity-harness.md`: fixtures, mismatch classes, measurement.
@@ -46,7 +47,7 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 
 | Command | Does |
 | --- | --- |
-| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, the size check (`scripts/size-check.sh`), fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests (the parity test when fixtures exist), the stack tests again in the dev profile (a debug build), `cargo deny check` |
+| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, the size check (`scripts/size-check.sh`), fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests (the parity test when fixtures exist), the batch example (`examples/batch`), the stack tests again in the dev profile (a debug build), `cargo deny check` |
 | `cargo mutants -j 4 --output .work/mutants` | mutation testing of the modules in `examine_globs` (`.cargo/mutants.toml`: `src/main_extractor.rs`, `src/main_extractor/tables.rs`, `src/main_extractor/content.rs`, `src/metadata.rs`, `src/metadata/page.rs`, `src/htmldate/validators.rs`, `src/htmldate/core.rs`, `src/htmldate/core/patterns.rs`, `src/htmldate/core/search.rs`, `src/htmldate/core/examiners.rs`) with the settings in `.cargo/mutants.toml`; needs `cargo install --locked cargo-mutants@27.1.0` and the environment in the header of `.cargo/mutants.toml`; rerun each timeout alone with `-j 1`, since under load it can hide a survivor; CI runs it sharded |
 | `scripts/fixtures.sh` / `scripts/fixtures.ps1` | no flags: unpacks the tracked parity fixture archive into `.temp/fixtures/<version>`; `--generate` regenerates the fixtures from upstream, `--pack` writes the archive (`docs/parity-harness.md`) |
 | `scripts/fuzz.sh` / `scripts/fuzz.ps1` | runs one fuzz target (`parse_document`, `extract`) for N seconds (default 60) with the libFuzzer limits, or with `--cmin <target>` minimizes that target's corpus; `.sh` needs cargo-fuzz and the `x86_64-unknown-linux-gnuasan` target (Linux x86_64), `.ps1` runs it in a container built from `scripts/fuzz.Dockerfile` (the CI toolchain, cargo-fuzz and the target baked in) and needs an x86_64 Docker host |

@@ -38,7 +38,7 @@ Usage: scripts/$ScriptName [--no-deny]
 Runs scripts/version.ps1 --check, the size check (scripts/size-check.ps1), cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
-items only the tests use), cargo test --locked --all-features (doc tests included), the stack tests again
+items only the tests use), cargo test --locked --all-features (doc tests included), the batch example (examples/batch), the stack tests again
 in the dev profile (opt-level 0, a real debug build) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
@@ -81,6 +81,8 @@ Invoke-Checked @('cargo', 'clippy', '--locked', '--all-targets', '--all-features
 Invoke-Checked @('cargo', 'clippy', '--locked', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--no-default-features', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'test', '--locked', '--all-features')
+# The batch example runs the public API over the committed pages in examples/batch (docs/batch.md).
+Invoke-Checked @('cargo', 'run', '--locked', '--example', 'batch', '--', 'examples/batch')
 # The test profile builds at opt-level 1; the dev profile stays at 0, where stack frames are largest.
 # A filter that matches nothing would pass vacuously, so the selection is counted first. An #[ignore]d stack test still runs here.
 $StackArgs = @('test', '--locked', '--profile', 'dev', '--all-features', '--lib', '--test', 'unit_tests', '--', '--include-ignored', '--exact') + $StackTests

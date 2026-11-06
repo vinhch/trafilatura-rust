@@ -10,6 +10,7 @@ not when it looks similar or scores well on a benchmark.
 | Document | Read it when |
 | --- | --- |
 | `docs/architecture.md` | before touching module layout, the public API, cancellation, limits or performance: module map, runtime contract, planned API |
+| `docs/batch.md` | before running many extractions: sharing an `Extractor`, `extract_batch` against a host pool, thread counts, the batch example and its stack check |
 | `docs/gotchas.md` | before porting any upstream function: traps that silently change output |
 | `docs/upstream-sync.md` | when syncing to a new upstream release |
 | `docs/parity-harness.md` | when touching fixtures, `tools/parity/`, `tests/parity/`, `tests/common/` or measurement |
