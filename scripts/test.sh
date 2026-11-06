@@ -14,6 +14,7 @@ readonly stack_tests=(
   main_extractor::tests::dispatch::deep_nesting_fits_512k_stack
   pyjson::tests::deep_document_drops_on_small_stack
   xml::tests::output_deep_nesting_fits_512k_stack
+  xml::tests::remove_blank_text_deep_nesting_fits_512k_stack
   options_discard::test_extract_deep_caller_supplied_tree
 )
 

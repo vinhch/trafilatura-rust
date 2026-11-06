@@ -751,3 +751,62 @@ fn merge_adjacent_hi_ticks_in_the_pair_loop() {
         Err(ExtractError::Cancelled)
     );
 }
+
+#[test]
+fn empty_piece_is_absent() {
+    // `Some("")` never reaches the parser: `bibl` serializes as `<bibl/>`, and its empty text does not
+    // stop the parent from indenting its children.
+    let mut tree = xml(r#"<p><a/><bibl type="sigle"/></p>"#);
+    let root = tree.root();
+    let bibl = tree.child_at(root, 1).unwrap();
+    tree.node_mut(bibl).text = Some(String::new());
+    remove_blank_text(&mut tree, root, &Call::default()).unwrap();
+    assert_eq!(
+        tree.tostring(root, true, false),
+        "<p>\n  <a/>\n  <bibl type=\"sigle\"/>\n</p>\n"
+    );
+}
+
+#[test]
+fn remove_blank_text_stops_when_cancelled() {
+    let items = "<p>x</p>".repeat(CHECK_INTERVAL + 1);
+    let mut tree = xml(&format!("<body>{items}</body>"));
+    assert!(tree.len() > CHECK_INTERVAL);
+    let token = CancelToken::new();
+    token.cancel();
+    let root = tree.root();
+    assert_eq!(
+        remove_blank_text(&mut tree, root, &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn remove_blank_text_deep_nesting_fits_512k_stack() {
+    // MAX_DEPTH + 16 levels, each with a blank text before its child, on the smallest stack a host
+    // may give its threads, in a debug build.
+    let levels = MAX_DEPTH + 16;
+    std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(move || {
+            let source = format!(
+                "{}<d/>{}",
+                "<d> ".repeat(levels - 1),
+                "</d>".repeat(levels - 1)
+            );
+            let mut tree = xml(&source);
+            let root = tree.root();
+            remove_blank_text(&mut tree, root, &Call::default()).unwrap();
+            assert_eq!(
+                tree.tostring(root, false, false),
+                format!(
+                    "{}<d/>{}",
+                    "<d>".repeat(levels - 1),
+                    "</d>".repeat(levels - 1)
+                )
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

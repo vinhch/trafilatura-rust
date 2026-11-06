@@ -700,8 +700,10 @@ pub fn build_json_output(_doc: &Document, _with_metadata: bool) -> String {
     String::new()
 }
 
+mod control;
 mod markdown;
 mod to_text;
+pub use control::remove_blank_text;
 pub use markdown::md_link;
 pub use to_text::xml_to_text;
 
