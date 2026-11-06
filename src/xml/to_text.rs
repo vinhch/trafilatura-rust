@@ -521,7 +521,7 @@ pub fn xml_to_text(
     let root = if include_formatting {
         // the math rewrite, the escaping, the emphasis collapse and the `lb` removal mutate the
         // tree: protect the caller's
-        let copy = tree.copy(root);
+        let copy = tree.copy(root, call)?;
         escape_and_convert_math_tree(tree, copy, call, &mut state.visited)?;
         collapse_emphasis(tree, copy, 0, call, &mut state.visited)?;
         merge_adjacent_hi(tree, copy, call, &mut state.visited)?;

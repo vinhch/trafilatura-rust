@@ -1,4 +1,35 @@
 use super::*;
+use crate::cancel::CHECK_INTERVAL;
+
+/// A cancelled call and a `p` of `2 * CHECK_INTERVAL + 1` elements, `p` included.
+fn cancelled_copy_fixture() -> (Tree, NodeId, CancelToken) {
+    let items = "<i>x</i>".repeat(2 * CHECK_INTERVAL);
+    let tree = fragment(&format!("<p>{items}</p>"));
+    let p = tree.first_child(tree.root()).unwrap();
+    assert_eq!(tree.iter(p, &[]).count(), 2 * CHECK_INTERVAL + 1);
+    let token = CancelToken::new();
+    token.cancel();
+    (tree, p, token)
+}
+
+#[test]
+fn copy_stops_when_cancelled() {
+    let (mut tree, p, token) = cancelled_copy_fixture();
+    assert_eq!(
+        tree.copy(p, &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn copy_into_stops_when_cancelled() {
+    let (tree, p, token) = cancelled_copy_fixture();
+    let mut dst = Tree::new(LocalName::from("body"), Ns::Html, vec![]);
+    assert_eq!(
+        tree.copy_into(p, &mut dst, &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
 
 #[test]
 fn copy_pairs_by_document_order() {
@@ -8,12 +39,14 @@ fn copy_pairs_by_document_order() {
     let mut tree = fragment("<p>a<b>b</b>c</p>tail<q></q>qt");
     let root = tree.root();
     let p = tree.first_child(root).unwrap();
-    let copy = tree.copy(p);
+    let copy = tree.copy(p, &Call::default()).unwrap();
     assert_eq!(xml(&tree, copy), "<p>a<b>b</b>c</p>");
     assert_eq!(tree.node(copy).tail.as_deref(), Some("tail"));
     assert_eq!(tree.node(copy).parent(), None);
     assert_eq!(tree.node(copy).next_sibling(), None);
-    let q = tree.copy(tree.last_child(root).unwrap());
+    let q = tree
+        .copy(tree.last_child(root).unwrap(), &Call::default())
+        .unwrap();
     assert_eq!(xml(&tree, q), "<q/>");
     assert_eq!(tree.node(q).tail.as_deref(), Some("qt"));
 
@@ -23,10 +56,10 @@ fn copy_pairs_by_document_order() {
     let root = tree.root();
     let loose = tree.new_element("loose");
     let header = tree.first_child(root).unwrap();
-    let early = tree.copy(header);
+    let early = tree.copy(header, &Call::default()).unwrap();
     tree.node_mut(root).tail = Some("root tail".into());
     let before = tree.len();
-    let copy = tree.copy(root);
+    let copy = tree.copy(root, &Call::default()).unwrap();
     let size = tree.iter(root, &[]).count();
     assert_eq!(size, 6);
     assert_eq!(tree.len(), before + size);

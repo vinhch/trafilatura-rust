@@ -62,7 +62,7 @@ fn test_html_conversion() {
 </xml>"##;
     let mut tree = xml_tree(source);
     let root = tree.root();
-    let copied = tree.copy(root);
+    let copied = tree.copy(root, &Call::default()).unwrap();
     let html_tree = convert_to_html(&mut tree, copied, &Call::default()).unwrap();
     let expected_html = r#"<html><body>
     <ul>

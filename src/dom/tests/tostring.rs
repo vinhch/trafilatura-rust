@@ -321,12 +321,12 @@ fn copy_into_matches_copy() {
     let mut dst = Tree::new(LocalName::from("body"), Ns::Html, vec![]);
     let loose = dst.new_element("loose");
     let len = dst.len();
-    let into = tree.copy_into(p, &mut dst);
+    let into = tree.copy_into(p, &mut dst, &Call::default()).unwrap();
     assert_eq!(dst.len(), len + size);
     assert_eq!(dst.node(into).parent(), None);
     assert_eq!(dst.node(loose).parent(), None);
 
-    let in_place = tree.copy(p);
+    let in_place = tree.copy(p, &Call::default()).unwrap();
     assert_eq!(
         dst.tostring(into, false, true),
         tree.tostring(in_place, false, true)

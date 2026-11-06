@@ -221,7 +221,11 @@ pub fn tree_cleaning_with(
         && tree.find(root, "p").is_some()
         && (cleaning_list.contains(&"p")
             || !any_paragraph_survives(tree, root, &cleaning_list, call)?);
-    let backup = needs_backup.then(|| tree.copy(root));
+    let backup = if needs_backup {
+        Some(tree.copy(root, call)?)
+    } else {
+        None
+    };
     // the loop only deletes, so a tag absent now stays absent; `tree.tag` matches the HTML namespace
     // only, as `LiveIter` does
     let mut present = HashSet::new();

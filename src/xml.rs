@@ -3,6 +3,7 @@
 //! TEI, JSON and CSV builders and the TEI checks are stubs until phase 6.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::dom::{LiveIter, LocalName, NodeId, Ns, Tree};
@@ -87,17 +88,23 @@ pub fn merge_with_parent(
     match tree.node(element).prev_sibling() {
         Some(previous) => {
             let slot = &mut tree.node_mut(previous).tail;
-            *slot = Some(match slot.take() {
-                Some(tail) if !tail.is_empty() => format!("{tail} {full_text}"),
-                _ => full_text,
-            });
+            match slot {
+                Some(tail) if !tail.is_empty() => {
+                    tail.push(' ');
+                    tail.push_str(&full_text);
+                }
+                _ => *slot = Some(full_text),
+            }
         }
         None => {
             let slot = &mut tree.node_mut(parent).text;
-            *slot = Some(match slot.take() {
-                Some(text) => format!("{text} {full_text}"),
-                None => full_text,
-            });
+            match slot {
+                Some(text) => {
+                    text.push(' ');
+                    text.push_str(&full_text);
+                }
+                None => *slot = Some(full_text),
+            }
         }
     }
     tree.remove(element);
@@ -126,6 +133,7 @@ pub fn remove_empty_elements(
 ) -> Result<(), ExtractError> {
     // bottom-up: document order never revisits a parent that its own children just emptied
     let nodes: Vec<NodeId> = tree.iter(root, &[]).collect();
+    let mut rows = HashMap::new();
     for (index, element) in nodes.into_iter().rev().enumerate() {
         if index.is_multiple_of(CHECK_INTERVAL) {
             call.check()?;
@@ -134,7 +142,7 @@ pub fn remove_empty_elements(
         if tree.first_child(element).is_none()
             && !text_chars_test(node.text.as_deref())
             && !text_chars_test(node.tail.as_deref())
-            && !keeps_empty(tree, element)
+            && !keeps_empty(tree, element, &mut rows)
         {
             delete_element(tree, element, false);
         }
@@ -142,27 +150,38 @@ pub fn remove_empty_elements(
     Ok(())
 }
 
-/// Whether an empty element must stay.
+/// Whether an empty element must stay. `rows` holds the row decisions of the pass that
+/// `is_padding_cell` reads.
 // upstream: xml.py::keeps_empty
-pub(crate) fn keeps_empty(tree: &Tree, element: NodeId) -> bool {
+pub(crate) fn keeps_empty(tree: &Tree, element: NodeId, rows: &mut HashMap<NodeId, bool>) -> bool {
     let Some(parent) = tree.node(element).parent() else {
         return true;
     };
     tree.tag(element) == Some("graphic")
         || tree.tag(parent) == Some("code")
         || separates_inline(tree, element)
-        || is_padding_cell(tree, element)
+        || is_padding_cell(tree, element, rows)
 }
 
 /// Whether the element is an empty cell keeping the following values of its row in their columns
-/// (upstream issue #633).
+/// (upstream issue #633). `rows` maps each row to whether it has text, computed on first use from
+/// its text pieces: one of them has a non-space character. Deleting an empty cell never changes
+/// that, so a pass that deletes empty elements can keep one map for all of them.
 // upstream: xml.py::is_padding_cell
-pub(crate) fn is_padding_cell(tree: &Tree, element: NodeId) -> bool {
-    tree.tag(element) == Some("cell")
-        && tree
-            .node(element)
-            .parent()
-            .is_some_and(|parent| text_chars_test(Some(&tree.itertext(parent).collect::<String>())))
+pub(crate) fn is_padding_cell(
+    tree: &Tree,
+    element: NodeId,
+    rows: &mut HashMap<NodeId, bool>,
+) -> bool {
+    if tree.tag(element) != Some("cell") {
+        return false;
+    }
+    let Some(row) = tree.node(element).parent() else {
+        return false;
+    };
+    *rows
+        .entry(row)
+        .or_insert_with(|| tree.itertext(row).any(|piece| text_chars_test(Some(piece))))
 }
 
 /// Merges each `head`, `code` or `p` nested in an element of its own tag into its parent, unless the

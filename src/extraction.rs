@@ -206,9 +206,13 @@ fn prepare_tree(
     url: Option<&str>,
     keep_backup: bool,
 ) -> Result<(NodeId, Option<NodeId>), ExtractError> {
-    let copy = tree.copy(raw_root);
+    let copy = tree.copy(raw_root, ctx.call)?;
     let cleaned = tree_cleaning(tree, copy, ctx)?;
-    let backup = keep_backup.then(|| tree.copy(cleaned));
+    let backup = if keep_backup {
+        Some(tree.copy(cleaned, ctx.call)?)
+    } else {
+        None
+    };
     convert_tags(tree, cleaned, ctx, url)?;
     Ok((cleaned, backup))
 }
@@ -271,7 +275,7 @@ fn escalate(
     let esc_root = if is_forum || !ctx.options.comments {
         raw_root
     } else {
-        let copy = tree.copy(raw_root);
+        let copy = tree.copy(raw_root, ctx.call)?;
         let comment_nodes = if temp_comments.is_empty() {
             REMOVE_COMMENTS_XPATH
         } else {
@@ -372,7 +376,7 @@ pub fn trafilatura_sequence(
         forum_posts = Some(comments_body);
         comments_body = tree.new_element("body");
         temp_comments = String::new();
-        cleaned = tree.copy(backup);
+        cleaned = tree.copy(backup, call)?;
         convert_tags(tree, cleaned, ctx, url)?;
     }
     if options.focus == Focus::Precision && !is_forum {
@@ -501,7 +505,7 @@ fn bare_extraction_pass(
         Source::Tree(caller, element) => {
             // the cascade prunes and edits the tree it gets
             let mut tree = Tree::new(LocalName::from("html"), Ns::Html, Vec::new());
-            let root = caller.copy_into(element, &mut tree);
+            let root = caller.copy_into(element, &mut tree, call)?;
             (tree, root)
         }
     };
@@ -618,9 +622,9 @@ fn bare_extraction_pass(
         document.raw_text = Some(temp_text);
     }
     // the document owns just the two bodies, so the call's arena goes away with `tree`
-    document.body = tree.copy_into(postbody, &mut document.tree);
+    document.body = tree.copy_into(postbody, &mut document.tree, call)?;
     if keeps_comments_body {
-        document.comments_body = tree.copy_into(comments_body, &mut document.tree);
+        document.comments_body = tree.copy_into(comments_body, &mut document.tree, call)?;
     }
     Ok(document)
 }

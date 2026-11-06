@@ -91,10 +91,11 @@ fn emptied(source: &str) -> String {
 fn flags(source: &str, path: &[usize]) -> (bool, bool, bool) {
     let tree = xml(source);
     let id = at(&tree, path);
+    let mut rows = HashMap::new();
     (
-        keeps_empty(&tree, id),
+        keeps_empty(&tree, id, &mut rows),
         separates_inline(&tree, id),
-        is_padding_cell(&tree, id),
+        is_padding_cell(&tree, id, &mut rows),
     )
 }
 
@@ -198,6 +199,26 @@ fn remove_empty_elements_keeps_what_keeps_empty_says() {
     assert_eq!(
         emptied("<body><p>a<lb/><hi>b</hi></p><p>c<lb/>d</p><p>e<lb/><p>f</p></p></body>"),
         "<body><p>a<lb/><hi>b</hi></p><p>c<lb/>d</p><p>e<p>f</p></p></body>"
+    );
+}
+
+#[test]
+fn is_padding_cell_wide_row() {
+    // one decision per row: a row of 10,000 empty cells keeps all of them when its text cell is last
+    let cells = "<cell/>".repeat(10_000);
+    assert_eq!(
+        emptied(&format!("<table><row>{cells}<cell>v</cell></row></table>")),
+        format!("<table><row>{cells}<cell>v</cell></row></table>")
+    );
+    // a row with no text loses all its empty cells, and then the row itself
+    assert_eq!(
+        emptied(&format!("<table><row>{cells}</row></table>")),
+        "<table/>"
+    );
+    // a space is no text: a row whose only text is a space loses its empty cells too
+    assert_eq!(
+        emptied("<table><row><cell/><cell> </cell></row></table>"),
+        "<table/>"
     );
 }
 
@@ -330,6 +351,27 @@ fn merge_with_parent_empty_parent_text() {
     // oracle: e = etree.fromstring("<p><x>z</x>t</p>"); e.text = ""; merge_with_parent(e[0]); (e.text, etree.tostring(e, encoding="unicode"))
     assert_eq!(tree.node(root).text.as_deref(), Some(" zt"));
     assert_eq!(shown(&tree), "<p> zt</p>");
+}
+
+#[test]
+fn merge_with_parent_keeps_empty_tail_rule() {
+    // upstream tests the previous tail by truthiness: an empty tail is replaced, not joined
+    // (upstream xml.py::merge_with_parent, lines 144-146)
+    let mut tree = xml("<doc><a/><p>c</p>t</doc>");
+    let previous = at(&tree, &[0]);
+    tree.node_mut(previous).tail = Some(String::new());
+    let element = at(&tree, &[1]);
+    merge_with_parent(&mut tree, element, false, &Call::default()).unwrap();
+    assert_eq!(tree.node(previous).tail.as_deref(), Some("ct"));
+
+    // upstream tests the parent text by `is not None`: an empty text is joined with a space
+    // (upstream xml.py::merge_with_parent, lines 144-146)
+    let mut tree = xml("<p><x>z</x>t</p>");
+    let root = tree.root();
+    tree.node_mut(root).text = Some(String::new());
+    let child = at(&tree, &[0]);
+    merge_with_parent(&mut tree, child, false, &Call::default()).unwrap();
+    assert_eq!(tree.node(root).text.as_deref(), Some(" zt"));
 }
 
 #[test]

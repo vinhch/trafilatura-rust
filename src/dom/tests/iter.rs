@@ -193,7 +193,7 @@ fn deep_chain_walks_iteratively() {
             }
             assert_eq!(tree.len(), 256);
 
-            let copy = tree.copy(tree.root());
+            let copy = tree.copy(tree.root(), &Call::default()).unwrap();
             assert_eq!(tree.len(), 512);
             assert_eq!(tree.iter(copy, &[]).count(), 256);
             assert_eq!(tree.iterdescendants(copy, &["div"]).count(), 255);

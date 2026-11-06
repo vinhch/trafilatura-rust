@@ -630,7 +630,7 @@ pub fn baseline_tree(
     limits: &ParseLimits,
     call: &Call<'_>,
 ) -> Result<(NodeId, String, usize), ExtractError> {
-    let copy = tree.copy(root);
+    let copy = tree.copy(root, call)?;
     baseline_in(tree, copy, limits, call)
 }
 
@@ -664,7 +664,7 @@ pub fn html2txt_tree(
     clean: bool,
     call: &Call<'_>,
 ) -> Result<String, ExtractError> {
-    let copy = tree.copy(root);
+    let copy = tree.copy(root, call)?;
     let body = tree.find(copy, "body").unwrap_or(copy);
     html2txt_body(tree, body, clean, call)
 }
@@ -688,7 +688,7 @@ pub fn block_text(
     element: NodeId,
     call: &Call<'_>,
 ) -> Result<String, ExtractError> {
-    let copy = tree.copy(element);
+    let copy = tree.copy(element, call)?;
     spaced_text(tree, copy, call)
 }
 

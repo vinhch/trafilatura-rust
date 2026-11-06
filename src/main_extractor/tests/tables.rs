@@ -390,7 +390,7 @@ fn table_budget_is_shared_by_the_tables_of_one_tree() {
     let ctx = ctx_for(&options, &call);
     let mut tree = xml(source);
     let first = tree.root();
-    let second = tree.copy(first);
+    let second = tree.copy(first, &call).unwrap();
     // a 3-cell table fits a budget of 4 once, not twice
     assert!(handle_table_limited(&mut tree, first, TAG_CATALOG, &ctx, 4).is_ok());
     assert_eq!(

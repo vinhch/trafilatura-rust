@@ -129,7 +129,7 @@ pub fn handle_titles(
     let title = if tree.child_count(element) == 0 {
         process_node(tree, element, ctx)
     } else {
-        let title = tree.copy(element);
+        let title = tree.copy(element, ctx.call)?;
         // children already consumed by an earlier pass over the same tree
         tree.strip_elements(title, &["done"], true);
         rename_done(tree, LiveIter::descendants(tree, element, &[]), ctx.call)?;
@@ -398,7 +398,7 @@ pub fn handle_code_blocks(
     element: NodeId,
     call: &Call<'_>,
 ) -> Result<NodeId, ExtractError> {
-    let processed = tree.copy(element);
+    let processed = tree.copy(element, call)?;
     rename_done(tree, LiveIter::new(tree, element, &[]), call)?;
     tree.set_name(processed, "code");
     Ok(processed)

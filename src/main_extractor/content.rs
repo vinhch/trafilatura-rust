@@ -390,7 +390,7 @@ pub fn extract_content(
 ) -> Result<(NodeId, String), ExtractError> {
     let call = ctx.call;
     call.check()?;
-    let backup = tree.copy(cleaned_root);
+    let backup = tree.copy(cleaned_root, call)?;
     // source order before the main pass moves elements, the backup keeps it
     let mut visited = 0usize;
     let mut order = Vec::new();

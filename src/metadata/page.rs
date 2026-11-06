@@ -196,7 +196,7 @@ pub fn extract_author(
 ) -> Result<Option<String>, ExtractError> {
     // the copy lives in a scratch tree, so it does not stay in the caller's arena
     let mut scratch = Tree::new(LocalName::from("html"), Ns::Html, Vec::new());
-    let subtree = tree.copy_into(root, &mut scratch);
+    let subtree = tree.copy_into(root, &mut scratch, call)?;
     prune_unwanted_nodes(&mut scratch, subtree, AUTHOR_DISCARD_XPATHS, false, call)?;
     let Some(author) = extract_metainfo(&scratch, subtree, AUTHOR_XPATHS, 120, call)? else {
         return Ok(None);

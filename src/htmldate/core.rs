@@ -78,7 +78,7 @@ pub fn find_date(
 
     // prune a copy: the caller's tree is not changed
     let mut scratch = Tree::new(LocalName::from("html"), Ns::Html, Vec::new());
-    let search_root = tree.copy_into(root, &mut scratch);
+    let search_root = tree.copy_into(root, &mut scratch, call)?;
     clean_html(&mut scratch, search_root, CLEANING_LIST, call)?;
     discard_unwanted(&mut scratch, search_root, call)?;
 

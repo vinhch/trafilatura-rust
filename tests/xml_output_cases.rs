@@ -29,7 +29,7 @@ fn outputs(tree: &mut Tree, body: NodeId) -> (Got, Got, Got) {
     let call = Call::default();
     let txt = xml_to_text(tree, Some(body), false, &call);
     let md = xml_to_text(tree, Some(body), true, &call);
-    let copy = tree.copy(body);
+    let copy = tree.copy(body, &call).unwrap();
     let html = build_html_output(tree, copy, None, &call);
     (txt, md, html)
 }

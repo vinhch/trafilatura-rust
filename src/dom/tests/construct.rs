@@ -217,7 +217,7 @@ fn dump_normalized_unchanged_tree_is_not_flagged() {
 fn dump_from_detached_copy() {
     let mut tree = parse("<div id=\"x\">t<p class=\"a\">a<b>b</b>c</p>tail<i>i</i></div>tail2");
     let div = find(&tree, "div");
-    let copy = tree.copy(div);
+    let copy = tree.copy(div, &Call::default()).unwrap();
     assert_eq!(tree.node(copy).parent(), None);
     // the copy is the root of its dump and its tail is left out
     let expected = concat!(
@@ -244,7 +244,7 @@ fn dump_from_detached_copy() {
     // the copy rule runs on the subtree only: the invalid name outside it is not counted
     let mut tree = parse("<p @a=\"1\">x</p><div id=\"y\">z</div>");
     let div = find(&tree, "div");
-    let copy = tree.copy(div);
+    let copy = tree.copy(div, &Call::default()).unwrap();
     assert!(dump(&tree, DumpMode::Normalized).1);
     assert_eq!(
         dump_from(&tree, copy, DumpMode::Normalized),

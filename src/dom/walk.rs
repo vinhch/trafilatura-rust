@@ -190,13 +190,22 @@ impl Tree {
     /// A deep copy of `id` and its subtree as a detached tree, tail included, like lxml's
     /// `copy.deepcopy`. The copy is one contiguous block of new nodes in document order, so the
     /// k-th node of the copy pairs with the k-th node of the original. Returns the copy of `id`.
-    pub fn copy(&mut self, id: NodeId) -> NodeId {
-        self.nodes.reserve(self.walk(id).count());
+    ///
+    /// Checks `call` about every `CHECK_INTERVAL` nodes, in the size count and in the copy. On an
+    /// error the nodes copied so far stay in the arena, detached.
+    pub fn copy(&mut self, id: NodeId, call: &Call<'_>) -> Result<NodeId, ExtractError> {
+        let size = self.subtree_size(id, call)?;
+        self.nodes.reserve(size);
         let root = self.copy_node(id);
         // The copies of the ancestors of the node being copied, up to the copy of `id`.
         let mut path = vec![root];
         let mut current = self.node(id).first_child;
+        let mut copied_count = 0usize;
         while let Some(node) = current {
+            if copied_count.is_multiple_of(CHECK_INTERVAL) {
+                call.check()?;
+            }
+            copied_count += 1;
             let copied = self.copy_node(node);
             if let Some(&parent) = path.last() {
                 self.link_last(parent, copied);
@@ -209,18 +218,32 @@ impl Tree {
                 None => self.next_outside(node, id, &mut path),
             };
         }
-        root
+        Ok(root)
     }
 
     /// `copy` into another tree: a deep copy of `id` and its subtree, tail included, as a detached
     /// subtree of `dst`, which gets one contiguous block of new nodes in document order. `self` is
     /// not changed. Returns the copy of `id`.
-    pub fn copy_into(&self, id: NodeId, dst: &mut Tree) -> NodeId {
-        dst.nodes.reserve(self.walk(id).count());
+    ///
+    /// Checks `call` about every `CHECK_INTERVAL` nodes, as `copy` does. On an error the nodes
+    /// copied so far stay in `dst`'s arena, detached.
+    pub fn copy_into(
+        &self,
+        id: NodeId,
+        dst: &mut Tree,
+        call: &Call<'_>,
+    ) -> Result<NodeId, ExtractError> {
+        let size = self.subtree_size(id, call)?;
+        dst.nodes.reserve(size);
         let root = dst.push(self.detached_copy(id));
         let mut path = vec![root];
         let mut current = self.node(id).first_child;
+        let mut copied_count = 0usize;
         while let Some(node) = current {
+            if copied_count.is_multiple_of(CHECK_INTERVAL) {
+                call.check()?;
+            }
+            copied_count += 1;
             let copied = dst.push(self.detached_copy(node));
             if let Some(&parent) = path.last() {
                 dst.link_last(parent, copied);
@@ -233,7 +256,20 @@ impl Tree {
                 None => self.next_outside(node, id, &mut path),
             };
         }
-        root
+        Ok(root)
+    }
+
+    /// The number of nodes in the subtree of `id`, `id` included. Checks `call` about every
+    /// `CHECK_INTERVAL` nodes, so a copy of a large subtree stops before it reserves its arena.
+    fn subtree_size(&self, id: NodeId, call: &Call<'_>) -> Result<usize, ExtractError> {
+        let mut count = 0usize;
+        for _ in self.walk(id) {
+            if count.is_multiple_of(CHECK_INTERVAL) {
+                call.check()?;
+            }
+            count += 1;
+        }
+        Ok(count)
     }
 
     /// The next node to copy after the leaf `node`, climbing out of finished parents and popping
