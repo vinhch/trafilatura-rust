@@ -101,7 +101,6 @@ fn test_input() {
 }
 
 #[test]
-#[ignore = "phase 6"]
 fn test_input_phase_6_lines() {
     // output format
     assert!(
@@ -406,7 +405,6 @@ def test:
 
 // The XML lines of `test_formatting`.
 #[test]
-#[ignore = "phase 6"]
 fn test_formatting_phase_6_lines() {
     let xml = |html: &str, kw: Kw| extract_xml_tree(html, &kw).unwrap();
     // trailing <lb>
@@ -490,6 +488,12 @@ fn test_formatting_phase_6_lines() {
         Kw::zero().tables(true),
     );
     assert!(result.contains("AP-fonden"));
+}
+
+// The record ID lines of `test_formatting`: the JSON `id` comes with the JSON output (F-54, Task 7).
+#[test]
+#[ignore = "phase 6"]
+fn test_formatting_record_id_phase_6_lines() {
     // the record ID and fingerprint are in the header, as in the other formats
     let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";
     let json_result: serde_json::Value = serde_json::from_str(

@@ -1,16 +1,29 @@
-//! The blank pass of upstream's `control_xml_output`: the text that libxml2 drops when the serialized
+//! The XML output of upstream's `control_xml_output`: the tree built from `doc` and `body`, the
+//! sanitizing, and the blank pass. The blank pass is the text that libxml2 drops when the serialized
 //! tree is parsed again with `remove_blank_text`. No parser runs. The reparse input is this crate's
 //! own serialization, so the pass applies libxml2's `areBlanks` rules to each text and tail piece as
 //! the parser would see it: a piece is split into the chunks the parser delivers, and a blank chunk
 //! is dropped unless one of the rules keeps it.
 
+use std::collections::HashMap;
 use std::iter::Peekable;
 use std::str::Chars;
 
+use super::{delete_element, keeps_empty, meta_items, remove_empty_elements, strip_double_tags};
 use crate::cancel::Call;
 use crate::dom::{NodeId, Tree};
 use crate::error::ExtractError;
 use crate::html_processing::tick;
+use crate::pystr::strip;
+use crate::settings::{Document, Extractor, Format};
+use crate::utils::sanitize_tree;
+
+/// The tags whose elements keep their attributes in the XML output; `clean_attributes` clears the
+/// rest.
+// upstream: xml.py::WITH_ATTRIBUTES
+pub const WITH_ATTRIBUTES: &[&str] = &[
+    "cell", "row", "del", "graphic", "head", "hi", "item", "list", "ref",
+];
 
 /// What the pass knows about the element whose content it reads: the nodes libxml2 would have
 /// built under it by now, and whether a chunk was delivered as text in it.
@@ -165,4 +178,107 @@ fn is_reference(c: char) -> bool {
 /// The characters libxml2's `IS_BLANK_CH` accepts. A chunk made only of them is blank.
 fn is_blank(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
+/// Removes, in document order, the elements of the subtree at `body` that have no child, a text and
+/// a tail that are both `None` or empty, and that `keeps_empty` does not protect. Each one goes with
+/// `keep_tail=false`. A space is text, so it keeps its element.
+///
+/// Checks `call` about every `CHECK_INTERVAL` nodes.
+// upstream: core.py::determine_returnstring (the last cleaning loop before `control_xml_output`)
+pub fn drop_empty_body_elements(
+    tree: &mut Tree,
+    body: NodeId,
+    call: &Call<'_>,
+) -> Result<(), ExtractError> {
+    let nodes: Vec<NodeId> = tree.iter(body, &[]).collect();
+    let mut rows = HashMap::new();
+    let mut visited = 0;
+    for element in nodes {
+        tick(&mut visited, call)?;
+        let node = tree.node(element);
+        let empty = tree.first_child(element).is_none()
+            && node.text.as_deref().is_none_or(str::is_empty)
+            && node.tail.as_deref().is_none_or(str::is_empty);
+        if empty && !keeps_empty(tree, element, &mut rows) {
+            delete_element(tree, element, false);
+        }
+    }
+    Ok(())
+}
+
+/// Clears the attributes of each element of the subtree at `root` whose tag is not in
+/// `WITH_ATTRIBUTES`. Returns `root`.
+///
+/// Checks `call` about every `CHECK_INTERVAL` nodes.
+// upstream: xml.py::clean_attributes
+pub(super) fn clean_attributes(
+    tree: &mut Tree,
+    root: NodeId,
+    call: &Call<'_>,
+) -> Result<NodeId, ExtractError> {
+    let nodes: Vec<NodeId> = tree.iter(root, &[]).collect();
+    let mut visited = 0;
+    for element in nodes {
+        tick(&mut visited, call)?;
+        if !tree
+            .tag(element)
+            .is_some_and(|tag| WITH_ATTRIBUTES.contains(&tag))
+        {
+            tree.clear_attrs(element);
+        }
+    }
+    Ok(root)
+}
+
+/// Sets each metadata item of `items` as an attribute of `output`.
+// upstream: xml.py::add_xml_meta
+fn add_xml_meta(tree: &mut Tree, output: NodeId, items: &[(&'static str, String)]) {
+    for (attribute, value) in items {
+        tree.set(output, attribute, value);
+    }
+}
+
+/// The `doc` tree of `doc`: its metadata as attributes, then the body renamed `main` and the
+/// comments renamed `comments`, each with `clean_attributes`. Returns the `doc` root.
+///
+/// Checks `call` through `clean_attributes`.
+// upstream: xml.py::build_xml_output
+fn build_xml_output(doc: &mut Document, call: &Call<'_>) -> Result<NodeId, ExtractError> {
+    let items = meta_items(doc);
+    let (body, comments) = (doc.body, doc.comments_body);
+    let tree = &mut doc.tree;
+    let output = tree.new_element("doc");
+    add_xml_meta(tree, output, &items);
+    tree.set_name(body, "main");
+    clean_attributes(tree, body, call)?;
+    tree.append(output, body);
+    tree.set_name(comments, "comments");
+    clean_attributes(tree, comments, call)?;
+    tree.append(output, comments);
+    Ok(output)
+}
+
+/// The XML output of `doc`: the `doc` tree of `build_xml_output`, sanitized, reparsed without the
+/// blank text libxml2 drops, pretty printed and stripped. The XML-TEI format is empty until its
+/// builder is ported (Task 6); `doc` is left as it is then.
+///
+/// Checks `call` in each step; see the functions it runs.
+// upstream: xml.py::control_xml_output
+pub fn control_xml_output(
+    doc: &mut Document,
+    options: &Extractor,
+    call: &Call<'_>,
+) -> Result<String, ExtractError> {
+    if options.format == Format::XmlTei {
+        // todo(phase 6): build_tei_output (Task 6)
+        return Ok(String::new());
+    }
+    let body = doc.body;
+    strip_double_tags(&mut doc.tree, body, call)?;
+    remove_empty_elements(&mut doc.tree, body, call)?;
+    let output = build_xml_output(doc, call)?;
+    sanitize_tree(&mut doc.tree, output, call)?;
+    remove_blank_text(&mut doc.tree, output, call)?;
+    Ok(strip(&doc.tree.tostring(output, true, false)).to_owned())
 }

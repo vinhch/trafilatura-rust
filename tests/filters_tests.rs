@@ -14,13 +14,12 @@
 //! Not ported here: the `language_filter` and `check_html_lang` lines of `test_filters`, which are
 //! unit tests of `utils` (`check_html_lang_matches_python` in `src/utils/tests/text.rs`; the filter is a
 //! stub, OI-4); `test_prune_xpath` (the crate takes no caller selectors, D-7, followup F-16). The
-//! lines that need the language detection of OI-4 or the XML output and the URL blacklist are in the
-//! `#[ignore]` tests below.
+//! lines that need the language detection of OI-4 are not ported here.
 
 use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
-    Config, Extractor, Format, ParseLimits, Source, Tree, internal_extraction,
+    Config, Extractor, Format, HtmlInput, ParseLimits, Source, Tree, internal_extraction,
 };
 use trafilatura_rust::Call;
 
@@ -146,14 +145,33 @@ fn test_filters_language_detection_lines() {
 }
 
 /// `extract(doc, output_format="xml", config=ZERO_CONFIG, url_blacklist=...)`.
-// todo(phase 6): xml output
-fn extract_xml(_doc: &str, _url_blacklist: &[&str]) -> Option<String> {
-    None
+fn extract_xml(html: &str, url_blacklist: &[&str]) -> Option<String> {
+    // the blacklist is a constructor argument: it turns on the metadata that the check reads
+    let url_blacklist = url_blacklist.iter().map(|url| (*url).to_string()).collect();
+    let settings = Extractor::new(
+        zero_config(),
+        Format::Xml,
+        false,
+        false,
+        None,
+        false,
+        false,
+        HashSet::new(),
+        url_blacklist,
+    );
+    let call = Call::default();
+    internal_extraction(
+        Source::Input(HtmlInput::Str(html)),
+        None,
+        &ctx_for(&settings, &call),
+        &ParseLimits::default(),
+    )
+    .ok()
+    .map(|document| document.text.unwrap_or_default())
 }
 
 // The URL blacklist lines of `test_filters`, which also need the XML output.
 #[test]
-#[ignore = "phase 6"]
 fn test_filters_phase_6_lines() {
     // test URL blacklist (non-empty body so the None is caused by the blacklist, not missing content)
     let doc = r#"<html><head><link rel="canonical" href="https://example.org"/></head><body><article><p>Real body text here.</p></article></body></html>"#;

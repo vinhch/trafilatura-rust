@@ -21,7 +21,10 @@ use crate::pyjson::dumps_str;
 use crate::pystr::{self, PY_SPACE_CLASS, is_alpha};
 use crate::settings::{DateParams, Document, Extractor, Field, Focus, Format};
 use crate::utils::{HtmlInput, check_html_lang, language_filter, load_html, normalize_unicode};
-use crate::xml::{build_json_output, control_xml_output, meta_items, xml_to_csv, xml_to_text};
+use crate::xml::{
+    build_json_output, control_xml_output, drop_empty_body_elements, meta_items, xml_to_csv,
+    xml_to_text,
+};
 use crate::xpaths::{RAW_TREE_PRUNE_XPATH, REMOVE_COMMENTS_AND_LISTS_XPATH, REMOVE_COMMENTS_XPATH};
 
 /// The output formats whose result is text.
@@ -93,7 +96,7 @@ fn metadata_header(doc: &Document) -> String {
 }
 
 /// Converts the body of `doc` to the output format of `options`, as a string in Unicode normal
-/// form NFC. The XML, CSV and JSON formats are stubs until phase 6. Fails with
+/// form NFC. The XML-TEI, CSV and JSON formats are stubs until phase 6. Fails with
 /// `Rejection::InvalidValue` where `xml_to_text` and `build_html_output` do.
 // upstream: core.py::determine_returnstring
 pub fn determine_returnstring(
@@ -103,8 +106,8 @@ pub fn determine_returnstring(
 ) -> Result<String, ExtractError> {
     let mut returnstring = match options.format {
         Format::Xml | Format::XmlTei => {
-            // todo(phase 6): xml (the last cleaning of empty elements, then the output tree)
-            control_xml_output(doc, options)
+            drop_empty_body_elements(&mut doc.tree, doc.body, call)?;
+            control_xml_output(doc, options, call)?
         }
         Format::Csv => xml_to_csv(doc, options.formatting),
         Format::Json => build_json_output(doc, options.with_metadata),

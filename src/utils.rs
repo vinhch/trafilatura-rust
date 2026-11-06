@@ -500,12 +500,12 @@ mod text;
 pub use text::{
     FORMATTING_PROTECTED, LINK_FARM_RATIO, SPACING_PROTECTED, as_list, check_html_lang, image_src,
     language_filter, line_processing, normalize_unicode, remove_control_characters, safe_base_url,
-    safe_relative_url, sanitize, text_chars_test, textfilter, trim,
+    safe_relative_url, sanitize, sanitize_tree, text_chars_test, textfilter, trim,
 };
 #[cfg(test)]
 use text::{
     IMAGE_EXTENSION, RE_FILTER, RE_HTML_LANG, is_acceptable_length, is_image_file,
-    return_printables_and_spaces, sanitize_tree,
+    return_printables_and_spaces,
 };
 
 #[cfg(test)]

@@ -239,7 +239,6 @@ fn test_htmlprocessing() {
 
 // The XML lines of `test_htmlprocessing`.
 #[test]
-#[ignore = "phase 6"]
 fn test_htmlprocessing_phase_6_lines() {
     let html = "<html><body><article><h1>Test headline</h1><p>Test</p></article></body></html>";
     assert!(
@@ -247,6 +246,13 @@ fn test_htmlprocessing_phase_6_lines() {
             .unwrap()
             .contains(r#"<head rend="h1">Test headline</head>"#)
     );
+}
+
+// The TEI line of `test_htmlprocessing`: the XML-TEI output comes with Task 6.
+#[test]
+#[ignore = "phase 6"]
+fn test_htmlprocessing_tei_phase_6_lines() {
+    let html = "<html><body><article><h1>Test headline</h1><p>Test</p></article></body></html>";
     assert!(
         extract_xmltei_tree(html, &Kw::zero())
             .unwrap()

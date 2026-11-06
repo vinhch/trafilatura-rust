@@ -1,6 +1,6 @@
-//! The part of upstream `xml.py` that serves the plain-text and Markdown output: removing and merging
-//! elements, the empty-element pass, the element text and `xml_to_text`, plus `meta_items`. The XML,
-//! TEI, JSON and CSV builders and the TEI checks are stubs until phase 6.
+//! The part of upstream `xml.py` that serves the plain-text, Markdown and XML output: removing and
+//! merging elements, the empty-element pass, the element text and `xml_to_text`, plus `meta_items`.
+//! The XML-TEI, JSON and CSV builders and the TEI checks are stubs until phase 6.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -10,9 +10,7 @@ use crate::dom::{LiveIter, LocalName, NodeId, Ns, Tree};
 use crate::error::ExtractError;
 use crate::html_processing::tick;
 use crate::pystr::{lstrip, rstrip, strip};
-use crate::settings::{
-    Document, Extractor, Field, INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE,
-};
+use crate::settings::{Document, Field, INLINE_CARRIED, INLINE_CONSUMING, INLINE_FORMATTABLE};
 use crate::utils::text_chars_test;
 
 use self::markdown::{
@@ -679,13 +677,6 @@ pub fn meta_items(doc: &Document) -> Vec<(&'static str, String)> {
         .collect()
 }
 
-/// The XML or XML-TEI string of `doc`. Empty until phase 6.
-// upstream: xml.py::control_xml_output
-pub fn control_xml_output(_doc: &mut Document, _options: &Extractor) -> String {
-    // todo(phase 6): xml
-    String::new()
-}
-
 /// The CSV line of `doc`. Empty until phase 6.
 // upstream: xml.py::xmltocsv
 pub fn xml_to_csv(_doc: &Document, _include_formatting: bool) -> String {
@@ -703,7 +694,7 @@ pub fn build_json_output(_doc: &Document, _with_metadata: bool) -> String {
 mod control;
 mod markdown;
 mod to_text;
-pub use control::remove_blank_text;
+pub use control::{control_xml_output, drop_empty_body_elements, remove_blank_text};
 pub use markdown::md_link;
 pub use to_text::xml_to_text;
 

@@ -260,7 +260,7 @@ impl Kw {
             self.focus == Focus::Recall,
             self.formatting,
             false,
-            false,
+            self.only_with_metadata,
             HashSet::new(),
             HashSet::new(),
         );
@@ -308,16 +308,30 @@ fn extract_tree(html: &str, kw: &Kw) -> Option<String> {
 // The stubs below stand for calls that need a later phase. They have upstream's shape and give the
 // neutral value; the tests that use them are `#[ignore = "phase N"]`.
 
-/// `extract(html, output_format="xml", **kw)`.
-// todo(phase 6): xml output
-fn extract_xml(_html: &str, _kw: &Kw) -> Option<String> {
-    None
+/// `extract(html, output_format="xml", **kw)`. The public `Format` has no XML variant, so the
+/// internal `Extractor` carries it.
+fn extract_xml(html: &str, kw: &Kw) -> Option<String> {
+    xml_output(Source::Input(HtmlInput::Str(html)), kw)
 }
 
 /// `extract(html.fromstring(html), output_format="xml", **kw)`.
-// todo(phase 6): xml output
-fn extract_xml_tree(_html: &str, _kw: &Kw) -> Option<String> {
-    None
+fn extract_xml_tree(html: &str, kw: &Kw) -> Option<String> {
+    let (tree, root) = lxml_fromstring(html);
+    xml_output(Source::Tree(&tree, root), kw)
+}
+
+/// The XML output of `source` with the settings of `kw`.
+fn xml_output(source: Source<'_>, kw: &Kw) -> Option<String> {
+    let mut settings = kw.settings();
+    settings.format = Format::Xml;
+    let call = Call::default();
+    let document = internal_extraction(
+        source,
+        None,
+        &ctx_for(&settings, &call),
+        &ParseLimits::default(),
+    );
+    or_none(document).map(|document| document.text.unwrap_or_default())
 }
 
 /// `extract(html.fromstring(html), output_format="xmltei", **kw)`.

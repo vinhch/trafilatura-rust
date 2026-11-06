@@ -130,6 +130,23 @@ fn empty_document_in_each_format() {
 }
 
 #[test]
+fn cleaning_loop_keeps_space_only_text() {
+    // oracle: scripts/oracle.sh 'from lxml import etree; from trafilatura.core import determine_returnstring; from trafilatura.settings import Document, Extractor; doc = Document(); doc.body = etree.fromstring("<body><p>x<p> </p></p></body>"); print(repr(determine_returnstring(doc, Extractor(fast=True, output_format="xml"))))'
+    //   prints '<doc>\n  <main>\n    <p>x </p>\n  </main>\n  <comments/>\n</doc>'
+    let mut doc = Document::new();
+    let outer = doc.tree.new_element("p");
+    doc.tree.append(doc.body, outer);
+    doc.tree.node_mut(outer).text = Some("x".to_owned());
+    let inner = doc.tree.new_element("p");
+    doc.tree.append(outer, inner);
+    doc.tree.node_mut(inner).text = Some(" ".to_owned());
+    assert_eq!(
+        render(&mut doc, Format::Xml, false),
+        "<doc>\n  <main>\n    <p>x </p>\n  </main>\n  <comments/>\n</doc>"
+    );
+}
+
+#[test]
 fn returnstring_is_nfc() {
     // oracle: body = Element("body"); SubElement(body, "p").text = "e" + chr(0x301);
     //   determine_returnstring(Document(body=body), Extractor(output_format=fmt))

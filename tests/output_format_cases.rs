@@ -15,10 +15,63 @@ mod trees;
 #[path = "output_format_cases/cases.rs"]
 mod cases;
 
-use cases::BLANK_CASES;
-use trafilatura_rust::__internals::remove_blank_text;
+use cases::{BLANK_CASES, DOC_CASES, DocCase};
+use std::collections::HashSet;
+use trafilatura_rust::__internals::{
+    Config, Extractor, Format, HtmlInput, ParseLimits, Source, internal_extraction,
+    remove_blank_text,
+};
 use trafilatura_rust::Call;
-use trees::xml_tree;
+use trees::{ctx_for, xml_tree};
+
+/// The XML output of a page with the options of the generator's `doc_case`: `fast=True`, comments,
+/// `original_date`, the extensive date search of the default config, and `max_date` on the call.
+fn xml_of(case: &DocCase) -> Option<String> {
+    let mut settings = Extractor::new(
+        Config::default(),
+        Format::Xml,
+        false,
+        false,
+        None,
+        false,
+        false,
+        HashSet::new(),
+        HashSet::new(),
+    );
+    settings.url = case.url.map(str::to_string);
+    settings.date_params.original_date = true;
+    let call = Call::default().max_date(cases::MAX_DATE);
+    internal_extraction(
+        Source::Input(HtmlInput::Str(case.html)),
+        case.record_id,
+        &ctx_for(&settings, &call),
+        &ParseLimits::default(),
+    )
+    .ok()
+    .and_then(|document| document.text)
+}
+
+#[test]
+fn xml_doc_cases_match_upstream() {
+    assert!(!DOC_CASES.is_empty());
+    let mut mismatches = Vec::new();
+    for case in DOC_CASES {
+        let got = xml_of(case).unwrap_or_default();
+        if got != case.xml {
+            mismatches.push(format!(
+                "{}\nrust:     {got:?}\nupstream: {:?}",
+                case.name, case.xml
+            ));
+        }
+    }
+    assert!(
+        mismatches.is_empty(),
+        "{} of {} pages differ from upstream\n{}",
+        mismatches.len(),
+        DOC_CASES.len(),
+        mismatches.join("\n")
+    );
+}
 
 #[test]
 fn blank_cases_match_upstream() {
