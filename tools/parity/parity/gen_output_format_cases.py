@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from parity import MAX_DATE
 from parity.gen_main_extractor_cases import para, prose
+from parity.generate import pinned_version
 from parity.gen_xml_output_cases import check_snippet as check_xml_snippet
 from parity.gen_xpath_cases import rust_str
 
@@ -111,6 +112,8 @@ PROBE_RUN = 200
 PROBE_HEAD = "<root><t>"
 PROBE_SPLIT = "</t><e1/>"
 PROBE_KEPT_MARK = "<e1/><e2/>"
+# The pinned upstream version appears in the xmltei header; the pin lives only in Cargo.toml, so it is a token
+UPSTREAM_VERSION_TOKEN = "@@UPSTREAM_VERSION@@"
 
 
 def probe_document(char: str, offset: int) -> str:
@@ -189,6 +192,8 @@ def doc_pages() -> list[Page]:
     return [
         Page("table_with_padding_cell", document(table, metadata), url="https://example.org/tables/1"),
         Page("lists_inline_and_blank_tails", document(lists), url="https://example.org/lists"),
+        # xml leaves the title None (metadata off), so its fingerprint input starts with "None"; xmltei sets
+        # with_metadata itself (settings.py:161), so its title is read.
         Page("no_sitename_no_date", document(f"<article><p>{prose(31, 300)}</p><p>{prose(32, 300)}</p></article>",
                                              "<title>Untitled</title>")),
         Page("special_characters", document(special)),
@@ -208,12 +213,14 @@ def doc_case(page: Page, extensive: bool) -> DocCase:
             date_extraction_params={"original_date": True, "extensive_search": extensive, "max_date": MAX_DATE},
         )
         assert isinstance(text, str), (page.name, output_format)
+        assert UPSTREAM_VERSION_TOKEN not in text, (page.name, output_format)
         return text
 
+    version = pinned_version()
     return DocCase(
         page.name, page.html, page.url, page.record_id,
-        xml=run("xml", False), xmltei=run("xmltei", False), json=run("json", False),
-        json_meta=run("json", True), csv=run("csv", True),
+        xml=run("xml", False), xmltei=run("xmltei", False).replace(version, UPSTREAM_VERSION_TOKEN),
+        json=run("json", False), json_meta=run("json", True), csv=run("csv", True),
     )
 
 
@@ -230,6 +237,7 @@ def doc_cases() -> list[DocCase]:
         assert not any(normalized), f"page {page.name} needs the copy rule"
     names = [case.name for case in cases]
     assert len(set(names)) == len(names), names
+    assert any(UPSTREAM_VERSION_TOKEN in case.xmltei for case in cases), "the pinned version is not in any xmltei value"
     return cases
 
 
@@ -274,6 +282,8 @@ def render(blanks: list[BlankCase], docs: list[DocCase], kept: bool) -> str:
     out.append(f'pub(crate) const MAX_DATE: &str = {rust_str(MAX_DATE)};')
     out.append("/// Whether the sliding-offset probe kept a blank run (the buffer split case); see the generator.")
     out.append(f"pub(crate) const BUFFER_SPLIT_KEPT: bool = {'true' if kept else 'false'};")
+    out.append("/// The upstream version in `xmltei` values; the test substitutes `PKG_VERSION`.")
+    out.append(f"pub(crate) const UPSTREAM_VERSION_TOKEN: &str = {rust_str(UPSTREAM_VERSION_TOKEN)};")
     out.append("")
     out.append("#[rustfmt::skip]")
     out.append("pub(crate) const BLANK_CASES: &[BlankCase] = &[")
