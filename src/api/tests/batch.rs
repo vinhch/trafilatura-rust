@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::io;
 use std::num::NonZeroUsize;
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread::{self, Builder};
@@ -410,6 +411,74 @@ fn spawn_failure_drains() {
 
     assert_eq!(end, Err(BatchError::Spawn(io::ErrorKind::Other)));
     assert!(results.iter().any(|(index, _)| *index == 0));
+}
+
+#[test]
+fn pulled_item_after_cancel_is_skipped() {
+    let token = CancelToken::new();
+    let mut pulls = 0;
+    // The third pull cancels, so the item it returns is pulled while the cancel is already set.
+    let items = std::iter::from_fn(|| {
+        pulls += 1;
+        if pulls == 3 {
+            token.cancel();
+        }
+        (pulls <= 5).then_some(pulls - 1)
+    });
+    let ran = Mutex::new(Vec::new());
+    let mut results = Vec::new();
+    let end = Options::new().build().extract_batch(
+        items,
+        threads(1),
+        &Call::default().cancel(&token),
+        |item: usize, _: &Call<'_>| {
+            ran.lock().unwrap().push(item);
+            item
+        },
+        |index, result| results.push((index, result)),
+    );
+
+    assert_eq!(end, Ok(BatchEnd::Stopped));
+    assert_eq!(
+        results,
+        vec![(0, Ok(0)), (1, Ok(1)), (2, Err(Skipped::Cancelled))]
+    );
+    assert_eq!(ran.into_inner().unwrap(), vec![0, 1]);
+}
+
+#[test]
+fn pulled_item_after_deadline_is_skipped() {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut pulls = 0;
+    // The third pull waits until the deadline has passed, so its item is pulled after it.
+    let items = std::iter::from_fn(|| {
+        pulls += 1;
+        if pulls == 3 {
+            while Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+        (pulls <= 5).then_some(pulls - 1)
+    });
+    let ran = Mutex::new(Vec::new());
+    let mut results = Vec::new();
+    let end = Options::new().build().extract_batch(
+        items,
+        threads(1),
+        &Call::default().deadline(deadline),
+        |item: usize, _: &Call<'_>| {
+            ran.lock().unwrap().push(item);
+            item
+        },
+        |index, result| results.push((index, result)),
+    );
+
+    assert_eq!(end, Ok(BatchEnd::Stopped));
+    assert_eq!(
+        results,
+        vec![(0, Ok(0)), (1, Ok(1)), (2, Err(Skipped::DeadlineExceeded))]
+    );
+    assert_eq!(ran.into_inner().unwrap(), vec![0, 1]);
 }
 
 #[test]

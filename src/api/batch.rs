@@ -76,7 +76,8 @@ pub enum BatchError {
     /// A worker thread could not be started. The items already pulled still ran and reached the
     /// callback. The error kind is kept, since an `io::Error` is neither `Clone` nor `Eq`.
     Spawn(io::ErrorKind),
-    /// `op` or the iterator panicked on a worker. Every other item still got its callback.
+    /// `op` or the iterator panicked on a worker. Every other item pulled got its callback; with
+    /// fewer workers than items left, the rest are never pulled.
     WorkerPanicked,
 }
 
