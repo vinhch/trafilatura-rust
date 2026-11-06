@@ -239,6 +239,7 @@ fn test_lb_only_subtree_stays_one_paragraph() {
     let result = extract(html_str, &Kw::zero().format(ApiFormat::Xml)).unwrap();
     assert_eq!(result.matches("<p>").count(), 0);
     assert_eq!(result.matches("<lb/>").count(), 0);
+    assert!(result.contains("<main/>"));
 }
 
 // upstream: unit_tests.py::test_table_processing

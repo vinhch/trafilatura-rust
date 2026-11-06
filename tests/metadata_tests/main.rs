@@ -4,7 +4,8 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Port of upstream `tests/metadata_tests.py` (trafilatura 2.3.1). Each test keeps its upstream name
+//! Port of upstream `tests/metadata_tests.py` at the release pinned in `Cargo.toml`
+//! (`[package.metadata.upstream]`). Each test keeps its upstream name
 //! and its cases in upstream order; an adaptation is commented where the test differs.
 
 #[allow(dead_code)] // the helpers this binary does not call belong to the other test binaries

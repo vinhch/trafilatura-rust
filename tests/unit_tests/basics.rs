@@ -19,7 +19,7 @@ fn extract_bytes(content: &[u8], kw: &Kw) -> Option<String> {
 }
 
 /// `extract(html, output_format="json", with_metadata=True, record_id=..., **kw)`, through the
-/// internal JSON format: the public `Format` has no JSON variant until Task 8.
+/// internal JSON format.
 fn extract_json_with_metadata(html: &str, kw: &Kw, record_id: Option<&str>) -> Option<String> {
     internal_text(html, kw, Format::Json, true, record_id)
 }

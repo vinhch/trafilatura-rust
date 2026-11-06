@@ -399,6 +399,7 @@ pub(super) fn union_below(
     if bodies.len() < 2 {
         return Ok(found);
     }
+    // deviation: D-28
     let mut seen = HashSet::with_capacity(found.len());
     Ok(found.into_iter().filter(|&id| seen.insert(id)).collect())
 }

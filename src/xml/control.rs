@@ -24,7 +24,7 @@ use crate::utils::sanitize_tree;
 /// The tags whose elements keep their attributes in the XML output; `clean_attributes` clears the
 /// rest.
 // upstream: xml.py::WITH_ATTRIBUTES
-pub const WITH_ATTRIBUTES: &[&str] = &[
+const WITH_ATTRIBUTES: &[&str] = &[
     "cell", "row", "del", "graphic", "head", "hi", "item", "list", "ref",
 ];
 
@@ -283,5 +283,6 @@ pub fn control_xml_output(
     };
     sanitize_tree(&mut doc.tree, output, call)?;
     remove_blank_text(&mut doc.tree, output, call)?;
+    // deviation: D-27. Upstream runs validate_tei after this reparse; it is not ported.
     Ok(strip(&doc.tree.tostring(output, true, false)).to_owned())
 }

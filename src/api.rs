@@ -37,7 +37,8 @@ pub enum Format {
     XmlTei,
     /// JSON, as upstream's `build_json_output` writes it.
     Json,
-    /// CSV: one tab-separated row of the metadata fields, as upstream's `xml_to_csv` writes it.
+    /// CSV: one tab-separated row of the metadata fields, the text and the comments, as upstream's
+    /// `xmltocsv` writes it.
     Csv,
     /// The [`Document`] with its `text` and `comments` as strings; only
     /// [`Extractor::bare_extraction`] serves it.
@@ -262,7 +263,8 @@ impl Options {
             limits: ParseLimits {
                 max_nodes: self.max_nodes,
                 max_input_bytes: self.max_input_bytes,
-                // XML-TEI's header date reads script text (D-14), so that format keeps it.
+                // deviation: D-14
+                // XML-TEI's header date reads script text, so that format keeps it.
                 drop_script_text: !self.keep_script_text && self.format != Some(Format::XmlTei),
                 ..ParseLimits::default()
             },

@@ -4,8 +4,8 @@ How crate output is compared with upstream Python: the fixture generator, the ar
 mismatch, the test and the measurement. Read it before touching `tools/parity/`, `tests/parity/`,
 `tests/common/`, `scripts/fixtures.*`, `scripts/measure.*`, `scripts/oracle.*` or the fixture archive.
 
-Two tests compare the crate with the fixtures: the parsed tree and the `txt`, `markdown`, `html`, `xml`,
-`xmltei` and `json` output, and a third the metadata fields.
+Three tests compare the crate with the fixtures: the parsed tree and the `txt`, `markdown`, `html`,
+`xml`, `xmltei` and `json` output, and the metadata fields.
 
 ## Corpus and fixtures
 
@@ -90,15 +90,16 @@ compare. A dump that is `None` on one side (an empty tree against a tree) is a w
 There is no `normalized` hunk class: the fixture and the crate dump go through the same copy rule, so
 lines it changes are equal on both sides and make no hunk. The report also counts `parser`: pages whose
 `lxml` and `html5` fixtures differ (D-2). It is a count, not a class. The report is
-`.temp/parity/report.md`: pages and hunks per class, the pages of each class, and the diffs of the first
-pages that differ, pages with a `port-bug` hunk first.
+`.temp/parity/report.md`: pages and hunks per class, the pages of each class, and the diffs of the
+first pages that differ, pages with a `port-bug` hunk first.
 
 ## Output check
 
 `outputs_match_html5_fixture` in `tests/parity/main.rs` runs `Extractor::extract` over every page in `txt`,
 `markdown`, `html`, `xml`, `xmltei` and `json` and compares the text with `fixture["html5"]["formats"][format]`.
 The input is `Input::bytes` of the upstream file and the options are the ones the fixtures were generated
-with (`fast=True`, `dedup=False`, no URL; `xmltei` forces metadata and keeps script text, as the format does, D-14). Every call takes
+with (`fast=True`, `dedup=False`, no URL). `txt`, `markdown`, `html`, `xml` and `json` run without metadata;
+`xmltei` forces it and keeps script text, as the format does (D-14). Every call takes
 `Call::max_date` from the index, because the TEI header writes `filedate` from it. A page whose fixture
 holds no text and no error must be rejected by the crate with any `Rejected` error. The expected `html`, `xml` and `xmltei` text goes through
 `strip_lxml_namespaces` first, which removes the ` xmlns:nsN="..."` declarations and the `nsN:` tag
@@ -119,8 +120,9 @@ classified; the first rule that applies decides the output, and the test fails o
 | `port-bug` | any other hunk, or text on one side only |
 
 A fingerprint hunk (`<note type="fingerprint">` in `xmltei`, the `fingerprint` attribute of the `xml` `<doc>`)
-is `encoding` when the page is not valid UTF-8, the output has an `encoding` hunk, and every other hunk of that
-output is `encoding`; otherwise `port-bug`. Both D-3 pages and the fingerprint of their text change together.
+is `encoding` when the page is not valid UTF-8, the output has an `encoding` hunk, and every hunk of that
+output is `encoding` or a fingerprint; otherwise `port-bug`. On a D-3 page the text and its fingerprint
+change together.
 
 The report is `.temp/parity/output-report.md`: per format the outputs and hunks of each class, the
 outputs of each class other than `match` (with the reason of a `normalized` page) and the diffs of the

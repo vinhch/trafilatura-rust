@@ -301,11 +301,9 @@ fn extract_tree(html: &str, kw: &Kw) -> Option<String> {
     or_none(document).map(|document| document.text.unwrap_or_default())
 }
 
-// The XML and XML-TEI entry points. The public `Format` has no XML variant, so the internal
-// `Extractor` carries the format.
+// The XML and XML-TEI entry points.
 
-/// `extract(html, output_format="xml", **kw)`. The public `Format` has no XML variant, so the
-/// internal `Extractor` carries it.
+/// `extract(html, output_format="xml", **kw)`.
 fn extract_xml(html: &str, kw: &Kw) -> Option<String> {
     xml_output(Source::Input(HtmlInput::Str(html)), kw)
 }

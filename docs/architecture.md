@@ -13,7 +13,7 @@ exists today; phases are in `phase-plan.md`.
 
 | Upstream | Rust | Status | Scope |
 | --- | --- | --- | --- |
-| `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | exists: `determine_returnstring`, `trafilatura_sequence`, `bare_extraction` and `internal_extraction` (upstream's `_internal_extraction`, which `extract` wraps), both taking a `Source` (a page or a caller's tree); the XML branch of `determine_returnstring` runs the empty-element cleaning loop (`drop_empty_body_elements`), then `control_xml_output` | the extraction cascade in fast mode, `bare_extraction`, `extract` and the output step |
+| `core.py` | `extraction.rs` (`core` would shadow the `core` crate) | exists: `determine_returnstring`, `trafilatura_sequence`, `bare_extraction` and `internal_extraction` (upstream's `_internal_extraction`, which `extract` wraps), both taking a `Source` (a page or a caller's tree); the XML branch of `determine_returnstring` runs the empty-element cleaning loop (`drop_empty_body_elements` in `xml/control.rs`), then `control_xml_output` | the extraction cascade in fast mode, `bare_extraction`, `extract` and the output step |
 | `settings.py`, `settings.cfg` | `settings.rs` | partial: `Extractor`, `Config` (the extraction keys of `settings.cfg`), `Focus`, `Format`, `Document` (with `clean_and_trim`), `set_date_params`, the element lists, `BASIC_CLEAN_XPATH` and `DEFAULT_MAX_NODES` exist | `Extractor` options, `Document` (the result: metadata fields, texts and an owned compact tree of the body and comments body), the `settings.cfg` defaults and the shared tag lists |
 | `main_extractor.py` | `main_extractor.rs`, `main_extractor/tables.rs`, `main_extractor/content.rs` | exists: every constant, helper and handler, `prune_unwanted_sections`, `recover_wild_text`, `extract_content` and `extract_comments`; `extract_body` is upstream's `_extract`, private because `extract` names the public entry point | content and comment extraction, the element handlers |
 | `htmlprocessing.py` | `html_processing.rs`, `html_processing/convert.rs` | exists: tree cleaning, pruning, link density, `handle_textnode`, `process_node`, the conversions, `convert_tags` and the HTML output (`HTML_TAG_MAPPING`, `HTML_CONVERSIONS` as `html_conversion`, `convert_to_html`, `build_html_output`) | tree cleaning, pruning, link density, text-node handling, `convert_tags`, HTML output |
@@ -44,6 +44,8 @@ exists today; phases are in `phase-plan.md`.
 | none | `context.rs` | exists | `Ctx`, the per-call context ported functions take where upstream passes `options` (Runtime contract) |
 | none | `cancel.rs`, `error.rs` | exists | `CancelToken` and `Call` (its optional `DedupCache`, set by `Call::dedup`, D-22), `ExtractError` and `Rejection` |
 | none | `async_api.rs` | planned | `extract_async` (feature `tokio`) |
+
+`build.rs` sets `TRAFILATURA_UPSTREAM_VERSION` from the pin in `Cargo.toml`, for the TEI header.
 
 Unit tests (`src/**/tests.rs` or `src/**/tests/`) and generated case tables (`src/**/*cases.rs`) sit beside their module
 because they reach private items; `#[cfg(test)]` keeps them out of the library build. Integration tests
@@ -152,7 +154,7 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus`,
 | `Extractor` | Immutable, `Clone`, `Send + Sync`: one value serves any number of threads and URLs. `extract(&self, &Input, &Call) -> Result<String, ExtractError>` is upstream `extract`; `bare_extraction(&self, &Input, &Call) -> Result<Document, ExtractError>` is upstream `bare_extraction`. |
 | `Extractor::extract_batch` | Runs `op` on each item on `BatchOptions::threads` scoped workers (at most 256) and hands each result to `on_result` on the calling thread, with the item's index. Returns `Ok(BatchEnd)`, `Err(BatchError::Spawn)` or `Err(BatchError::WorkerPanicked)`. A cancel or the batch deadline stops the pulls; every worker ends before the call returns. Usage and thread budget in `docs/batch.md`. |
 | `Input<'a>` | `Input::bytes(&[u8])` or `Input::text(&str)`, with `.url(&str)` and `.record_id(&str)`. The URL belongs to the call: the call's `Ctx` borrows the stored settings, or owns a copy with `url` set when the input has one. |
-| `Format` | `Txt`, `Markdown`, `Html`, `Python`; non-exhaustive. Maps onto `settings::Format`, which also holds the XML, XML-TEI, JSON and CSV variants of a later phase. |
+| `Format` | `Txt`, `Markdown`, `Html`, `Xml`, `XmlTei`, `Json`, `Csv`, `Python`; non-exhaustive. Maps onto `settings::Format`. |
 | `Focus`, `Config` | `Focus` is `Balanced`, `Precision` or `Recall`, in place of upstream's two `favor_*` flags, so upstream's recall-wins resolution cannot arise. `Config` holds the values of `settings.cfg`; `Config::default()` is the cfg file. |
 | `Document` | Non-exhaustive result: the metadata fields (`Option<String>`; `categories` and `tags` `Option<Vec<String>>`), `text`, `comments` and `raw_text`. It owns the body and comments body as a compact tree of its own, so the call's arena is freed on return. |
 | `html2txt(&Input, clean, &Call)` | Upstream `html2txt`. An empty document gives `Ok("")`; `TreeTooLarge` and cancellation are errors. |
@@ -171,18 +173,17 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus`,
 | `config` | `Config::default()` | |
 | `max_input_bytes` | `Some(DEFAULT_MAX_INPUT_BYTES)` | `ParseLimits::max_input_bytes` (D-11): raw input length above which `Rejection::InputTooLarge` is returned, before decompression; `None` lifts the limit. The free `html2txt` always uses the default. |
 | `max_nodes` | `Some(DEFAULT_MAX_NODES)` | `ParseLimits::max_nodes` (D-5); `None` lifts the limit. `ParseLimits::max_depth` is not exposed. |
-| `with_metadata` | `false` | Metadata goes into the `Document` of `bare_extraction` and into the header of the text, Markdown and HTML outputs. A URL or author blacklist, or `only_with_metadata`, turns it on. |
+| `with_metadata` | `false` | Metadata goes into the `Document` of `bare_extraction`, into the header of the text, Markdown and HTML outputs, and into the XML, XML-TEI, JSON and CSV outputs. A URL or author blacklist, or `only_with_metadata`, turns it on; `XmlTei` forces it on (see `keep_script_text`). |
 | `only_with_metadata` | `false` | Rejects a page without a date, title or URL with `Rejected(MissingMetadata)`. Implies `with_metadata`. |
 | `author_blacklist` | empty | Names dropped from the author, matched without regard to case; replaces the set. A non-empty set implies `with_metadata`. |
 | `url_blacklist` | empty | URLs rejected with `Rejected(BlacklistedUrl)`; replaces the set. A non-empty set implies `with_metadata`. |
-| `keep_script_text` | `false` | Keeps the text of `script` and `style` elements in the parse, as upstream does (D-14). |
+| `keep_script_text` | `false` | Keeps the text of `script` and `style` elements in the parse, as upstream does (D-14). The `XmlTei` format keeps that text whatever this option says, and also forces `with_metadata` on, as upstream does. |
 
 `Err(Rejected(_))` stands for upstream's `None` and for a raise that escapes upstream's entry point.
 Options that no phase makes work yet are absent, so none silently does nothing: date extraction parameters
-(`find_date` runs inside metadata; its `Options` method waits), `prune_xpath` and the XML, XML-TEI, JSON and
-CSV formats. Metadata extraction, its filters and its `Options` methods are in the table above.
-Deduplication has no `Options` method: its cache is passed on `Call` (D-22). Each absent option gets its
-method when its phase lands.
+(`find_date` runs inside metadata; its `Options` method waits) and `prune_xpath`. Metadata extraction, its
+filters and its `Options` methods are in the table above. Deduplication has no `Options` method: its cache is
+passed on `Call` (D-22). Each absent option gets its method when its phase lands.
 
 Tree input (upstream's `HtmlElement` for `filecontent`) is internal: `extraction.rs` takes a `Source`,
 a page or an element of a caller's tree, which the public methods and the tests that pass a tree use.
@@ -216,8 +217,8 @@ would is a deviation and needs the user's approval before it lands.
 - Borrow the caller's input bytes; decode to a new buffer only when the input is not already UTF-8.
 - The library never sets a global allocator; that choice belongs to the binary or binding.
 - `Extractor` parses with the text of `style` and `script` elements dropped, except JSON-LD and
-  `settings+json` scripts (`ParseLimits::drop_script_text`); the parity tree dump, `html2txt` and
-  fragment parses keep that text.
+  `settings+json` scripts and the cases D-14 keeps (`ParseLimits::drop_script_text`); the parity tree
+  dump, `html2txt` and fragment parses keep that text.
   When such an element survives `tree_cleaning`, `bare_extraction` runs again on a full parse.
 
 ### Threads

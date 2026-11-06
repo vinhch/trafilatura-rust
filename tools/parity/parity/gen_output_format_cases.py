@@ -63,7 +63,7 @@ def nested_snippet(depth: int) -> str:
     return f"{opening}<leaf/>{closing}"
 
 
-# (name, snippet): one or more per rule of the blank removal decisions in the phase 6 spec
+# (name, snippet): one or more cases per blank-removal rule.
 BLANK_SNIPPETS: list[tuple[str, str]] = [
     ("element_only_blanks_dropped", "<a>\n  <b/>\n  <c/>\n</a>"),
     ("blank_before_end_tag_without_child_kept", "<a>   </a>"),
