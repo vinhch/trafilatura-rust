@@ -172,7 +172,7 @@ fn extract_xml(html: &str, url_blacklist: &[&str]) -> Option<String> {
 
 // The URL blacklist lines of `test_filters`, which also need the XML output.
 #[test]
-fn test_filters_phase_6_lines() {
+fn test_filters_xml_blacklist() {
     // test URL blacklist (non-empty body so the None is caused by the blacklist, not missing content)
     let doc = r#"<html><head><link rel="canonical" href="https://example.org"/></head><body><article><p>Real body text here.</p></article></body></html>"#;
     assert!(extract_xml(doc, &[]).is_some());

@@ -108,7 +108,7 @@ fn whitelisted_parents_with_p(tree: &Tree, root: NodeId) -> Vec<bool> {
 #[test]
 fn test_extract_with_metadata() {
     // oracle: extract_with_metadata(my_document, output_format="txt", include_formatting=True,
-    // fast=True, url=url); the XML lines are in `test_extract_with_metadata_phase_6_lines`
+    // fast=True, url=url); the XML lines are in `test_extract_with_metadata_xml_output`
     let url = "http://aa.bb/cc.html";
     let html =
         "<html><head></head><body><article><p>AAA, <p>BBB</p>, CCC.</p></article></body></html>";
@@ -160,7 +160,7 @@ fn test_extract_with_metadata() {
 
 // The XML lines of `test_extract_with_metadata`.
 #[test]
-fn test_extract_with_metadata_phase_6_lines() {
+fn test_extract_with_metadata_xml_output() {
     // upstream's `my_document`: the title and the date feed the record's fingerprint
     let html = r#"<html>
         <head><title>title</title></head>
@@ -172,7 +172,7 @@ fn test_extract_with_metadata_phase_6_lines() {
         </body>
         </html>
     "#;
-    // oracle: extract_with_metadata(my_document, output_format="xml", config=ZERO_CONFIG)
+    // Upstream's assertion: extract_with_metadata(my_document, output_format="xml", config=ZERO_CONFIG)
     let parsed = extract_xml_document(html, &Kw::zero()).unwrap();
     assert_eq!(parsed.raw_text.as_deref(), Some("AAA, BBB , CCC."));
     assert_eq!(parsed.fingerprint.as_deref(), Some("ee7d2fb6fcf2837d"));
@@ -184,7 +184,7 @@ fn test_extract_with_metadata_phase_6_lines() {
 
 #[test]
 fn test_images() {
-    // `is_image_file` is ported with `utils`; the XML line is `test_images_phase_6_lines`
+    // `is_image_file` is ported with `utils`; the XML line is `test_images_xml_output`
     // tag with attributes
     assert!(image_of(r#"<img src="test.jpg"/>"#).is_some());
     assert!(image_of(r#"<img data-src="test.jpg" alt="text" title="a title"/>"#).is_some());
@@ -310,7 +310,7 @@ fn test_images() {
 
 // The XML line of `test_images`.
 #[test]
-fn test_images_phase_6_lines() {
+fn test_images_xml_output() {
     if let Some(page) = resource_text("http_sample.html") {
         assert!(
             extract_xml(&page, &Kw::zero().images(true))
@@ -409,7 +409,7 @@ fn test_links() {
 
 // The XML lines of `test_links`.
 #[test]
-fn test_links_phase_6_lines() {
+fn test_links_xml_output() {
     let html = "<html><body><article><a>Segment 1</a><h1><a>Segment 2</a></h1><p>Segment 3</p></article></body></html>";
     let result = extract_xml_tree(html, &Kw::zero().links(true)).unwrap();
     assert!(result.contains('1'));
@@ -431,8 +431,8 @@ fn test_links_phase_6_lines() {
     );
 }
 
-// Upstream's `test_tei`: its extract lines are in `test_tei_phase_6_lines`, its `validate_tei` lines
-// in `test_tei_validation_phase_6_lines` (D-27).
+// Upstream's `test_tei`: its extract lines are in `test_tei_tree`, its `validate_tei` lines
+// in `test_tei_validation_tei_output` (D-27).
 #[test]
 fn test_tei() {
     let call = Call::default();
@@ -525,7 +525,7 @@ fn test_tei() {
 /// entities need a validator the crate does not have), so these stay ignored.
 #[test]
 #[ignore = "D-27"]
-fn test_tei_validation_phase_6_lines() {
+fn test_tei_validation_tei_output() {
     // open local resources to avoid redownloading at each run
     if let Some(page) = resource_text("httpbin_sample.html") {
         let result = extract_xmltei(&page, &Kw::new().url("mocked")).unwrap();
@@ -554,7 +554,7 @@ fn test_tei_validation_phase_6_lines() {
 
 // The `extract` lines of `test_tei`; `test_tei` itself holds the parts that need neither.
 #[test]
-fn test_tei_phase_6_lines() {
+fn test_tei_tree() {
     let kw = Kw::zero().url("mocked");
     let extracted = extract_xmltei_tree(
         "<html><body><article><h1>title</h1><h2>subtitle</h2><p>text</p></article></body></html>",

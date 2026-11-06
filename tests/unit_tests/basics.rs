@@ -63,7 +63,7 @@ fn test_trim() {
 
 // Not ported: `load_html(123)` and `extract(None, ...)` (the input is typed), `core.Extractor(source=)`
 // and the `output_format="xyz"` raises (no such option; `Format` is an enum), `_RespLike` (no
-// response objects). The XML line is `test_input_phase_6_lines`. The other lines of upstream's test
+// response objects). The XML line is `test_input_xml_output`. The other lines of upstream's test
 // that touch encoding and repair are `test_input_*` and `test_repair_*` in `src/utils/tests/input.rs`.
 #[test]
 fn test_input() {
@@ -119,7 +119,7 @@ fn test_input() {
 }
 
 #[test]
-fn test_input_phase_6_lines() {
+fn test_input_xml_output() {
     // output format
     assert!(
         extract_xml("<html><body><p>ABC</p></body></html>", &Kw::new())
@@ -130,7 +130,7 @@ fn test_input_phase_6_lines() {
 
 #[test]
 fn test_exotic_tags() {
-    // the TEI line is `test_exotic_tags_phase_6_lines`
+    // the TEI line is `test_exotic_tags_tei_output`
     let options = default_options();
     let call = Call::default();
     let ctx = ctx_for(&options, &call);
@@ -232,7 +232,7 @@ fn test_exotic_tags() {
 }
 
 #[test]
-fn test_exotic_tags_phase_6_lines() {
+fn test_exotic_tags_tei_output() {
     // `load_mock_page("http://exotic_tags", tei_output=True)`: the page is read from the checkout
     let Some(page) = resource_text("exotic_tags.html") else {
         return;
@@ -421,7 +421,7 @@ def test:
 
 // The XML lines of `test_formatting`.
 #[test]
-fn test_formatting_phase_6_lines() {
+fn test_formatting_xml_tree() {
     let xml = |html: &str, kw: Kw| extract_xml_tree(html, &kw).unwrap();
     // trailing <lb>
     let result = xml(

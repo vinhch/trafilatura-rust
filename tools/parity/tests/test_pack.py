@@ -102,8 +102,8 @@ def test_pinned_version_is_read_from_the_upstream_table(tmp_path, monkeypatch):
     from parity import generate
 
     (tmp_path / "Cargo.toml").write_text(
-        '[package]\nversion = "0.0.0"\n\n[package.metadata.upstream]\nversion = "2.3.1"\ncommit = "abc"\n'
+        '[package]\nversion = "0.0.0"\n\n[package.metadata.upstream]\nversion = "9.9.9"\ncommit = "abc"\n'
     )
     monkeypatch.setattr(generate, "REPO_ROOT", tmp_path)
-    assert generate.pinned_version() == "2.3.1"
+    assert generate.pinned_version() == "9.9.9"
     assert generate.pinned_commit() == "abc"

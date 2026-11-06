@@ -70,7 +70,7 @@ fn test_extraction_options() {
 
 // The XML lines of `test_extraction_options`.
 #[test]
-fn test_extraction_options_phase_6_lines() {
+fn test_extraction_options_xml_output() {
     let my_html = r#"<html><head><meta http-equiv="content-language" content="EN"/></head><body><div="article-body"><p>Text.<!-- comment --><?php echo "This is a PHP processing instruction"; ?></p></div></body></html>"#;
     // oracle: extract(my_html, only_with_metadata=False, output_format="xml", config=ZERO_CONFIG)
     assert!(extract_xml(my_html, &Kw::zero()).is_some());

@@ -239,7 +239,7 @@ fn test_htmlprocessing() {
 
 // The XML lines of `test_htmlprocessing`.
 #[test]
-fn test_htmlprocessing_phase_6_lines() {
+fn test_htmlprocessing_xml_tree() {
     let html = "<html><body><article><h1>Test headline</h1><p>Test</p></article></body></html>";
     assert!(
         extract_xml_tree(html, &Kw::zero())
@@ -250,7 +250,7 @@ fn test_htmlprocessing_phase_6_lines() {
 
 // The TEI line of `test_htmlprocessing`.
 #[test]
-fn test_htmlprocessing_tei_phase_6_lines() {
+fn test_htmlprocessing_tei_tree() {
     let html = "<html><body><article><h1>Test headline</h1><p>Test</p></article></body></html>";
     assert!(
         extract_xmltei_tree(html, &Kw::zero())
