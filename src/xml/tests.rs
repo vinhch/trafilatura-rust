@@ -7,6 +7,8 @@ use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
 use crate::error::{ExtractError, Rejection};
 use crate::html_processing::build_html_output;
 
+mod formats;
+
 /// `name="value"` pairs without whitespace in the values.
 fn attributes(source: &str) -> Vec<(LocalName, Arc<str>)> {
     source

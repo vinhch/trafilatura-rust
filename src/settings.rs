@@ -378,6 +378,25 @@ impl Document {
         self.comments_body
     }
 
+    /// Replaces the main text with a copy of the subtree of `root` in `src`, as upstream's
+    /// `doc.body = etree.fromstring(...)` does. A default `Call` has no cancellation or deadline,
+    /// so the copy does not fail; the body stays as it was if it ever did.
+    #[cfg(feature = "__internals")]
+    pub fn set_body(&mut self, src: &Tree, root: NodeId) {
+        if let Ok(copy) = src.copy_into(root, &mut self.tree, &Call::default()) {
+            self.body = copy;
+        }
+    }
+
+    /// Replaces the comments with a copy of the subtree of `root` in `src`; see
+    /// [`Document::set_body`].
+    #[cfg(feature = "__internals")]
+    pub fn set_comments_body(&mut self, src: &Tree, root: NodeId) {
+        if let Ok(copy) = src.copy_into(root, &mut self.tree, &Call::default()) {
+            self.comments_body = copy;
+        }
+    }
+
     /// Cuts a text field over 10,000 code points to its first 9,999 and an ellipsis, unescapes it and trims its lines; a field that
     /// ends up empty becomes `None`. Fails with `InvalidValue` on a character reference of more than
     /// 4300 digits.

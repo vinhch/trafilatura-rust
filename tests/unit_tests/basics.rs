@@ -18,10 +18,28 @@ fn extract_bytes(content: &[u8], kw: &Kw) -> Option<String> {
     or_none(kw.options().build().extract(&input, &Call::default()))
 }
 
-/// `extract(html, output_format="json", with_metadata=True, record_id=..., **kw)`.
-// todo(phase 6): json output
-fn extract_json_with_metadata(_html: &str, _kw: &Kw, _record_id: Option<&str>) -> Option<String> {
-    None
+/// `extract(html, output_format="json", with_metadata=True, record_id=..., **kw)`, through the
+/// internal JSON format: the public `Format` has no JSON variant until Task 8.
+fn extract_json_with_metadata(html: &str, kw: &Kw, record_id: Option<&str>) -> Option<String> {
+    internal_text(html, kw, Format::Json, true, record_id)
+}
+
+/// The output of the internal `format` for `html` with the settings of `kw`, the text of its document.
+fn internal_text(
+    html: &str,
+    kw: &Kw,
+    format: Format,
+    with_metadata: bool,
+    record_id: Option<&str>,
+) -> Option<String> {
+    internal_document(
+        Source::Input(HtmlInput::Str(html)),
+        kw,
+        format,
+        with_metadata,
+        record_id,
+    )?
+    .text
 }
 
 // The cache assertions at the end of upstream's `test_trim` are not ported: `meta.py` is not
@@ -488,10 +506,9 @@ fn test_formatting_phase_6_lines() {
     assert!(result.contains("AP-fonden"));
 }
 
-// The record ID lines of `test_formatting`: the JSON `id` comes with the JSON output (F-54, Task 7).
+// The record ID lines of `test_formatting`, the JSON `id` included.
 #[test]
-#[ignore = "phase 6"]
-fn test_formatting_record_id_phase_6_lines() {
+fn test_formatting_record_id() {
     // the record ID and fingerprint are in the header, as in the other formats
     let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";
     let json_result: serde_json::Value = serde_json::from_str(
@@ -507,7 +524,73 @@ fn test_formatting_record_id_phase_6_lines() {
     }
 }
 
-// The Markdown metadata lines of `test_formatting`; the JSON lines are in `test_formatting_phase_6_lines`.
+/// A snippet parsed as one element, as `etree.fromstring` gives it: the tree and that element.
+fn element(source: &str) -> (Tree, NodeId) {
+    let tree = parse_fragment(source, &ParseLimits::default(), &Call::default()).unwrap();
+    let root = tree.children(tree.root()).next().unwrap();
+    (tree, root)
+}
+
+// Upstream's `test_xmltocsv`.
+#[test]
+fn test_xmltocsv() {
+    let call = Call::default();
+    let mut doc = Document::empty();
+    let (tree, xml) = element("<xml/>");
+    doc.set_body(&tree, xml);
+    doc.set_comments_body(&tree, xml);
+    assert_eq!(
+        xml_to_csv(&mut doc, false, &call).unwrap(),
+        "null\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\r\n"
+    );
+
+    doc.title = Some("Test title".to_owned());
+    doc.url = Some("https://example.org".to_owned());
+    doc.hostname = Some("example.org".to_owned());
+    doc.id = Some("1".to_owned());
+    doc.license = Some("CC BY-SA".to_owned());
+    doc.image = Some("https://example.org/image.jpg".to_owned());
+    doc.pagetype = Some("article".to_owned());
+    let (tree, p) = element("<p>Test text</p>");
+    doc.set_body(&tree, p);
+    let (tree, p) = element("<p>Test comment</p>");
+    doc.set_comments_body(&tree, p);
+    assert_eq!(
+        xml_to_csv(&mut doc, false, &call).unwrap(),
+        "https://example.org\t1\tnull\texample.org\tTest title\thttps://example.org/image.jpg\tnull\tTest text\tTest comment\tCC BY-SA\tarticle\r\n"
+    );
+
+    let mystring = "<html><body><p>ÄÄÄÄÄÄÄÄÄÄÄÄÄÄ</p></body></html>";
+    let kw = Kw::zero();
+    assert!(internal_text(mystring, &kw, Format::Csv, false, None).is_some());
+    assert!(
+        internal_text(mystring, &kw.comments(false), Format::Csv, false, None)
+            .unwrap()
+            .ends_with("\tnull\r\n")
+    );
+}
+
+// Upstream's `test_tojson`; it checks substrings only, the exact strings are in `output_format_cases`
+// and `xml::tests::formats`.
+#[test]
+fn test_tojson() {
+    let mystring = "<html><body><p>ÄÄÄÄÄÄÄÄÄÄÄÄÄÄ</p></body></html>";
+    let kw = Kw::zero();
+    let result = internal_text(mystring, &kw, Format::Json, false, None).unwrap();
+    assert!(result.contains('Ä'));
+    assert!(result.ends_with('}'));
+    let result = extract_json_with_metadata(mystring, &kw, None).unwrap();
+    assert!(result.ends_with('}'));
+    assert!(result.contains("\"fingerprint\":"));
+    assert!(result.contains("\"language\":"));
+    assert!(
+        internal_text(mystring, &kw.comments(false), Format::Json, false, None)
+            .unwrap()
+            .ends_with('}')
+    );
+}
+
+// The Markdown metadata lines of `test_formatting`; the JSON lines are in `test_formatting_record_id`.
 #[test]
 fn test_formatting_metadata_lines() {
     let meta_string = "<html><head><title>Test</title></head><body><p>ABC.</p></body></html>";

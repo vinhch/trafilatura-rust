@@ -39,8 +39,7 @@
 //!   `test_longer_fallback_can_replace_requested_image`,
 //!   `test_recall_escalation_captured_comment_list`, `test_list_item_attr_whitelist`,
 //!   `test_list_processing`, `test_nested_list_first_item_not_duplicated`, `test_code_blocks`,
-//!   `test_table_nested_in_cell_pipeline`, `test_check_tei_loose_text`, `test_tojson`,
-//!   `test_xmltocsv`.
+//!   `test_table_nested_in_cell_pipeline`, `test_check_tei_loose_text`.
 //! - Single lines: `load_html(123)`, `extract(None, ...)` and the `output_format="xyz"` raises (the
 //!   input and the format are typed), `core.Extractor(source=)`, the YAML parse of
 //!   `test_markdown_metadata_yaml_safe`, the `prune_xpath` line of
@@ -59,8 +58,8 @@ use trafilatura_rust::__internals::{
     load_html, md_link, merge_with_parent, normalize_unicode, parse_document, parse_fragment,
     process_node, prune_html, prune_unwanted_nodes, prune_unwanted_sections, recover_wild_text,
     remove_empty_elements, replace_element_text, sanitize, settings_format, span,
-    strip_double_tags, textfilter, tree_cleaning, tree_cleaning_with, trim, xml_to_text,
-    yaml_scalar,
+    strip_double_tags, textfilter, tree_cleaning, tree_cleaning_with, trim, xml_to_csv,
+    xml_to_text, yaml_scalar,
 };
 use trafilatura_rust::{
     Call, Document, ExtractError, Format as ApiFormat, Input, Options, Rejection,

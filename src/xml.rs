@@ -1,6 +1,6 @@
 //! The part of upstream `xml.py` that serves the plain-text, Markdown and XML output: removing and
 //! merging elements, the empty-element pass, the element text and `xml_to_text`, plus `meta_items`.
-//! The XML-TEI tree is in `tei`. The JSON and CSV builders are stubs until phase 6.
+//! The XML-TEI tree is in `tei`, the JSON and CSV builders in `formats`.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -677,25 +677,13 @@ pub fn meta_items(doc: &Document) -> Vec<(&'static str, String)> {
         .collect()
 }
 
-/// The CSV line of `doc`. Empty until phase 6.
-// upstream: xml.py::xmltocsv
-pub fn xml_to_csv(_doc: &Document, _include_formatting: bool) -> String {
-    // todo(phase 6): xml
-    String::new()
-}
-
-/// The JSON string of `doc`. Empty until phase 6.
-// upstream: xml.py::build_json_output
-pub fn build_json_output(_doc: &Document, _with_metadata: bool) -> String {
-    // todo(phase 6): xml
-    String::new()
-}
-
 mod control;
+mod formats;
 mod markdown;
 mod tei;
 mod to_text;
 pub use control::{control_xml_output, drop_empty_body_elements};
+pub use formats::{build_json_output, xml_to_csv};
 // the crate's own tests reach these through `__internals`
 #[cfg(feature = "__internals")]
 pub use control::remove_blank_text;

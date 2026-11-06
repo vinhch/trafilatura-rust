@@ -96,8 +96,7 @@ fn metadata_header(doc: &Document) -> String {
 }
 
 /// Converts the body of `doc` to the output format of `options`, as a string in Unicode normal
-/// form NFC. The CSV and JSON formats are stubs until phase 6. Fails with
-/// `Rejection::InvalidValue` where `xml_to_text` and `build_html_output` do.
+/// form NFC. Fails with `Rejection::InvalidValue` where `xml_to_text` and `build_html_output` do.
 // upstream: core.py::determine_returnstring
 pub fn determine_returnstring(
     doc: &mut Document,
@@ -109,8 +108,8 @@ pub fn determine_returnstring(
             drop_empty_body_elements(&mut doc.tree, doc.body, call)?;
             control_xml_output(doc, options, call)?
         }
-        Format::Csv => xml_to_csv(doc, options.formatting),
-        Format::Json => build_json_output(doc, options.with_metadata),
+        Format::Csv => xml_to_csv(doc, options.formatting, call)?,
+        Format::Json => build_json_output(doc, options.with_metadata, call)?,
         Format::Html => {
             let items = options.with_metadata.then(|| meta_items(doc));
             let pairs: Option<Vec<(&str, &str)>> = items.as_ref().map(|items| {
