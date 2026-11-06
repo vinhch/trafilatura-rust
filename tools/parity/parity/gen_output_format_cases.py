@@ -7,7 +7,8 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 `BlankCase`: an `etree.fromstring` snippet and the output of upstream's `control_xml_output` parse (`xml.py`,
 `CONTROL_PARSER`) after the text round trip of `xml.py:255`. The inner `tostring` writes text, not character
 references, as upstream does: non-ASCII text reaches libxml2 as text. The snippet follows `check_blank_snippet`
-(the `check_snippet` rules of `gen_xml_output_cases`, but `&#13;` is allowed), and also has no comment and no processing instruction, which `tests/trees` does not keep.
+(the `check_snippet` rules of `gen_xml_output_cases`, but `&#13;` is allowed), and also has no comment and no
+processing instruction, which `tests/trees` does not keep.
 
 `DocCase`: a page through `extract` with `fast=True` (D-1), as XML, XML-TEI, JSON without metadata, JSON with
 metadata and CSV with metadata. The page is parsed with html5lib (D-2), and the copy rule must not fire.
@@ -23,8 +24,8 @@ from dataclasses import dataclass
 
 from parity import MAX_DATE
 from parity.gen_main_extractor_cases import para, prose
-from parity.generate import pinned_version
 from parity.gen_xpath_cases import rust_str
+from parity.generate import pinned_version
 
 
 @dataclass
@@ -91,7 +92,7 @@ BLANK_SNIPPETS: list[tuple[str, str]] = [
 
 
 def check_blank_snippet(source: str) -> None:
-    "The rules of `gen_xml_output_cases.check_snippet` except its `&#` rule: the CR case needs `&#13;`, which `tests/trees` decodes."
+    "`check_snippet` of gen_xml_output_cases without its `&#` rule: CR needs `&#13;`, which tests/trees decodes."
     from lxml import etree
 
     assert "\r" not in source and "<!--" not in source and "<?" not in source, repr(source[:200])
@@ -243,8 +244,9 @@ def doc_case(page: Page, extensive: bool) -> DocCase:
 
 
 def doc_cases() -> list[DocCase]:
-    from parity.generate import html5_parsers
     from trafilatura.settings import DEFAULT_CONFIG
+
+    from parity.generate import html5_parsers
 
     extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
     cases = []
