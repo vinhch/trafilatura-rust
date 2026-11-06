@@ -219,3 +219,52 @@ would is a deviation and needs the user's approval before it lands.
   `settings+json` scripts (`ParseLimits::drop_script_text`); the parity tree dump, `html2txt` and
   fragment parses keep that text.
   When such an element survives `tree_cleaning`, `bare_extraction` runs again on a full parse.
+
+### Threads
+
+The library starts no thread except in `Extractor::extract_batch`. Its workers are scoped: each takes
+items from the batch's iterator, and the call joins all of them before it returns (`docs/batch.md`).
+Every other entry point runs on the caller's thread.
+
+Thread scaling is measured natively on the Windows 11 host (20 logical threads, `scripts/measure.sh
+--threads-native`): eight threads give 6.0 times the pages per second of one thread. The count is not
+gated, because host noise is too large (`parity-harness.md`).
+
+### Measurement
+
+- Output digests: each row of the time file carries a Blake2b digest of its output, for TXT, rich
+  Markdown, rich HTML and each synthetic page. A change keeps them equal on the corpus (1,044 pages) and
+  the synthetic pages (16), checked by `parity.measure --check-digests` (`parity-harness.md`).
+- Summed medians: time is the summed 5-run median per option set. Two full runs of one commit on the
+  Windows host differed by about 2.5% in summed time, and one run was faster in every option set. The
+  summed allocation counts and peaks moved by under 0.02%. A change inside that noise is not a measured win.
+- Allocation shares: dhat profiles (`TRAFILATURA_MEASURE_DHAT=1` with `--only`) give each site's share of
+  the option set's allocation blocks and the largest share of the bytes live at one page's peak.
+- Line numbers in dhat need line tables. The Docker release build has none, so a site's file and line
+  come from a native build with `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only`. Its totals match the
+  Docker build within 0.3% in bytes.
+- The Windows host has no sampling profiler, so per-site time shares are not measured. Time is judged on
+  the summed medians only.
+- The reference for time and heap is the Docker run (`scripts/measure.sh --docker`). A full run of the
+  Rust targets takes about six minutes on that host.
+- A site's share of one page's dhat peak does not carry to the summed measured peak: the character count
+  that built `text_content` was 9.9% of one profiled page's TXT peak, and removing it moved the summed TXT
+  peak by 0.19%.
+
+### Findings
+
+The largest measured costs sit in shared structures, so each one is a change to the tree or the parser,
+not to one function. Allocation shares are of the option set's blocks over the eight profiled pages.
+
+- DOM text storage: the text insert in `src/dom/parse.rs` is the largest allocation site of the load set
+  (46% of its blocks) and 18% of the TXT blocks. Each text node owns a growable `String`.
+- DOM copy: `detached_copy` in `src/dom/walk.rs` copies the name, the attributes, the text and the tail
+  of each node in `Tree::copy`. It holds about 15% of the TXT blocks, and up to 18% of one page's TXT peak.
+- Tree arena: the node vector of `Tree` (`src/dom/mod.rs`) holds about 79% of one profiled page's peak in
+  the TXT and rich sets. The arena never frees until the tree is dropped.
+- Parser: the html5ever tokenizer feed in `src/dom/parse/sink.rs` (`feed_all`) is 35% of the load blocks
+  and 14% of the TXT blocks. The tree-builder call (`process_token`, same file) is 14% and 5%. These
+  allocations belong to the dependency; changing them means changing the parser (`docs/dependencies.md`).
+
+Text sharing between a node and its copy, and arena compaction, are proposals tracked as F-25 in
+`docs/phase-plan.md`. Neither is implemented.

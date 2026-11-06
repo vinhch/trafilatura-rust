@@ -162,7 +162,7 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   extract heap is not measured. Both sides run in the same place: natively on Linux, off Linux (or with
   `--docker`) in one Linux container built from `scripts/measure.Dockerfile`, so a table compares one
   system; its `Platform:` line says where. Run it by hand; the numbers depend on the machine. A full run of
-  the Rust targets takes about five minutes, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
+  the Rust targets (`scripts/measure.sh --docker`) takes about six minutes on a Windows 11 host, and the largest page (`data_table_20m`) peaks at about 1 GB of heap.
 - Thread scaling: `scripts/measure.sh --threads-native` (or `.ps1`) runs `tests/measure_threads.rs` natively,
   never in the container, and writes `.temp/measure/<version>-rust-threads.json`:
   `threads_available` (logical threads, `available_parallelism`) and `runs`, one entry per count of 1, 2, 4

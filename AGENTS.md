@@ -115,8 +115,18 @@ These hold for the whole crate; `docs/architecture.md` (Runtime contract) has th
 - Every `pub` item has a doc comment (`missing_docs`, denied by CI).
 - No process-global mutable state: caller-owned values instead. `unsafe` is forbidden.
 - Dependencies: follow the policy in `docs/dependencies.md`.
-- Performance: measure first, never change output, keep upstream's function boundaries
-  (`docs/architecture.md`, Performance and memory).
+- Performance: never change output; keep upstream's function boundaries (`docs/architecture.md`,
+  Performance and memory).
+- No text built only to test or count: a char count walks the text pieces, never a joined String.
+- Borrow before clone: a value that is only read is borrowed. A copy stays only where upstream
+  mutates after it.
+- No per-element rebuild of a set over the whole tree: build it once per pass.
+- Allocations stay bounded by the input limits; a call frees everything it allocated when it returns.
+- No thread outlives a call. `Extractor::extract_batch`'s scoped workers are the one place the library
+  spawns threads.
+- No global cache and no global allocator: a cache is owned by the caller, the allocator by the binary.
+- Measure before and after a resource change: output digests equal on both option sets, the numbers in
+  the commit message (`docs/architecture.md`, Performance and memory).
 
 ## Tests
 
