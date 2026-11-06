@@ -92,6 +92,41 @@ pub(crate) const BLANK_CASES: &[BlankCase] = &[
         xml: "<n0>\n  <n1>\n  <n2>\n  <n3>\n  <n4>\n  <n5>\n  <n6>\n  <n7>\n  <n8>\n  <n9>\n  <n10>\n  <n11>\n  <n12>\n  <n13>\n  <n14>\n  <n15>\n  <n16>\n  <n17>\n  <n18>\n  <n19>\n  <n20>\n  <n21>\n  <n22>\n  <n23>\n  <n24>\n  <n25>\n  <n26>\n  <n27>\n  <n28>\n  <n29>\n  <n30>\n  <n31>\n  <leaf/>\n</n31>\n</n30>\n</n29>\n</n28>\n</n27>\n</n26>\n</n25>\n</n24>\n</n23>\n</n22>\n</n21>\n</n20>\n</n19>\n</n18>\n</n17>\n</n16>\n</n15>\n</n14>\n</n13>\n</n12>\n</n11>\n</n10>\n</n9>\n</n8>\n</n7>\n</n6>\n</n5>\n</n4>\n</n3>\n</n2>\n</n1>\n</n0>",
         expected: "<n0>\n  <n1>\n    <n2>\n      <n3>\n        <n4>\n          <n5>\n            <n6>\n              <n7>\n                <n8>\n                  <n9>\n                    <n10>\n                      <n11>\n                        <n12>\n                          <n13>\n                            <n14>\n                              <n15>\n                                <n16>\n                                  <n17>\n                                    <n18>\n                                      <n19>\n                                        <n20>\n                                          <n21>\n                                            <n22>\n                                              <n23>\n                                                <n24>\n                                                  <n25>\n                                                    <n26>\n                                                      <n27>\n                                                        <n28>\n                                                          <n29>\n                                                            <n30>\n                                                            <n31>\n                                                            <leaf/>\n                                                            </n31>\n                                                            </n30>\n                                                          </n29>\n                                                        </n28>\n                                                      </n27>\n                                                    </n26>\n                                                  </n25>\n                                                </n24>\n                                              </n23>\n                                            </n22>\n                                          </n21>\n                                        </n20>\n                                      </n19>\n                                    </n18>\n                                  </n17>\n                                </n16>\n                              </n15>\n                            </n14>\n                          </n13>\n                        </n12>\n                      </n11>\n                    </n10>\n                  </n9>\n                </n8>\n              </n7>\n            </n6>\n          </n5>\n        </n4>\n      </n3>\n    </n2>\n  </n1>\n</n0>",
     },
+    BlankCase {
+        name: "blank_before_reference_kept",
+        xml: "<a><b/>  &amp;<c/></a>",
+        expected: "<a><b/>  &amp;<c/></a>",
+    },
+    BlankCase {
+        name: "blank_before_non_ascii_kept",
+        xml: "<a><b/> \u{E9}<c/></a>",
+        expected: "<a><b/> \u{E9}<c/></a>",
+    },
+    BlankCase {
+        name: "first_child_reference_keeps_later_blank",
+        xml: "<a>&amp;<b/>  <c/></a>",
+        expected: "<a>&amp;<b/>  <c/></a>",
+    },
+    BlankCase {
+        name: "last_child_reference_keeps_blank",
+        xml: "<a><b/>&amp;  </a>",
+        expected: "<a><b/>&amp;  </a>",
+    },
+    BlankCase {
+        name: "less_than_reference_not_sticky",
+        xml: "<a><b/>&lt;<c/>  <d/></a>",
+        expected: "<a><b/>&lt;<c/><d/></a>",
+    },
+    BlankCase {
+        name: "greater_than_reference_not_sticky",
+        xml: "<a><b/>&gt;<c/>  <d/></a>",
+        expected: "<a><b/>&gt;<c/><d/></a>",
+    },
+    BlankCase {
+        name: "cr_reference_not_sticky",
+        xml: "<a><b/>&#13;<c/>  <d/></a>",
+        expected: "<a><b/>&#13;<c/><d/></a>",
+    },
 ];
 
 #[rustfmt::skip]

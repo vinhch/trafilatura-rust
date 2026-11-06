@@ -752,18 +752,21 @@ fn merge_adjacent_hi_ticks_in_the_pair_loop() {
     );
 }
 
+// Expected value is oracle output, from: scripts/oracle.sh 'from lxml import etree; from trafilatura.xml import CONTROL_PARSER; e = etree.Element("p"); a = etree.SubElement(e, "a"); a.tail = ""; b = etree.SubElement(e, "bibl", type="sigle"); b.text = ""; t = etree.tostring(e, encoding="unicode"); print(repr(t)); print(repr(etree.tostring(etree.fromstring(t, CONTROL_PARSER), pretty_print=True, encoding="unicode").strip()))'
 #[test]
 fn empty_piece_is_absent() {
-    // `Some("")` never reaches the parser: `bibl` serializes as `<bibl/>`, and its empty text does not
-    // stop the parent from indenting its children.
+    // `Some("")` never reaches the parser: `bibl` serializes as `<bibl/>`, and the empty tail of `a` and
+    // the empty text of `bibl` do not stop the parent from indenting its children.
     let mut tree = xml(r#"<p><a/><bibl type="sigle"/></p>"#);
     let root = tree.root();
+    let a = tree.child_at(root, 0).unwrap();
+    tree.node_mut(a).tail = Some(String::new());
     let bibl = tree.child_at(root, 1).unwrap();
     tree.node_mut(bibl).text = Some(String::new());
     remove_blank_text(&mut tree, root, &Call::default()).unwrap();
     assert_eq!(
-        tree.tostring(root, true, false),
-        "<p>\n  <a/>\n  <bibl type=\"sigle\"/>\n</p>\n"
+        tree.tostring(root, true, false).trim(),
+        "<p>\n  <a/>\n  <bibl type=\"sigle\"/>\n</p>"
     );
 }
 

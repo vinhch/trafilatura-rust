@@ -22,7 +22,8 @@ type Attrs = Vec<(LocalName, Arc<str>)>;
 
 /// The five predefined XML entities.
 fn unescape(text: &str) -> String {
-    text.replace("&lt;", "<")
+    text.replace("&#13;", "\r")
+        .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&apos;", "'")

@@ -6,8 +6,8 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 
 `BlankCase`: an `etree.fromstring` snippet and the output of upstream's `control_xml_output` parse (`xml.py`,
 `CONTROL_PARSER`) after the text round trip of `xml.py:255`. The inner `tostring` writes text, not character
-references, as upstream does: non-ASCII text reaches libxml2 as text. The snippet follows `check_snippet` of
-`gen_xml_output_cases`, and also has no comment and no processing instruction, which `tests/trees` does not keep.
+references, as upstream does: non-ASCII text reaches libxml2 as text. The snippet follows `check_blank_snippet`
+(the `check_snippet` rules of `gen_xml_output_cases`, but `&#13;` is allowed), and also has no comment and no processing instruction, which `tests/trees` does not keep.
 
 `DocCase`: a page through `extract` with `fast=True` (D-1), as XML, XML-TEI, JSON without metadata, JSON with
 metadata and CSV with metadata. The page is parsed with html5lib (D-2), and the copy rule must not fire.
@@ -17,13 +17,13 @@ character offset near 4,000, counted in characters and in bytes at the width of 
 The probe reports every offset whose run survives the round trip (stderr) and is true when there is one.
 """
 
+import re
 import sys
 from dataclasses import dataclass
 
 from parity import MAX_DATE
 from parity.gen_main_extractor_cases import para, prose
 from parity.generate import pinned_version
-from parity.gen_xml_output_cases import check_snippet as check_xml_snippet
 from parity.gen_xpath_cases import rust_str
 
 
@@ -76,12 +76,30 @@ BLANK_SNIPPETS: list[tuple[str, str]] = [
     ("e_acute_text_then_blanks", "<a>café<b/>\n  <c/></a>"),
     ("long_blank_run_with_tab_before_tag", "<a><b/>" + " \t" * 200 + "<c/></a>"),
     ("nesting_past_indent_cap", nested_snippet(32)),
+    # a blank chunk followed by a reference or a non-ASCII byte is kept, whatever the element holds
+    ("blank_before_reference_kept", "<a><b/>  &amp;<c/></a>"),
+    ("blank_before_non_ascii_kept", "<a><b/> é<c/></a>"),
+    # the first child is text (a reference, which does not set the sticky state)
+    ("first_child_reference_keeps_later_blank", "<a>&amp;<b/>  <c/></a>"),
+    # the last child is text (a reference) and the element is not sticky
+    ("last_child_reference_keeps_blank", "<a><b/>&amp;  </a>"),
+    # `<`, `>` and CR references are never dropped and do not set the sticky state
+    ("less_than_reference_not_sticky", "<a><b/>&lt;<c/>  <d/></a>"),
+    ("greater_than_reference_not_sticky", "<a><b/>&gt;<c/>  <d/></a>"),
+    ("cr_reference_not_sticky", "<a><b/>&#13;<c/>  <d/></a>"),
 ]
 
 
-def check_snippet(source: str) -> None:
-    check_xml_snippet(source)
-    assert "<!--" not in source and "<?" not in source, repr(source[:200])
+def check_blank_snippet(source: str) -> None:
+    "The rules of `gen_xml_output_cases.check_snippet` except its `&#` rule: the CR case needs `&#13;`, which `tests/trees` decodes."
+    from lxml import etree
+
+    assert "\r" not in source and "<!--" not in source and "<?" not in source, repr(source[:200])
+    for tag in re.findall(r"<[A-Za-z][^<>]*>", source):
+        for double, single in re.findall(r"""=\s*(?:"([^"]*)"|'([^']*)')""", tag):
+            assert not re.search(r"[\t\n\r]", double + single), repr(tag)
+    root = etree.fromstring(source)
+    assert not any(el.tag in ("svg", "math") for el in root.iter()), repr(source[:200])
 
 
 def control_parse(xml: str, pretty_print: bool) -> str:
@@ -99,7 +117,7 @@ def blank_cases() -> list[BlankCase]:
     assert len(set(names)) == len(names), names
     cases = []
     for name, xml in BLANK_SNIPPETS:
-        check_snippet(xml)
+        check_blank_snippet(xml)
         cases.append(BlankCase(name, xml, control_parse(xml, True)))
     return cases
 
