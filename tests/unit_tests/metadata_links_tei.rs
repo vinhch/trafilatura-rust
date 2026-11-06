@@ -431,7 +431,8 @@ fn test_links_phase_6_lines() {
     );
 }
 
-// Upstream's other blocks call `extract` and `validate_tei` (D-27): see `test_tei_phase_6_lines`.
+// Upstream's `test_tei`: its extract lines are in `test_tei_phase_6_lines`, its `validate_tei` lines
+// in `test_tei_validation_phase_6_lines` (D-27).
 #[test]
 fn test_tei() {
     let call = Call::default();

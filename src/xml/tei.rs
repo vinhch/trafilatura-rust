@@ -291,9 +291,9 @@ pub fn check_tei(
         convert_head(tree, head, call)?;
     }
 
-    let bodies = text_bodies(tree, xmldoc);
+    let bodies = text_bodies(tree, xmldoc, call)?;
     // convert <lb/> when child of <div> to <p>
-    for lb in div_line_breaks(tree, &bodies) {
+    for lb in div_line_breaks(tree, &bodies, call)? {
         tick(&mut visited, call)?;
         if truthy_tail(tree, lb).is_some_and(|tail| !strip(tail).is_empty()) {
             let node = tree.node_mut(lb);
@@ -304,7 +304,7 @@ pub fn check_tei(
 
     // a snapshot, as upstream's `findall`: an element merged away is still handled, inside its
     // detached subtree, which changes no output
-    for elem in union_below(tree, &bodies, &[]) {
+    for elem in union_below(tree, &bodies, &[], call)? {
         tick(&mut visited, call)?;
         let kind = tree.tag(elem).map(|tag| {
             (
@@ -330,40 +330,77 @@ pub fn check_tei(
 
 /// The `body` elements that `.//text/body` selects below `root`: a `body` whose parent is a `text`
 /// element under `root`, in document order.
-fn text_bodies(tree: &Tree, root: NodeId) -> Vec<NodeId> {
-    tree.iterdescendants(root, &["body"])
-        .filter(|&body| {
-            tree.node(body)
+///
+/// Checks `call` about every `CHECK_INTERVAL` nodes.
+pub(super) fn text_bodies(
+    tree: &Tree,
+    root: NodeId,
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    let mut visited = 0;
+    let mut bodies = Vec::new();
+    for node in tree.iterdescendants(root, &[]) {
+        tick(&mut visited, call)?;
+        let selected = tree.tag(node) == Some("body")
+            && tree
+                .node(node)
                 .parent()
-                .is_some_and(|text| tree.tag(text) == Some("text") && tree.is_ancestor(root, text))
-        })
-        .collect()
+                .is_some_and(|text| tree.tag(text) == Some("text") && tree.is_ancestor(root, text));
+        if selected {
+            bodies.push(node);
+        }
+    }
+    Ok(bodies)
 }
 
 /// The `lb` elements that `body//div/lb` selects under `bodies`: an `lb` whose parent is a `div`.
-fn div_line_breaks(tree: &Tree, bodies: &[NodeId]) -> Vec<NodeId> {
-    union_below(tree, bodies, &["lb"])
-        .into_iter()
-        .filter(|&lb| {
-            tree.node(lb)
-                .parent()
-                .is_some_and(|parent| tree.tag(parent) == Some("div"))
-        })
-        .collect()
+///
+/// Checks `call` about every `CHECK_INTERVAL` nodes.
+pub(super) fn div_line_breaks(
+    tree: &Tree,
+    bodies: &[NodeId],
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    let mut visited = 0;
+    let mut found = Vec::new();
+    for lb in union_below(tree, bodies, &["lb"], call)? {
+        tick(&mut visited, call)?;
+        if tree
+            .node(lb)
+            .parent()
+            .is_some_and(|parent| tree.tag(parent) == Some("div"))
+        {
+            found.push(lb);
+        }
+    }
+    Ok(found)
 }
 
 /// The elements named in `tags` (every element when empty) below each of `bodies`, in document
 /// order and without repeats: nested bodies would reach an element twice.
-fn union_below(tree: &Tree, bodies: &[NodeId], tags: &[&str]) -> Vec<NodeId> {
-    let found: Vec<NodeId> = bodies
-        .iter()
-        .flat_map(|&body| tree.iterdescendants(body, tags))
-        .collect();
+///
+/// Checks `call` about every `CHECK_INTERVAL` nodes.
+pub(super) fn union_below(
+    tree: &Tree,
+    bodies: &[NodeId],
+    tags: &[&str],
+    call: &Call<'_>,
+) -> Result<Vec<NodeId>, ExtractError> {
+    let mut visited = 0;
+    let mut found = Vec::new();
+    for &body in bodies {
+        for node in tree.iterdescendants(body, &[]) {
+            tick(&mut visited, call)?;
+            if tags.is_empty() || tree.tag(node).is_some_and(|tag| tags.contains(&tag)) {
+                found.push(node);
+            }
+        }
+    }
     if bodies.len() < 2 {
-        return found;
+        return Ok(found);
     }
     let mut seen = HashSet::with_capacity(found.len());
-    found.into_iter().filter(|&id| seen.insert(id)).collect()
+    Ok(found.into_iter().filter(|&id| seen.insert(id)).collect())
 }
 
 /// Converts one `head` for `check_tei`: its tag becomes `ab` with `type="header"`. A head with
@@ -591,6 +628,7 @@ pub fn move_element_one_level_up(
         sibling = tree.node(current).next_sibling();
     }
     for current in following {
+        tick(&mut visited, call)?;
         tree.append(new_elem, current);
     }
 

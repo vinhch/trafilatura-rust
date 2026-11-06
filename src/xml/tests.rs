@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::tei::{div_line_breaks, text_bodies, union_below};
 use super::*;
 use crate::cancel::{CHECK_INTERVAL, Call, CancelToken};
 use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
@@ -248,6 +249,45 @@ fn check_tei_stops_when_cancelled() {
     let root = tree.root();
     assert_eq!(
         check_tei(&mut tree, root, None, &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn text_bodies_stops_when_cancelled() {
+    let items = "<p>x</p>".repeat(CHECK_INTERVAL + 1);
+    let tree = xml(&format!("<TEI><text><body>{items}</body></text></TEI>"));
+    assert!(tree.len() > CHECK_INTERVAL);
+    let token = CancelToken::new();
+    token.cancel();
+    assert_eq!(
+        text_bodies(&tree, tree.root(), &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn div_line_breaks_stops_when_cancelled() {
+    let items = "<lb/>".repeat(CHECK_INTERVAL + 1);
+    let tree = xml(&format!("<body><div>{items}</div></body>"));
+    assert!(tree.len() > CHECK_INTERVAL);
+    let token = CancelToken::new();
+    token.cancel();
+    assert_eq!(
+        div_line_breaks(&tree, &[tree.root()], &Call::default().cancel(&token)),
+        Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn union_below_stops_when_cancelled() {
+    let items = "<p>x</p>".repeat(CHECK_INTERVAL + 1);
+    let tree = xml(&format!("<body>{items}</body>"));
+    assert!(tree.len() > CHECK_INTERVAL);
+    let token = CancelToken::new();
+    token.cancel();
+    assert_eq!(
+        union_below(&tree, &[tree.root()], &[], &Call::default().cancel(&token)),
         Err(ExtractError::Cancelled)
     );
 }
