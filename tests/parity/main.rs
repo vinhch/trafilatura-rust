@@ -48,19 +48,23 @@ const CLASSES: [&str; 7] = [
     "upstream-error",
 ];
 
-const OUTPUT_CLASSES: [&str; 6] = [
+const OUTPUT_CLASSES: [&str; 7] = [
     "match",
     "decompress",
     "encoding",
+    "known-metadata",
     "normalized",
     "port-bug",
     "upstream-error",
 ];
 
-const OUTPUT_FORMATS: [(&str, Format); 3] = [
+const OUTPUT_FORMATS: [(&str, Format); 6] = [
     ("txt", Format::Txt),
     ("markdown", Format::Markdown),
     ("html", Format::Html),
+    ("xml", Format::Xml),
+    ("xmltei", Format::XmlTei),
+    ("json", Format::Json),
 ];
 
 /// Pages the crate rejects with `InvalidValue` while upstream extracted text, because the oracle's
@@ -145,9 +149,10 @@ fn outputs_match_html5_fixture() {
         return;
     };
     let entries = index["pages"].as_array().unwrap();
+    let max_date = index["max_date"].as_str().unwrap();
     let results: Vec<OutputResult> = entries
         .iter()
-        .flat_map(|entry| run_output_page(&upstream, &fixtures, entry))
+        .flat_map(|entry| run_output_page(&upstream, &fixtures, entry, max_date))
         .collect();
     let path = write_output_report(&results, entries.len());
     let port_bugs: Vec<String> = results

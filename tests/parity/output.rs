@@ -1,4 +1,5 @@
 use super::*;
+use std::ops::Range;
 
 static NS_DECLARATION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#" xmlns:ns\d+="[^"]*""#).unwrap());
@@ -22,12 +23,33 @@ pub(crate) struct OutputCase<'a> {
     pub(crate) expected: Option<&'a str>,
     pub(crate) upstream_error: bool,
     pub(crate) actual: &'a Result<String, ExtractError>,
+    /// The fixture values of the fields `METADATA_KNOWN` lists for this page; empty for other pages.
+    pub(crate) known_values: &'a [String],
+}
+
+/// The fixture values of the fields `METADATA_KNOWN` lists for page `id`, read from the page's
+/// fixture metadata. A list-valued field (`tags`) contributes each item.
+pub(crate) fn known_values(id: &str, metadata: &Value) -> Vec<String> {
+    METADATA_KNOWN
+        .iter()
+        .filter(|(page, _, _)| *page == id)
+        .flat_map(|(_, field, _)| match &metadata[*field] {
+            Value::String(text) => vec![text.clone()],
+            Value::Array(items) => items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect(),
+            _ => vec![],
+        })
+        .filter(|value| !value.is_empty())
+        .collect()
 }
 
 /// Classes of one output and its classified hunks, first match wins: `match`, `decompress`,
 /// `upstream-error`, `normalized` (a page in `normalized_rejects` only, whole output), then, when both
-/// sides have text, per hunk `encoding` (page not valid UTF-8) or `port-bug`. Text on one side only is
-/// a whole-output `port-bug`.
+/// sides have text, per hunk `encoding` (page not valid UTF-8), `known-metadata`, or `port-bug`. A
+/// fingerprint hunk is `encoding` when the page is not valid UTF-8 and every other hunk is `encoding`,
+/// else `port-bug`. Text on one side only is a whole-output `port-bug`.
 pub(crate) fn classify_output(
     case: &OutputCase,
     normalized_rejects: &[(&str, &str)],
@@ -61,13 +83,37 @@ pub(crate) fn classify_output(
     };
     let (left, right): (Vec<&str>, Vec<&str>) =
         (expected.lines().collect(), actual.lines().collect());
-    let classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
+    let mut classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
         .into_iter()
         .map(|hunk| {
-            let encoding = !case.valid_utf8 && is_encoding_text_hunk(&left, &right, &hunk);
-            (hunk, if encoding { "encoding" } else { "port-bug" })
+            let class = if !case.valid_utf8 && is_encoding_text_hunk(&left, &right, &hunk) {
+                "encoding"
+            } else if is_fingerprint_hunk(&left, &right, &hunk) {
+                "fingerprint"
+            } else if known_metadata_hunk(&left, &right, &hunk, case.known_values) {
+                "known-metadata"
+            } else {
+                "port-bug"
+            };
+            (hunk, class)
         })
         .collect();
+    // A fingerprint follows the text of its page: D-3 changes both, and a fingerprint next to any
+    // other kind of difference is not explained.
+    let fingerprint_class = if !case.valid_utf8
+        && classified
+            .iter()
+            .all(|(_, class)| matches!(*class, "encoding" | "fingerprint"))
+    {
+        "encoding"
+    } else {
+        "port-bug"
+    };
+    for (_, class) in &mut classified {
+        if *class == "fingerprint" {
+            *class = fingerprint_class;
+        }
+    }
     // Texts that differ only in the final newline make no line hunk and are still a difference.
     if classified.is_empty() {
         return whole("port-bug");
@@ -75,6 +121,98 @@ pub(crate) fn classify_output(
     let classes: std::collections::BTreeSet<&'static str> =
         classified.iter().map(|(_, class)| *class).collect();
     (classes.into_iter().collect(), classified)
+}
+
+/// The lines strictly between `<teiHeader>` and `</teiHeader>`, or `None` when the output has no
+/// header.
+fn header_content(lines: &[&str]) -> Option<Range<usize>> {
+    let open = lines.iter().position(|line| line.trim() == "<teiHeader>")?;
+    let close = open
+        + lines
+            .iter()
+            .skip(open)
+            .position(|line| line.trim() == "</teiHeader>")?;
+    Some(open + 1..close)
+}
+
+fn within(range: &Range<usize>, span: &Range<usize>) -> bool {
+    range.start >= span.start && range.end <= span.end
+}
+
+/// Rule for the TEI header of a page `METADATA_KNOWN` lists: both ranges lie inside the `teiHeader`
+/// of their side, and each line pair holds a fixture value of a listed field on one side. The text
+/// part is outside the header, so a text difference is never this class.
+// Oracle: the header of `xmltei` carries the metadata fields; the metadata check already pins them.
+fn known_metadata_hunk(
+    expected: &[&str],
+    actual: &[&str],
+    hunk: &Hunk,
+    known_values: &[String],
+) -> bool {
+    let (Some(left_header), Some(right_header)) =
+        (header_content(expected), header_content(actual))
+    else {
+        return false;
+    };
+    if !within(&hunk.expected, &left_header) || !within(&hunk.actual, &right_header) {
+        return false;
+    }
+    let left = expected.get(hunk.expected.clone()).unwrap_or_default();
+    let right = actual.get(hunk.actual.clone()).unwrap_or_default();
+    let mentions = |line: &str| {
+        known_values
+            .iter()
+            .any(|value| line.contains(value.as_str()))
+    };
+    !left.is_empty()
+        && left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(a, b)| mentions(a) || mentions(b))
+}
+
+/// `line` with the value of each fingerprint blanked: the text of `<note type="fingerprint">` and the
+/// `fingerprint` attribute of the xml `<doc>`.
+fn without_fingerprint(line: &str) -> String {
+    blank_after(
+        &blank_after(line, "type=\"fingerprint\">", '<'),
+        "fingerprint=\"",
+        '"',
+    )
+}
+
+/// `text` with the value after each `marker` removed up to `end`, which stays in the output.
+fn blank_after(text: &str, marker: &str, end: char) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some((head, tail)) = rest.split_once(marker) {
+        out.push_str(head);
+        out.push_str(marker);
+        rest = match tail.split_once(end) {
+            Some((_, after)) => {
+                out.push(end);
+                after
+            }
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Whether the hunk differs only in a fingerprint value: each line pair is equal once the values are
+/// blanked, and some pair differs.
+fn is_fingerprint_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
+    let left = expected.get(hunk.expected.clone()).unwrap_or_default();
+    let right = actual.get(hunk.actual.clone()).unwrap_or_default();
+    !left.is_empty()
+        && left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(a, b)| without_fingerprint(a) == without_fingerprint(b))
+        && left.iter().zip(right).any(|(a, b)| a != b)
 }
 
 pub(crate) struct OutputResult {
@@ -90,23 +228,28 @@ pub(crate) fn run_output_page(
     upstream: &Path,
     fixtures: &Path,
     entry: &Value,
+    max_date: &str,
 ) -> Vec<OutputResult> {
     let id = entry["id"].as_str().unwrap();
     let source = entry["source"].as_str().unwrap();
     let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
     let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
     let bytes = std::fs::read(upstream.join(source)).unwrap();
+    // The TEI header writes `filedate` from `max_date`, so every format runs with the index's one.
+    let call = Call::default().max_date(max_date);
+    let known = known_values(id, &fixture["html5"]["metadata"]);
     OUTPUT_FORMATS
         .iter()
         .map(|&(name, format)| {
             let expected = fixture["html5"]["formats"][name]
                 .as_str()
                 .map(|text| match name {
-                    "html" => {
+                    // deviation: D-2 (the oracle writes `nsN:` prefixes for foreign elements)
+                    "html" | "xml" | "xmltei" => {
                         let stripped = strip_lxml_namespaces(text);
                         assert!(
                             !stripped.contains(" xmlns:ns") && !NS_TAG_PREFIX.is_match(&stripped),
-                            "{id}: namespace prefixes left in the expected html"
+                            "{id}: namespace prefixes left in the expected {name}"
                         );
                         stripped
                     }
@@ -115,7 +258,7 @@ pub(crate) fn run_output_page(
             let actual = Options::new()
                 .format(format)
                 .build()
-                .extract(&Input::bytes(&bytes), &Call::default());
+                .extract(&Input::bytes(&bytes), &call);
             let (classes, hunks) = classify_output(
                 &OutputCase {
                     id,
@@ -124,6 +267,7 @@ pub(crate) fn run_output_page(
                     expected: expected.as_deref(),
                     upstream_error: fixture["html5"]["errors"][name].is_string(),
                     actual: &actual,
+                    known_values: &known,
                 },
                 NORMALIZED_REJECTS,
             );

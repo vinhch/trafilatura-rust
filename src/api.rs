@@ -31,6 +31,14 @@ pub enum Format {
     Markdown,
     /// HTML.
     Html,
+    /// XML, as upstream's `control_xml_output` writes it.
+    Xml,
+    /// TEI XML with a `teiHeader`. Forces [`Options::with_metadata`] on, as upstream does.
+    XmlTei,
+    /// JSON, as upstream's `build_json_output` writes it.
+    Json,
+    /// CSV: one tab-separated row of the metadata fields, as upstream's `xml_to_csv` writes it.
+    Csv,
     /// The [`Document`] with its `text` and `comments` as strings; only
     /// [`Extractor::bare_extraction`] serves it.
     Python,
@@ -43,6 +51,10 @@ pub fn settings_format(format: Format) -> settings::Format {
         Format::Txt => settings::Format::Txt,
         Format::Markdown => settings::Format::Markdown,
         Format::Html => settings::Format::Html,
+        Format::Xml => settings::Format::Xml,
+        Format::XmlTei => settings::Format::XmlTei,
+        Format::Json => settings::Format::Json,
+        Format::Csv => settings::Format::Csv,
         Format::Python => settings::Format::Python,
     }
 }
@@ -215,7 +227,8 @@ impl Options {
 
     /// Sets whether the text of `script` and `style` elements is kept in the parse. Off, the text
     /// of a `style` element and of a `script` whose `type` upstream does not read is not stored. A
-    /// page whose text readers reach dropped text is parsed again with the text kept.
+    /// page whose text readers reach dropped text is parsed again with the text kept. The XML-TEI
+    /// format keeps the text either way.
     pub fn keep_script_text(mut self, keep: bool) -> Self {
         self.keep_script_text = keep;
         self
@@ -249,7 +262,8 @@ impl Options {
             limits: ParseLimits {
                 max_nodes: self.max_nodes,
                 max_input_bytes: self.max_input_bytes,
-                drop_script_text: !self.keep_script_text,
+                // XML-TEI's header date reads script text (D-14), so that format keeps it.
+                drop_script_text: !self.keep_script_text && self.format != Some(Format::XmlTei),
                 ..ParseLimits::default()
             },
         }

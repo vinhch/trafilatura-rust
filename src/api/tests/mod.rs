@@ -569,3 +569,54 @@ fn forum_thread_keeps_replies_in_place() {
         Ok(format!("{}\n{}\n{r1}\n{r2}", op.trim_end(), cl.trim_end()))
     );
 }
+
+#[test]
+fn public_formats_map_to_settings() {
+    for (public, internal) in [
+        (Format::Txt, settings::Format::Txt),
+        (Format::Markdown, settings::Format::Markdown),
+        (Format::Html, settings::Format::Html),
+        (Format::Xml, settings::Format::Xml),
+        (Format::XmlTei, settings::Format::XmlTei),
+        (Format::Json, settings::Format::Json),
+        (Format::Csv, settings::Format::Csv),
+        (Format::Python, settings::Format::Python),
+    ] {
+        assert_eq!(settings_format(public), internal);
+    }
+}
+
+#[test]
+fn extract_xmltei_forces_metadata() {
+    // The page is not asked for metadata; the TEI format carries its header anyway.
+    let xml_tei = Options::new().format(Format::XmlTei).build();
+    let output = text_of(&xml_tei);
+    assert!(output.contains("<teiHeader>"), "{output}");
+    assert!(
+        output.contains("<title type=\"main\">T</title>"),
+        "{output}"
+    );
+}
+
+/// A page whose only date sits in an untyped `script`, which the default parse drops (D-14).
+const SCRIPT_DATE_PAGE: &str = concat!(
+    "<html><head><title>Title</title></head><body><article><p>The first paragraph describes the ",
+    "subject in some detail, so the extractor keeps it as the main text of the page. A second ",
+    "sentence adds more words about the same subject, and a third one closes the paragraph with ",
+    "enough length to pass the size check.</p></article>",
+    "<script>var meta = {\"datePublished\": \"2014-03-05\"};</script></body></html>"
+);
+
+#[test]
+fn xmltei_reads_date_from_script_text() {
+    // oracle: scripts/oracle.sh 'from trafilatura import extract; page = "<html><head><title>Title</title></head><body><article><p>The first paragraph describes the subject in some detail, so the extractor keeps it as the main text of the page. A second sentence adds more words about the same subject, and a third one closes the paragraph with enough length to pass the size check.</p></article><script>var meta = {\"datePublished\": \"2014-03-05\"};</script></body></html>"; out = extract(page, fast=True, output_format="xmltei", date_extraction_params={"original_date": True, "extensive_search": True, "max_date": "2026-11-06"}); print("\n".join(l for l in out.splitlines() if "date" in l))'
+    let output = Options::new()
+        .format(Format::XmlTei)
+        .build()
+        .extract(
+            &Input::text(SCRIPT_DATE_PAGE),
+            &Call::default().max_date("2026-11-06"),
+        )
+        .unwrap();
+    assert!(output.contains("<date>2014-03-05</date>"), "{output}");
+}

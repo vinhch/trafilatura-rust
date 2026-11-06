@@ -56,6 +56,7 @@ fn classify_output_names_each_class() {
         expected,
         upstream_error,
         actual,
+        known_values: &[],
     };
     let listed = [("page", "element name is not an XML Name")];
     let class = |case: &OutputCase| classify_output(case, &[]).0;
@@ -227,4 +228,108 @@ fn field_maps_compares_only_two_objects() {
     assert!(field_maps(&Value::Null, &dict).is_none());
     assert!(field_maps(&dict, &Value::Null).is_none());
     assert!(field_maps(&Value::Null, &Value::Null).is_none());
+}
+
+/// A TEI document whose header carries one `date` and whose text is one paragraph.
+fn tei_date(date: &str, paragraph: &str) -> String {
+    format!(
+        "<TEI>\n  <teiHeader>\n    <date>{date}</date>\n  </teiHeader>\n  <text>\n    <p>{paragraph}</p>\n  </text>\n</TEI>\n"
+    )
+}
+
+#[test]
+fn known_metadata_header_only() {
+    // Oracle: the METADATA_KNOWN entry of this page and field, and the fixture's date value.
+    const KNOWN_PAGE: &str = "tests__eval__football.ua.podolski.html";
+    let known = known_values(KNOWN_PAGE, &json!({"date": "2016-08-15", "author": null}));
+    assert_eq!(known, ["2016-08-15"]);
+    let check = |id: &str, known: &[String], expected: &str, actual: &str| {
+        let result: Result<String, ExtractError> = Ok(actual.to_string());
+        let case = OutputCase {
+            id,
+            source: "page.html",
+            valid_utf8: true,
+            expected: Some(expected),
+            upstream_error: false,
+            actual: &result,
+            known_values: known,
+        };
+        classify_output(&case, &[])
+    };
+    let fixture_header = tei_date("2016-08-15", "Body");
+    let crate_header = tei_date("2007-12-16", "Body");
+    let (classes, hunks) = check(KNOWN_PAGE, &known, &fixture_header, &crate_header);
+    assert_eq!(classes, ["known-metadata"]);
+    assert_eq!(hunks.len(), 1);
+    // The same difference on a page METADATA_KNOWN does not list.
+    assert_eq!(
+        check("page.html", &[], &fixture_header, &crate_header).0,
+        ["port-bug"]
+    );
+    // A header field the page does not list.
+    let author = |name: &str| {
+        format!("<TEI>\n  <teiHeader>\n    <author>{name}</author>\n  </teiHeader>\n</TEI>\n")
+    };
+    assert_eq!(
+        check(KNOWN_PAGE, &known, &author("A"), &author("B")).0,
+        ["port-bug"]
+    );
+    // A text difference on the same page is not confined to the header.
+    assert_eq!(
+        check(
+            KNOWN_PAGE,
+            &known,
+            &tei_date("2016-08-15", "Body"),
+            &tei_date("2016-08-15", "Bodx")
+        )
+        .0,
+        ["port-bug"]
+    );
+    assert_eq!(
+        check(
+            KNOWN_PAGE,
+            &known,
+            &fixture_header,
+            &tei_date("2007-12-16", "Bodx")
+        )
+        .0,
+        ["known-metadata", "port-bug"]
+    );
+}
+
+#[test]
+fn fingerprint_on_encoding_page() {
+    let check = |valid_utf8: bool, expected: &str, actual: &str| {
+        let result: Result<String, ExtractError> = Ok(actual.to_string());
+        let case = OutputCase {
+            id: "page.html",
+            source: "page.html",
+            valid_utf8,
+            expected: Some(expected),
+            upstream_error: false,
+            actual: &result,
+            known_values: &[],
+        };
+        classify_output(&case, &[])
+    };
+    // A fingerprint over the D-3 text: its hunk follows the encoding hunks of the page.
+    let expected = "<note type=\"fingerprint\">aa</note>\n<p>same</p>\n<p>bli\u{17c}ej</p>\n";
+    let actual = "<note type=\"fingerprint\">bb</note>\n<p>same</p>\n<p>bli\u{bf}ej</p>\n";
+    let (classes, hunks) = check(false, expected, actual);
+    assert_eq!(classes, ["encoding"]);
+    assert_eq!(hunks.len(), 2);
+
+    // The same fingerprint with a text hunk that is not an encoding difference.
+    let ascii_change = "<note type=\"fingerprint\">bb</note>\n<p>same</p>\n<p>blaej</p>\n";
+    assert_eq!(check(false, expected, ascii_change).0, ["port-bug"]);
+
+    // The xml form, `<doc fingerprint="...">`.
+    let xml_expected = "<doc fingerprint=\"aa\">\n  <p>same</p>\n  <p>bli\u{17c}ej</p>\n</doc>\n";
+    let xml_actual = "<doc fingerprint=\"bb\">\n  <p>same</p>\n  <p>bli\u{bf}ej</p>\n</doc>\n";
+    assert_eq!(check(false, xml_expected, xml_actual).0, ["encoding"]);
+
+    // Valid UTF-8 has no D-3 text, so its fingerprint is a port bug.
+    let fingerprint_only = "<note type=\"fingerprint\">aa</note>\n";
+    let other = "<note type=\"fingerprint\">bb</note>\n";
+    assert_eq!(check(true, fingerprint_only, other).0, ["port-bug"]);
 }
