@@ -189,8 +189,9 @@ impl Options {
 
     /// Sets whether metadata is extracted: title, author, URL, hostname, date, sitename and the other
     /// fields go into the [`Document`] of [`Extractor::bare_extraction`], and into the header of the
-    /// text, Markdown and HTML outputs of [`Extractor::extract`]. A URL or author blacklist, or
-    /// [`Options::only_with_metadata`], turns it on too.
+    /// text, Markdown and HTML outputs, and into the XML, XML-TEI, JSON and CSV outputs of
+    /// [`Extractor::extract`]. A URL or author blacklist, or [`Options::only_with_metadata`],
+    /// turns it on too.
     pub fn with_metadata(mut self, on: bool) -> Self {
         self.with_metadata = on;
         self
