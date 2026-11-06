@@ -12,9 +12,8 @@
 //! an assertion that holds is ported as it is, one that does not asserts that result with a
 //! `deviation: D-1` comment (the slow path of `fast=False` is not ported), or `D-2` where the html5
 //! and libxml2 trees differ. Every explicit `fast=False` call has a D-1 comment, even when the
-//! value is the same. Lines that need the XML or JSON output (Phase 6) are in
-//! `#[ignore = "phase N"]` tests named `<test>_phase_N_lines`, over stubs that give the neutral
-//! value.
+//! value is the same. Lines that need the XML or JSON output are in `<test>_phase_6_lines` tests;
+//! the whole tests of the XML, XML-TEI, JSON and CSV output are in `xml_output.rs`.
 //!
 //! Not ported, and why:
 //! - `test_deprecations` (Python-only parameters), `test_incompatible_options` (a `Focus` makes the
@@ -31,15 +30,6 @@
 //!   `test_python_output` (`as_dict` key count; the crate has no `as_dict`, and the parity metadata
 //!   comparison checks the same keys).
 //! - Language detection (OI-4): `test_wrong_language_discarded`, `test_lang_detection`.
-//! - The XML, XML-TEI, JSON and CSV output (Phase 6), whole tests: `test_yoast_faq_block`,
-//!   `test_linebreak_before_inline_kept_in_xml`, `test_nested_element_tail_kept`,
-//!   `test_extract_div_keeps_inline_link`, `test_lb_only_subtree_stays_one_paragraph`,
-//!   `test_table_processing`, `test_xml_table_preserves_empty_cells`,
-//!   `test_table_cell_escaping_stays_out_of_xml`, `test_short_document_fallback_preserves_image`,
-//!   `test_longer_fallback_can_replace_requested_image`,
-//!   `test_recall_escalation_captured_comment_list`, `test_list_item_attr_whitelist`,
-//!   `test_list_processing`, `test_nested_list_first_item_not_duplicated`, `test_code_blocks`,
-//!   `test_table_nested_in_cell_pipeline`, `test_check_tei_loose_text`.
 //! - Single lines: `load_html(123)`, `extract(None, ...)` and the `output_format="xyz"` raises (the
 //!   input and the format are typed), `core.Extractor(source=)`, the YAML parse of
 //!   `test_markdown_metadata_yaml_safe`, the `prune_xpath` line of
@@ -82,6 +72,7 @@ mod metadata_links_tei;
 mod options_discard;
 mod serializer;
 mod tables;
+mod xml_output;
 
 fn extractor(
     format: Format,

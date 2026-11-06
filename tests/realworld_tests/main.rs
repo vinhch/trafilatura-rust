@@ -244,16 +244,25 @@ fn test_extract() {
         let options = Options::new().format(Format::Txt).formatting(formatting);
         let label = if formatting { "formatting" } else { "plain" };
         let mut c = Checks::new(&root, &options, label);
-        extract_cases(&mut c, formatting);
+        extract_cases(&mut c, formatting, false);
         failures.append(&mut c.failures);
     }
     assert_no_failures(&failures);
 }
 
+/// The `xmloutput=True` variant of upstream's `test_extract`: the same assertions, with the ones
+/// made for `xmloutput is False` left out. Upstream's assertions that fail under fast mode (lines
+/// 334-335 and 855-861) fail the same way for the XML output, so the D-1 values of `extract_cases`
+/// hold here too. Oracle: `scripts/oracle.sh "$(sed -e 's/FILE_PLACEHOLDER/realworld_tests.py/' -e 's/NAMES_PLACEHOLDER/["test_extract"]/' .superpowers/sdd/2026-11-06-phase6-output-formats/oracle/fast-asserts.py)"`,
+/// which lists the failing assert lines per case (`xmloutput` True and False give the same lines).
+// upstream: realworld_tests.py::test_extract
 #[test]
-#[ignore = "phase 6"]
 fn test_extract_xml() {
-    // todo(phase 6): xml
+    let Some(root) = upstream() else { return };
+    let options = Options::new().format(Format::Xml);
+    let mut c = Checks::new(&root, &options, "xml");
+    extract_cases(&mut c, false, true);
+    assert_no_failures(&c.failures);
 }
 
 // upstream: realworld_tests.py::test_extract_links_formatting
@@ -273,7 +282,7 @@ fn test_extract_links_formatting() {
 }
 
 #[allow(clippy::too_many_lines)]
-fn extract_cases(c: &mut Checks<'_>, formatting: bool) {
+fn extract_cases(c: &mut Checks<'_>, formatting: bool, xml: bool) {
     c.load("https://die-partei.net/luebeck/2012/05/31/das-ministerium-fur-club-kultur-informiert/");
     c.lacks("Impressum");
     c.has("Die GEMA dreht völlig am Zeiger!");
@@ -297,8 +306,10 @@ fn extract_cases(c: &mut Checks<'_>, formatting: bool) {
     c.lacks("Anzeigentarife");
     c.lacks("Aktuelle Berichte aus dieser Kategorie");
     c.load("http://www.rs-ingenieure.de/de/hochbau/leistungen/tragwerksplanung");
-    c.has("Wir bearbeiten alle Leistungsbilder");
-    c.lacks("Brückenbau");
+    if !xml {
+        c.has("Wir bearbeiten alle Leistungsbilder");
+        c.lacks("Brückenbau");
+    }
     c.load("http://www.shingon-reiki.de/reiki-und-schamanismus/");
     c.lacks("Catch Evolution");
     c.lacks("und gekennzeichnet mit");
@@ -346,9 +357,11 @@ fn extract_cases(c: &mut Checks<'_>, formatting: bool) {
     c.lacks("Für einen Roman");
     c.lacks("Auszeichnung der Branche.");
     c.load("https://buchperlen.wordpress.com/2013/10/20/leandra-lou-der-etwas-andere-modeblog-jetzt-auch-zwischen-buchdeckeln/");
-    c.has("Dann sollten Sie erst recht");
-    c.has("als saure Gürkchen entlarvte Ex-Boyfriends.");
-    c.lacks("Ähnliche Beiträge");
+    if !xml {
+        c.has("Dann sollten Sie erst recht");
+        c.has("als saure Gürkchen entlarvte Ex-Boyfriends.");
+        c.lacks("Ähnliche Beiträge");
+    }
     c.load("http://www.toralin.de/schmierfett-reparierend-verschlei-y-910.html");
     c.has("künftig das XADO-Schutzfett verwenden.");
     c.has("bis zu 50% Verschleiß.");
@@ -484,18 +497,22 @@ fn extract_cases(c: &mut Checks<'_>, formatting: bool) {
     c.lacks("Gesetzes- und Rechtsprechungszitate werden automatisch");
     c.has("Mit Verlaub, ich halte das für groben Unsinn.");
     c.load("https://www.telemedicus.info/article/2766-Rezension-Haerting-Internetrecht,-5.-Auflage-2014.html");
-    c.has("Aufbau und Inhalt");
-    c.has("Verlag Dr. Otto Schmidt");
-    c.lacks("Handbuch");
-    c.lacks("Drucken");
-    c.lacks("Ähnliche Artikel");
-    c.lacks("Anzeige:");
+    if !xml {
+        c.has("Aufbau und Inhalt");
+        c.has("Verlag Dr. Otto Schmidt");
+        c.lacks("Handbuch");
+        c.lacks("Drucken");
+        c.lacks("Ähnliche Artikel");
+        c.lacks("Anzeige:");
+    }
     c.load("https://www.cnet.de/88130484/so-koennen-internet-user-nach-dem-eugh-urteil-fuer-den-schutz-sensibler-daten-sorgen");
     c.has("Auch der Verweis auf ehrverletzende Bewertungen");
     c.lacks("Fanden Sie diesen Artikel nützlich?");
     c.lacks("Kommentar hinzufügen");
-    c.lacks("Anja Schmoll-Trautmann");
-    c.lacks("Aktuell");
+    if !xml {
+        c.lacks("Anja Schmoll-Trautmann");
+        c.lacks("Aktuell");
+    }
     c.load("https://correctiv.org/aktuelles/neue-rechte/2019/05/14/wir-haben-bereits-die-zusage");
     c.lacks("Alle Artikel zu unseren Recherchen");
     c.has("Vorweg: Die beteiligten AfD-Politiker");
@@ -615,7 +632,9 @@ fn extract_cases(c: &mut Checks<'_>, formatting: bool) {
     c.has("Vielen Dank für das interessante Interview!");
     c.lacks("akzeptiere die Datenschutzbestimmungen");
     c.lacks("Diese Beiträge solltest du nicht verpassen");
-    c.lacks("Annette Henkel");
+    if !xml {
+        c.lacks("Annette Henkel");
+    }
     c.load("https://threatpost.com/android-ransomware-spreads-via-sex-simulation-game-links-on-reddit-sms/146774/");
     c.has("These messages include links to the ransomware");
     c.has("using novel techniques to exfiltrate data.");
@@ -812,5 +831,7 @@ fn extract_cases(c: &mut Checks<'_>, formatting: bool) {
     c.lacks("I consent to receiving");
     c.has("It was not immediately clear if");
     c.lacks("turns CO2 into soap");
-    c.lacks("Reuters files");
+    if !xml {
+        c.lacks("Reuters files");
+    }
 }
