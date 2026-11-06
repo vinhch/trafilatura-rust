@@ -1,6 +1,8 @@
 use std::thread;
 
 use super::*;
+
+mod batch;
 use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;

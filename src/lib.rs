@@ -75,7 +75,9 @@ mod xml;
 #[allow(dead_code)]
 mod xpaths;
 
-pub use api::{Extractor, Format, Input, Options, html2txt};
+pub use api::{
+    BatchEnd, BatchError, BatchOptions, Extractor, Format, Input, Options, Skipped, html2txt,
+};
 pub use cancel::{Call, CancelToken};
 pub use deduplication::{DedupCache, DedupError};
 pub use error::{ExtractError, Rejection};

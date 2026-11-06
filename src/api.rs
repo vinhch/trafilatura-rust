@@ -16,6 +16,10 @@ use crate::extraction::{self, Source};
 use crate::settings::{self, Config, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES, Document, Focus};
 use crate::utils::HtmlInput;
 
+mod batch;
+
+pub use batch::{BatchEnd, BatchError, BatchOptions, Skipped};
+
 /// Output format of an extraction.
 // upstream: settings.py::SUPPORTED_FORMATS
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

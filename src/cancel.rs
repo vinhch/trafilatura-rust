@@ -91,6 +91,11 @@ impl<'a> Call<'a> {
         self.dedup
     }
 
+    /// The batch deadline of this call, when one is set.
+    pub(crate) fn deadline_at(&self) -> Option<Instant> {
+        self.deadline
+    }
+
     /// This call with its duplicate counts going to `dedup`, the rest unchanged.
     pub(crate) fn with_dedup(mut self, dedup: Dedup<'a>) -> Self {
         self.dedup = dedup;
