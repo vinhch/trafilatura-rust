@@ -537,8 +537,8 @@ fn test_xmltocsv() {
     let call = Call::default();
     let mut doc = Document::empty();
     let (tree, xml) = element("<xml/>");
-    doc.set_body(&tree, xml);
-    doc.set_comments_body(&tree, xml);
+    doc.set_body(&tree, xml).unwrap();
+    doc.set_comments_body(&tree, xml).unwrap();
     assert_eq!(
         xml_to_csv(&mut doc, false, &call).unwrap(),
         "null\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\tnull\r\n"
@@ -552,9 +552,9 @@ fn test_xmltocsv() {
     doc.image = Some("https://example.org/image.jpg".to_owned());
     doc.pagetype = Some("article".to_owned());
     let (tree, p) = element("<p>Test text</p>");
-    doc.set_body(&tree, p);
+    doc.set_body(&tree, p).unwrap();
     let (tree, p) = element("<p>Test comment</p>");
-    doc.set_comments_body(&tree, p);
+    doc.set_comments_body(&tree, p).unwrap();
     assert_eq!(
         xml_to_csv(&mut doc, false, &call).unwrap(),
         "https://example.org\t1\tnull\texample.org\tTest title\thttps://example.org/image.jpg\tnull\tTest text\tTest comment\tCC BY-SA\tarticle\r\n"
