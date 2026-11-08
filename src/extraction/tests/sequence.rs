@@ -241,8 +241,22 @@ fn sequence_matches_python() {
             false,
             false,
             true,
-            main4,
+            main4.clone(),
             thread_text,
+        ),
+        // oracle: scripts/oracle.sh over the esc_accept page, the cascade trace of
+        //   gen_extraction_cases.run_extract(page, "txt", Options(focus="precision", comments=False)) inside
+        //   html5_parsers(): forum=False captured=False first=291 baseline=None page=None retry=None
+        //   err=False final=main, so retry_ran is false; the text is the four Main sentences of the page
+        // Balanced (e1) escalates to the teaser text, so this row is the one that proves the Balanced gate
+        (
+            "e8",
+            full_page(&esc_accept, ""),
+            true,
+            false,
+            false,
+            main4,
+            "",
         ),
         // recall: the rescue runs (focus is not precision)
         ("r1", full_page(&short, ""), false, true, true, main1, ""),
