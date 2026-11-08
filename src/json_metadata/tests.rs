@@ -247,8 +247,10 @@ fn author_regexes_stop_on_cancel() {
 #[test]
 fn flat_list_is_processed_once() {
     // extract_json and process_parent each tick at visited 0, once per call, so a list of two
-    // objects checks two fewer times than the two objects alone; the per-object checks (author
-    // names, the fullest-form filter) add the same on both sides.
+    // objects checks two fewer times than the two objects alone. The per-object checks (author
+    // names, the fullest-form filter) add the same on both sides only because each object has a
+    // non-empty author name, so the filter ticks once per object: an empty name would leave the
+    // second object seeing the first one's author and tick once more.
     let article = |headline: &str| {
         format!(
             r#"{{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "{headline}", "author": {{"name": "Jane Doe"}}}}"#
