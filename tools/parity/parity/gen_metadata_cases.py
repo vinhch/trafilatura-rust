@@ -818,6 +818,14 @@ def metadata_snippets() -> list[tuple[str, str | None, tuple[str, ...]]]:
         (page('<link rel="license" href="https://creativecommons.org/licenses/by/4.0/">'), None, ()),
         (page("", '<a rel="license" href="https://creativecommons.org/licenses/by-sa/4.0/">CC</a>'), None, ()),
         (page('<meta property="og:image" content="https://example.org/i.png"><meta property="og:type" content="article"><meta name="description" content="Desc">'), None, ()),
+        # Date in `<meta property="article:published_time">`
+        (page('<meta property="article:published_time" content="2023-05-14T09:30:00+00:00">'), None, ()),
+        # Date in a JSON-LD `datePublished`
+        (page(ld(**article(datePublished="2023-06-02T08:00:00+00:00", headline="Dated"))), None, ()),
+        # Date in a `<time datetime>` in the body
+        (page("", '<article><time datetime="2023-07-21">July 21, 2023</time><p>Body text.</p></article>'), None, ()),
+        # Date only in the page URL
+        (page(), "https://www.example.org/2023/08/09/story", ()),
     ]
 
 
