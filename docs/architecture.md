@@ -95,9 +95,9 @@ upstream has no equivalent.
   function that edits a copy of upstream's options clones it, plus `&Call`) passed where upstream
   passes `options`, and is checked at stage
   boundaries and inside every loop over nodes; a ported function that checks it returns `Result`.
-  The `dom` primitives (edits, walks, `tostring`) are linear in the subtree and take no `Call`, except `copy`
-  and `copy_into`, which take a `&Call` and check it in their loops. A ported function that loops over nodes
-  checks it itself, and `convert_tags`, which runs several walks in a
+  The `dom` primitives (edits, walks, `tostring`) are linear in the subtree and take no `Call`, except `copy`,
+  `copy_into` and `holds_dropped_text`, which take a `&Call` and check it in their loops.
+  A ported function that loops over nodes checks it itself, and `convert_tags`, which runs several walks in a
   row, checks it before each one. A single `dom` walk runs unchecked; its bound is `max_nodes` (D-5).
   The handle is `Call` (`cancel.rs`): an optional borrowed `CancelToken` (`Arc<AtomicBool>`, no
   dependency) and an optional deadline `Instant`. Loops check both about every 256 nodes
