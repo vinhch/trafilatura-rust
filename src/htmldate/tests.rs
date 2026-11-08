@@ -2,8 +2,9 @@
 //! and `find_date`. Expected values in the generated `*_cases.rs` tables come from `scripts/oracle.sh`; a
 //! `// oracle:` comment names the probe that gave a hand-written value.
 
-use std::sync::LazyLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{LazyLock, mpsc};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
 
@@ -323,6 +324,59 @@ fn regex_parse_matches_python() {
             Ok(expected),
             "{text:?}"
         );
+    }
+}
+
+#[test]
+fn long_text_month_word_hang() {
+    // oracle: scripts/oracle.sh, upstream regex_parse. re.I does not fold U+0345, U+A7CB or U+A7DC into a
+    // letter of a month word. Each call runs on a thread, so a hang fails this test instead of the suite.
+    let cases: &[(&str, Option<DateTime>)] = &[
+        ("Janu\u{345}ary 5, 2020", None),
+        (
+            "Janu\u{345}ary 5, 2020 January 6, 2020",
+            DateTime::new(2020, 1, 6),
+        ),
+        ("abc\u{345}January 5, 2020", DateTime::new(2020, 1, 5)),
+        (
+            "5 of Ocak\u{345} 2019 and 12. Mart 2011",
+            DateTime::new(2011, 3, 12),
+        ),
+        (
+            "Mar\u{345}t 12, 2011 and 12. Mart 2011",
+            DateTime::new(2011, 3, 12),
+        ),
+        ("xyzU\u{345}January 5, 2020", DateTime::new(2020, 1, 5)),
+        ("Janu\u{345}ary 5, 2020 Janu\u{345}ary 6, 2020", None),
+        (
+            "January 5, 2020 Janu\u{345}ary 6, 2020",
+            DateTime::new(2020, 1, 5),
+        ),
+        ("Ocak\u{345} 1 2019 Ocak 2 2019", DateTime::new(2019, 1, 2)),
+        ("Janu\u{A7CB}ary 5, 2020", None),
+        (
+            "January 5, 2020 Janu\u{A7CB}ary 6, 2020",
+            DateTime::new(2020, 1, 5),
+        ),
+        ("Janu\u{A7DC}ary 5, 2020", None),
+        (
+            "January 5, 2020 Janu\u{A7DC}ary 6, 2020",
+            DateTime::new(2020, 1, 5),
+        ),
+        ("January 5TH, 2020", DateTime::new(2020, 1, 5)),
+        ("5 OF JANUARY 2020", DateTime::new(2020, 1, 5)),
+        ("5TH JANUARY 2020", DateTime::new(2020, 1, 5)),
+    ];
+    for &(text, expected) in cases {
+        let owned = text.to_owned();
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = sender.send(regex_parse(&owned, &Call::default()));
+        });
+        let got = receiver
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap_or_else(|_| panic!("no result within 3 s for {text:?}"));
+        assert_eq!(got, Ok(expected), "{text:?}");
     }
 }
 
