@@ -134,6 +134,10 @@ function.
   rewrite. `HTML_MARKUP` and `DISCUSSION_FORUM_POSTING_RE` (`extraction.rs`) also take the
   whitespace class from `PY_SPACE_CLASS`, so a `"@type"` key and its value separated by U+001C are a
   forum page.
+- Rust `(?i)` folds case on character classes, Python `re.I` folds only literals and ranges. Inside a class,
+  U+0345, U+A7CB and U+A7DC then match: in `LONG_TEXT_PATTERN` (`htmldate/extractors.rs`) they joined the
+  month-word class, and a match that started on one of them made `regex_parse` loop forever. Scope
+  `(?i:...)` to the literals and keep the class case-sensitive.
 - Whitespace and line splitting differ. Python `str.split()`, `str.strip()`, `str.isspace()` and the
   `re` class `\s` treat `\x1c`-`\x1f` as whitespace; Rust's `char::is_whitespace` and `regex` `\s` do
   not. `str.splitlines()` splits on

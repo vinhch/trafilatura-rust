@@ -66,9 +66,11 @@ pub(crate) static YM_PATTERN: LazyLock<Option<Regex>> = LazyLock::new(|| {
 
 // upstream: extractors.py::LONG_TEXT_PATTERN
 // The MONTH_WORD lookbehind `(?<![^\W\d_])` of the first alternative is not in the regex: `regex_parse` checks it.
+// The literals fold case through `(?i:...)`. MONTH_WORD stays case-sensitive, as `\w` is under Python `re.I`: it
+// matches the letters only, where Rust's `(?i)` would also take U+0345, U+A7CB and U+A7DC.
 pub(crate) static LONG_TEXT_PATTERN: LazyLock<Option<Regex>> = LazyLock::new(|| {
-    compile_ignore_case(&format!(
-        r"(?P<month>{MONTH_WORD})[@S@](?P<day>{DAY_RE})(?:st|nd|rd|th)?,? (?P<year>{YEAR_RE})|(?P<day2>{DAY_RE})(?:st|nd|rd|th|\.)? (?:of )?(?P<month2>{MONTH_WORD})[,.]? (?P<year2>{YEAR_RE})"
+    compile_py(&format!(
+        r"(?P<month>{MONTH_WORD})[@S@](?P<day>{DAY_RE})(?i:st|nd|rd|th)?,? (?P<year>{YEAR_RE})|(?P<day2>{DAY_RE})(?i:st|nd|rd|th|\.)? (?i:of )?(?P<month2>{MONTH_WORD})[,.]? (?P<year2>{YEAR_RE})"
     ))
 });
 
