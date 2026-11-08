@@ -48,6 +48,31 @@ fn cancelled_token_wins_over_the_deadline_switch() {
 }
 
 #[test]
+fn cancelled_token_wins_over_a_reached_trip() {
+    let token = CancelToken::new();
+    token.cancel();
+    let trip = CheckTrip::at(1);
+
+    assert_eq!(
+        Call::default().cancel(&token).trip(&trip).check(),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(trip.checks(), 0);
+}
+
+#[test]
+fn reached_trip_wins_over_the_deadline_switch() {
+    let trip = CheckTrip::at(1);
+    trip.pass_deadline();
+
+    assert_eq!(
+        Call::default().trip(&trip).check(),
+        Err(ExtractError::Cancelled)
+    );
+    assert_eq!(trip.checks(), 1);
+}
+
+#[test]
 fn sweep_counts_every_check() {
     let total = assert_every_check_stops(|call| {
         call.check()?;
