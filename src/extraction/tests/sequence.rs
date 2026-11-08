@@ -1,5 +1,7 @@
 use super::*;
+use crate::cancel::assert_every_check_stops;
 
+#[derive(Debug)]
 struct Run {
     tree: Tree,
     body: NodeId,
@@ -30,24 +32,51 @@ fn sequence(html: &str, options: &Extractor) -> Run {
     run_sequence(html, options, &Call::default()).unwrap()
 }
 
+/// A forum page's JSON-LD head: the page type that makes the forum branch run.
+fn forum_head() -> &'static str {
+    "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\
+        \"@type\":\"DiscussionForumPosting\",\"headline\":\"T\"}</script>"
+}
+
+/// A comment thread: the posts the forum salvage recovers.
+fn thread_div() -> &'static str {
+    "<div id=\"comments\"><p>One comment here</p><br>Second line<p>third</p></div>"
+}
+
+/// An `<article>` of `sentences` sentences of `Main` prose.
+fn article_page(sentences: usize) -> String {
+    format!("<article><p>{}</p></article>", prose("Main", sentences))
+}
+
+/// A `teaser` block of `sentences` sentences, outside the main article.
+fn teaser(sentences: usize) -> String {
+    format!(
+        "<div class=\"teaser\"><p>{}</p></div>",
+        prose("Teaser", sentences)
+    )
+}
+
+/// An article of four sentences followed by a 40-sentence teaser: the escalation accepts it.
+fn esc_accept_page() -> String {
+    format!(
+        "<article><p>{}</p>{}</article>",
+        prose("Main", 4),
+        teaser(40)
+    )
+}
+
 #[test]
 fn sequence_matches_python() {
-    let forum = "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\
-        \"@type\":\"DiscussionForumPosting\",\"headline\":\"T\"}</script>";
-    let thread = "<div id=\"comments\"><p>One comment here</p><br>Second line<p>third</p></div>";
+    let forum = forum_head();
+    let thread = thread_div();
     let thread_text = "One comment here Second line  third";
-    let article = format!("<article><p>{}</p></article>", prose("Main", 5));
-    let short = format!("<article><p>{}</p></article>", prose("Main", 1));
+    let article = article_page(5);
+    let short = article_page(1);
     let article_ld = format!(
         "<script type=\"application/ld+json\">{{\"@type\": \"Article\", \"articleBody\": \"{}\"}}</script>",
         prose("Json", 6)
     );
-    let teaser = |n: usize| format!("<div class=\"teaser\"><p>{}</p></div>", prose("Teaser", n));
-    let esc_accept = format!(
-        "<article><p>{}</p>{}</article>",
-        prose("Main", 4),
-        teaser(40)
-    );
+    let esc_accept = esc_accept_page();
     let esc_ratio = format!(
         "<article><p>{}</p>{}</article><div><p>{}</p></div>",
         prose("Main", 4),
@@ -272,16 +301,45 @@ fn sequence_matches_python() {
 
 #[test]
 fn sequence_returns_cancelled_for_a_cancelled_call() {
-    let forum = "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\
-        \"@type\":\"DiscussionForumPosting\",\"headline\":\"T\"}</script>";
-    let thread = "<div id=\"comments\"><p>One comment here</p><br>Second line<p>third</p></div>";
     let page = full_page(
-        &format!("<article><p>{}</p></article>{thread}", prose("Main", 5)),
-        forum,
+        &format!("{}{}", article_page(5), thread_div()),
+        forum_head(),
     );
     let token = CancelToken::new();
     token.cancel();
     let cancelled = Call::default().cancel(&token);
     let run = run_sequence(&page, &cascade_options(false, false, true), &cancelled);
     assert_eq!(run.err(), Some(ExtractError::Cancelled));
+}
+
+#[test]
+fn every_sequence_check_stops_the_call() {
+    let options = cascade_options(false, false, true);
+    // f6 takes the baseline rescue, e1 accepts the escalation, f1 salvages the forum posts
+    let baseline = full_page(
+        &format!("{}{}", article_page(1), thread_div()),
+        forum_head(),
+    );
+    let escalation = full_page(&esc_accept_page(), "");
+    let salvage = full_page(
+        &format!("{}{}", article_page(5), thread_div()),
+        forum_head(),
+    );
+    // The totals are regression pins of the crate's check count: deleting a stage check moves
+    // them. Update one only when a check is added or removed on purpose.
+    assert_eq!(
+        assert_every_check_stops(|call| run_sequence(&baseline, &options, call)),
+        103,
+        "f6"
+    );
+    assert_eq!(
+        assert_every_check_stops(|call| run_sequence(&escalation, &options, call)),
+        90,
+        "e1"
+    );
+    assert_eq!(
+        assert_every_check_stops(|call| run_sequence(&salvage, &options, call)),
+        73,
+        "f1"
+    );
 }
