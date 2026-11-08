@@ -37,7 +37,7 @@ use super::validators::{
     filter_ymd_candidate, get_max_date, is_valid_date_str, plausible_year_filter,
     validate_and_convert,
 };
-use crate::cancel::{Call, CancelToken};
+use crate::cancel::{Call, CancelToken, assert_every_check_stops};
 use crate::dom::{ParseLimits, Tree, parse_document};
 use crate::error::ExtractError;
 use crate::pydatetime::DateTime;
@@ -534,6 +534,18 @@ fn cancelled_call_stops_search_page() {
         search_page("<p>May 12, 2019</p>", &search_options(), &call),
         Err(ExtractError::Cancelled)
     );
+}
+
+#[test]
+fn every_search_page_check_stops_the_call() {
+    // No date and no copyright year: every stage of `search_page` runs and none returns a date.
+    let page = "<html><body><p>nothing dated here</p></body></html>";
+    assert_eq!(
+        search_page(page, &search_options(), &Call::default()),
+        Ok(None)
+    );
+    let total = assert_every_check_stops(|call| search_page(page, &search_options(), call));
+    assert_eq!(total, 20);
 }
 
 /// The date the examiner `function` returns on `tree`, as `examine_cases` names it.

@@ -1,5 +1,5 @@
 use super::*;
-use crate::cancel::CHECK_INTERVAL;
+use crate::cancel::{CHECK_INTERVAL, assert_every_check_stops};
 
 /// A cancelled call and a `p` of `2 * CHECK_INTERVAL + 1` elements, `p` included.
 fn cancelled_copy_fixture() -> (Tree, NodeId, CancelToken) {
@@ -29,6 +29,36 @@ fn copy_into_stops_when_cancelled() {
         tree.copy_into(p, &mut dst, &Call::default().cancel(&token)),
         Err(ExtractError::Cancelled)
     );
+}
+
+/// A `p` with `2 * CHECK_INTERVAL + 1` descendants, so a copy loop checks at its 0th, 256th and
+/// 512th node.
+fn mid_walk_fragment() -> Tree {
+    fragment(&format!(
+        "<p>{}</p>",
+        "<i>x</i>".repeat(2 * CHECK_INTERVAL + 1)
+    ))
+}
+
+#[test]
+fn copy_stops_mid_walk() {
+    let total = assert_every_check_stops(|call| {
+        let mut tree = mid_walk_fragment();
+        let p = tree.first_child(tree.root()).unwrap();
+        tree.copy(p, call)
+    });
+    assert_eq!(total, 6);
+}
+
+#[test]
+fn copy_into_stops_mid_walk() {
+    let total = assert_every_check_stops(|call| {
+        let tree = mid_walk_fragment();
+        let p = tree.first_child(tree.root()).unwrap();
+        let mut dst = Tree::new(LocalName::from("body"), Ns::Html, vec![]);
+        tree.copy_into(p, &mut dst, call)
+    });
+    assert_eq!(total, 6);
 }
 
 #[test]

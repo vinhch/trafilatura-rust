@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::tei::{div_line_breaks, text_bodies, union_below};
 use super::*;
-use crate::cancel::{CHECK_INTERVAL, Call, CancelToken};
+use crate::cancel::{CHECK_INTERVAL, Call, CancelToken, assert_every_check_stops};
 use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
 use crate::error::{ExtractError, Rejection};
 use crate::html_processing::build_html_output;
@@ -253,6 +253,44 @@ fn check_tei_stops_when_cancelled() {
         check_tei(&mut tree, root, None, &Call::default().cancel(&token)),
         Err(ExtractError::Cancelled)
     );
+}
+
+#[test]
+fn check_tei_stops_in_each_loop() {
+    // 257 line breaks under a div: the `div_line_breaks` loop checks at its 0th and 256th item, and
+    // the union loop starts at visited 257, so its check at 512 is past index 0.
+    let total = assert_every_check_stops(|call| {
+        let items = "<lb/>".repeat(CHECK_INTERVAL + 1);
+        let mut tree = xml(&format!(
+            "<TEI><text><body><div>{items}</div><p>x</p></body></text></TEI>"
+        ));
+        let root = tree.root();
+        check_tei(&mut tree, root, None, call)
+    });
+    assert_eq!(total, 12);
+}
+
+#[test]
+fn div_line_breaks_stops_in_its_own_loop() {
+    let total = assert_every_check_stops(|call| {
+        let items = "<lb/>".repeat(CHECK_INTERVAL + 1);
+        let tree = xml(&format!("<body><div>{items}</div></body>"));
+        div_line_breaks(&tree, &[tree.root()], call)
+    });
+    assert_eq!(total, 4);
+}
+
+#[test]
+fn move_element_one_level_up_stops_mid_append() {
+    // 257 following siblings: the collecting loop checks at 0 and 256, the append loop at 512.
+    let total = assert_every_check_stops(|call| {
+        let siblings = "<b/>".repeat(CHECK_INTERVAL + 1);
+        let mut tree = xml(&format!("<body><p><i/>{siblings}</p></body>"));
+        let p = tree.first_child(tree.root()).unwrap();
+        let element = tree.first_child(p).unwrap();
+        move_element_one_level_up(&mut tree, element, call)
+    });
+    assert_eq!(total, 3);
 }
 
 #[test]
