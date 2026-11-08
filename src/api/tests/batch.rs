@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use super::PAGE;
 use crate::api::batch::{MAX_WORKERS, run_batch};
 use crate::api::{BatchEnd, BatchError, BatchOptions, Extractor, Input, Options, Skipped};
-use crate::cancel::{Call, CancelToken};
+use crate::cancel::{Call, CancelToken, CheckTrip};
 use crate::error::ExtractError;
 
 /// One of twelve distinct pages: the paragraph text carries `index`.
@@ -448,15 +448,13 @@ fn pulled_item_after_cancel_is_skipped() {
 
 #[test]
 fn pulled_item_after_deadline_is_skipped() {
-    let deadline = Instant::now() + Duration::from_secs(1);
+    let trip = CheckTrip::counting();
     let mut pulls = 0;
-    // The third pull waits until the deadline has passed, so its item is pulled after it.
+    // The third pull passes the deadline, so its item is pulled after it.
     let items = std::iter::from_fn(|| {
         pulls += 1;
         if pulls == 3 {
-            while Instant::now() < deadline {
-                thread::sleep(Duration::from_millis(5));
-            }
+            trip.pass_deadline();
         }
         (pulls <= 5).then_some(pulls - 1)
     });
@@ -465,7 +463,7 @@ fn pulled_item_after_deadline_is_skipped() {
     let end = Options::new().build().extract_batch(
         items,
         threads(1),
-        &Call::default().deadline(deadline),
+        &Call::default().trip(&trip),
         |item: usize, _: &Call<'_>| {
             ran.lock().unwrap().push(item);
             item
