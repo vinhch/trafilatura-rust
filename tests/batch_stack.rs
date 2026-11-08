@@ -10,7 +10,7 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use trafilatura_rust::{BatchEnd, BatchOptions, Call, Input, Options};
+use trafilatura_rust::{BatchEnd, BatchOptions, Call, ExtractError, Input, Options, Rejection};
 
 #[test]
 #[ignore = "runs every corpus page on a worker thread; run with --ignored"]
@@ -38,6 +38,7 @@ fn batch_worker_stack_fits_corpus() {
     let extractor = Options::new().build();
     let mut callbacks = 0;
     let mut extracted = 0;
+    let mut rejected = 0;
     let end = extractor.extract_batch(
         paths.iter(),
         BatchOptions::new(NonZeroUsize::MIN),
@@ -46,16 +47,30 @@ fn batch_worker_stack_fits_corpus() {
             let bytes = fs::read(path).expect("corpus page is readable");
             extractor.extract(&Input::bytes(&bytes), call)
         },
-        |_, result| {
+        |index, result| {
             callbacks += 1;
-            if matches!(result, Ok(Ok(_))) {
-                extracted += 1;
+            match result {
+                Ok(Ok(_)) => extracted += 1,
+                Ok(Err(error)) => {
+                    // Oracle: tests/extraction_cases.rs (utf8_page_raises_invalid_tag) pins this
+                    // kind for the page.
+                    let path = &paths[index];
+                    assert!(
+                        path.ends_with("tests/resources/utf8.html")
+                            && error == ExtractError::Rejected(Rejection::InvalidValue),
+                        "{}: unexpected error {error:?}",
+                        path.display()
+                    );
+                    rejected += 1;
+                }
+                Err(_) => {}
             }
         },
     );
 
     assert_eq!(end, Ok(BatchEnd::Completed));
     assert_eq!(callbacks, paths.len(), "every page gets a callback");
+    assert_eq!(rejected, 1, "only tests/resources/utf8.html is rejected");
     assert!(extracted > 0, "no corpus page was extracted");
     eprintln!(
         "batch_stack: {extracted} of {} corpus pages extracted",

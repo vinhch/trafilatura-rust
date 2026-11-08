@@ -210,14 +210,46 @@ fn stale_known_reports_entries_that_do_not_hold() {
         page("unchecked", false, &[]),
     ];
     let known = [
-        ("absent", "date", "D-13"),
-        ("present", "date", "D-13"),
-        ("unchecked", "date", "D-13"),
-        ("unlisted", "date", "D-13"),
+        ("absent", "date", "\"2007-12-16\"", "D-13"),
+        ("present", "date", "\"2007-12-16\"", "D-13"),
+        ("unchecked", "date", "\"2007-12-16\"", "D-13"),
+        ("unlisted", "date", "\"2007-12-16\"", "D-13"),
     ];
     assert_eq!(
         stale_known(&pages, &known),
         ["absent date", "unlisted date"]
+    );
+}
+
+#[test]
+fn known_entry_with_another_value_is_a_port_bug() {
+    let want = json!({"date": "2008-07-30", "title": "a"});
+    let known = [("page", "date", "\"2007-12-16\"", "D-13")];
+    let compare = |got: Value| {
+        compare_fields(
+            "page",
+            want.as_object().unwrap(),
+            got.as_object().unwrap(),
+            &known,
+        )
+    };
+    let pinned = compare(json!({"date": "2007-12-16", "title": "a"}));
+    assert_eq!((pinned.len(), pinned[0].name.as_str()), (1, "date"));
+    assert_eq!(pinned[0].class, "known");
+    let drifted = compare(json!({"date": "2019-02-09", "title": "a"}));
+    assert_eq!((drifted.len(), drifted[0].class), (1, "port-bug"));
+}
+
+#[test]
+#[should_panic(expected = "on one side only")]
+fn crate_only_field_fails() {
+    let want = json!({"title": "a"});
+    let got = json!({"title": "a", "sitename": "b"});
+    compare_fields(
+        "page",
+        want.as_object().unwrap(),
+        got.as_object().unwrap(),
+        &[],
     );
 }
 

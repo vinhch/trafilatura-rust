@@ -32,8 +32,8 @@ pub(crate) struct OutputCase<'a> {
 pub(crate) fn known_values(id: &str, metadata: &Value) -> Vec<String> {
     METADATA_KNOWN
         .iter()
-        .filter(|(page, _, _)| *page == id)
-        .flat_map(|(_, field, _)| match &metadata[*field] {
+        .filter(|(page, _, _, _)| *page == id)
+        .flat_map(|(_, field, _, _)| match &metadata[*field] {
             Value::String(text) => vec![text.clone()],
             Value::Array(items) => items
                 .iter()

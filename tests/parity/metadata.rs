@@ -1,85 +1,141 @@
 use super::*;
 
-/// Metadata fields that differ from the fixtures for an explained reason: (page id, field, deviation
-/// id). Each entry carries its reason in a comment above it. An entry whose field matches fails the
-/// test as stale.
-pub(crate) const METADATA_KNOWN: &[(&str, &str, &str)] = &[
+/// Metadata fields that differ from the fixtures for an explained reason: (page id, field, crate
+/// value, deviation id). The crate value is the field's `to_string()` form, so a known field that
+/// moves to another value fails as a port bug. Each entry carries its reason in a comment above it.
+/// An entry whose field matches fails the test as stale.
+pub(crate) const METADATA_KNOWN: &[(&str, &str, &str, &str)] = &[
     // dateparser date; without it upstream gives the crate's date, 2007-12-16
     (
         "tests__eval__archive.org.dimido.de.marketing.html",
         "date",
+        "\"2007-12-16\"",
         "D-13",
     ),
     // dateparser date; without it upstream gives 2019-02-09
-    ("tests__eval__assabah.com.tn.article.html", "date", "D-13"),
+    (
+        "tests__eval__assabah.com.tn.article.html",
+        "date",
+        "\"2019-02-09\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2018-04-01
-    ("tests__eval__diario1.com-legislativa.html", "date", "D-13"),
+    (
+        "tests__eval__diario1.com-legislativa.html",
+        "date",
+        "\"2018-04-01\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-04-21
-    ("tests__eval__diarioextra.com-cidh.html", "date", "D-13"),
+    (
+        "tests__eval__diarioextra.com-cidh.html",
+        "date",
+        "\"2022-04-21\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-02-01
-    ("tests__eval__dtb-tennis.de-nominiert.html", "date", "D-13"),
+    (
+        "tests__eval__dtb-tennis.de-nominiert.html",
+        "date",
+        "\"2022-02-01\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-04-21
-    ("tests__eval__elfaro.net-asamblea.html", "date", "D-13"),
+    (
+        "tests__eval__elfaro.net-asamblea.html",
+        "date",
+        "\"2022-04-21\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2019-01-01
-    ("tests__eval__football.ua.podolski.html", "date", "D-13"),
+    (
+        "tests__eval__football.ua.podolski.html",
+        "date",
+        "\"2019-01-01\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-04-19
-    ("tests__eval__guetemala.com-nicole.html", "date", "D-13"),
+    (
+        "tests__eval__guetemala.com-nicole.html",
+        "date",
+        "\"2022-04-19\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-05-03
     (
         "tests__eval__lacuarta.com-loretoaravena.html",
         "date",
+        "\"2022-05-03\"",
         "D-13",
     ),
     // dateparser date; without it upstream gives 2022-04-26
     (
         "tests__eval__laestrella.com.pa-laboral.html",
         "date",
+        "\"2022-04-26\"",
         "D-13",
     ),
     // dateparser date; without it upstream gives 2022-05-04
-    ("tests__eval__lanacion.com.ar-jugada.html", "date", "D-13"),
+    (
+        "tests__eval__lanacion.com.ar-jugada.html",
+        "date",
+        "\"2022-05-04\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-01-01
-    ("tests__eval__petri-heil-ch-hechte.html", "date", "D-13"),
+    (
+        "tests__eval__petri-heil-ch-hechte.html",
+        "date",
+        "\"2022-01-01\"",
+        "D-13",
+    ),
     // dateparser date; without it upstream gives 2022-01-17
     (
         "tests__eval__schweizerjaeger.ch-steinkauz.html",
         "date",
+        "\"2022-01-17\"",
         "D-13",
     ),
     // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
     (
         "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
         "author",
+        "\"PAP; Rafa³ Guz\"",
         "D-3",
     ),
     // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
     (
         "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
         "description",
+        "\"Ostra debata w Sejmie przybli¿y³a Polskê do zatwierdzenia decyzji o zasobach w³asnych UE. Koalicji Obywatelskiej nie uda³o siê prze³o¿yæ g³osowania.\"",
         "D-3",
     ),
     // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
     (
         "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
         "title",
+        r#""Unijne fundusze coraz bli¿ej. Sejm zag³osowa³ \"za\"""#,
         "D-3",
     ),
     // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
     (
         "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
         "description",
+        "\"Jak pomóc osobie niewidomej, z którą jesteśmy restauracji? Co zrobić, jeśli w kontaktach z osobą głuchą towarzyszy nam tłumacz? Z okazji Dnia Walki z Dyskryminacją Osób z Niepełnosprawnościami przygotowaliśmy wraz z organizacjami pozarządowymi i na podstawie fachowych publikacji krótki poradnik.\"",
         "D-3",
     ),
     // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
     (
         "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
         "tags",
+        r#"["Informacje z Polski, newsy, aktualności, wydarzenia"]"#,
         "D-3",
     ),
     // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
     (
         "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
         "title",
+        r#""\"Ziemniaki na szóstej, surówka na dziesiątej\". Jak pomagać, żeby nie zaszkodzić? [PORADNIK W PIGUŁCE]""#,
         "D-3",
     ),
 ];
@@ -130,8 +186,8 @@ fn doc_metadata(doc: &Document) -> Value {
 
 /// Compares one page's metadata with its fixture. The first class that applies decides the page:
 /// `upstream-error`, `match` (equal, `null` on both sides included), `decompress`, else per field
-/// `known` when `METADATA_KNOWN` lists it and `port-bug` when not. A `null` on one side only is a
-/// whole-page `port-bug`.
+/// `known` when `METADATA_KNOWN` lists it with this crate value and `port-bug` when not (see
+/// `compare_fields`). A `null` on one side only is a whole-page `port-bug`.
 pub(crate) fn run_metadata_page(
     upstream: &Path,
     fixtures: &Path,
@@ -179,24 +235,7 @@ pub(crate) fn run_metadata_page(
     let Some((want, got)) = field_maps(expected, &actual) else {
         return unchecked(vec!["port-bug"], Some((expected.clone(), actual.clone())));
     };
-    let mut fields = Vec::new();
-    for (name, want) in want {
-        let got = got
-            .get(name)
-            .unwrap_or_else(|| panic!("{id}: fixture field {name} has no crate field"));
-        if want == got {
-            continue;
-        }
-        let known = METADATA_KNOWN
-            .iter()
-            .any(|(page, field, _)| *page == id && *field == name);
-        fields.push(MetaField {
-            name: name.clone(),
-            expected: want.clone(),
-            actual: got.clone(),
-            class: if known { "known" } else { "port-bug" },
-        });
-    }
+    let fields = compare_fields(&id, want, got, METADATA_KNOWN);
     let mut classes: Vec<&'static str> = fields.iter().map(|f| f.class).collect();
     classes.sort_unstable();
     classes.dedup();
@@ -216,8 +255,8 @@ pub(crate) fn run_metadata_page(
 fn deviation_of(id: &str, field: &str) -> &'static str {
     METADATA_KNOWN
         .iter()
-        .find(|(page, name, _)| *page == id && *name == field)
-        .map_or("", |(_, _, deviation)| deviation)
+        .find(|(page, name, _, _)| *page == id && *name == field)
+        .map_or("", |(_, _, _, deviation)| deviation)
 }
 
 /// The metadata objects of a fixture page and of its crate metadata, by field name.
@@ -229,9 +268,42 @@ pub(crate) fn field_maps<'a>(expected: &'a Value, actual: &'a Value) -> Option<F
     Some((expected.as_object()?, actual.as_object()?))
 }
 
+/// The differing fields of a fixture page and its crate metadata, over both sides' keys. A key on
+/// one side only panics: both sides carry every metadata key. A differing field is `known` when
+/// `known` lists its page, field and crate value, else `port-bug`.
+pub(crate) fn compare_fields(
+    id: &str,
+    want: &Map<String, Value>,
+    got: &Map<String, Value>,
+    known: &[(&str, &str, &str, &str)],
+) -> Vec<MetaField> {
+    let names: std::collections::BTreeSet<&str> =
+        want.keys().chain(got.keys()).map(String::as_str).collect();
+    let mut fields = Vec::new();
+    for name in names {
+        let (Some(expected), Some(actual)) = (want.get(name), got.get(name)) else {
+            panic!("{id}: field {name} is on one side only");
+        };
+        if expected == actual {
+            continue;
+        }
+        let text = actual.to_string();
+        let pinned = known
+            .iter()
+            .any(|(page, field, value, _)| *page == id && *field == name && *value == text);
+        fields.push(MetaField {
+            name: name.to_string(),
+            expected: expected.clone(),
+            actual: actual.clone(),
+            class: if pinned { "known" } else { "port-bug" },
+        });
+    }
+    fields
+}
+
 /// The entries of `known` that do not hold: the field matches the fixture, or the page is not in
 /// `pages`, which reports a misspelt page id. Entries of a page that was not compared are not checked.
-pub(crate) fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str)]) -> Vec<String> {
+pub(crate) fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str, &str)]) -> Vec<String> {
     let differing: std::collections::HashSet<(&str, &str)> = pages
         .iter()
         .flat_map(|p| {
@@ -247,10 +319,10 @@ pub(crate) fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str)]) -> V
         .collect();
     known
         .iter()
-        .filter(|(page, field, _)| {
+        .filter(|(page, field, _, _)| {
             !differing.contains(&(*page, *field)) && !unchecked.contains(*page)
         })
-        .map(|(page, field, _)| format!("{page} {field}"))
+        .map(|(page, field, _, _)| format!("{page} {field}"))
         .collect()
 }
 
@@ -275,7 +347,7 @@ pub(crate) fn write_metadata_report(pages: &[MetaPage], stale: &[String]) -> Pat
                 .map(move |f| (p, f))
         })
         .collect();
-    let mut deviations: Vec<&str> = METADATA_KNOWN.iter().map(|(_, _, d)| *d).collect();
+    let mut deviations: Vec<&str> = METADATA_KNOWN.iter().map(|(_, _, _, d)| *d).collect();
     deviations.sort_unstable();
     deviations.dedup();
     out.push_str("\n## Known differences by deviation id\n\n");
