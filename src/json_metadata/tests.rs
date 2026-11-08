@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use super::cases::{JSON_CASES, NORMALIZE_AUTHORS_CASES, NORMALIZE_JSON_CASES, PARSE_ERROR_CASES};
 use super::*;
-use crate::cancel::CancelToken;
+use crate::cancel::{CancelToken, CheckTrip};
 use crate::pyjson::dumps_str;
 
 fn fields(document: &Document) -> [Option<&str>; 4] {
@@ -241,6 +241,36 @@ fn author_regexes_stop_on_cancel() {
     assert_eq!(
         extract_json_author(text, regex, &call),
         Err(ExtractError::Cancelled)
+    );
+}
+
+#[test]
+fn flat_list_is_processed_once() {
+    // extract_json and process_parent each tick at visited 0, once per call, so a list of two
+    // objects checks two fewer times than the two objects alone; the per-object checks (author
+    // names, the fullest-form filter) add the same on both sides.
+    let article = |headline: &str| {
+        format!(
+            r#"{{"@context": "https://schema.org", "@type": "NewsArticle", "headline": "{headline}", "author": {{"name": "Jane Doe"}}}}"#
+        )
+    };
+    let checks = |text: &str| {
+        let trip = CheckTrip::counting();
+        let json = try_loads(text, false, &Call::default()).unwrap().unwrap();
+        let mut document = Document::new();
+        extract_json(
+            &json,
+            json.root(),
+            &mut document,
+            &Call::default().trip(&trip),
+        )
+        .unwrap();
+        trip.checks()
+    };
+    let (a, b) = (article("A"), article("B"));
+    assert_eq!(
+        checks(&format!("[{a}, {b}]")),
+        checks(&format!("[{a}]")) + checks(&format!("[{b}]")) - 2
     );
 }
 

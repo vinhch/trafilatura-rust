@@ -68,13 +68,14 @@ fn test_catstags() {
 #[test]
 fn test_date_config() {
     // "A user date_config without 'max_date' must not raise, and must not be mutated."
-    // Adaptation: a DateParams with max_date None, passed by reference, stands for the dict.
+    // Adaptation: a DateParams with max_date None, passed by reference, stands for the dict. The
+    // no-mutation half is a compile-time guarantee: a shared borrow of a type without interior
+    // mutability cannot change it, so no runtime comparison is made.
     let config = DateParams {
         original_date: true,
         extensive_search: false,
         max_date: None,
     };
-    let before = config.clone();
     let doc = "<html><head><title>T</title></head><body><p>x</p></body></html>";
     let (mut tree, root) = parse_html(doc);
     let result = extract_metadata(
@@ -87,7 +88,6 @@ fn test_date_config() {
         &Call::default(),
     );
     assert!(result.is_ok());
-    assert_eq!(config, before);
 }
 
 #[test]

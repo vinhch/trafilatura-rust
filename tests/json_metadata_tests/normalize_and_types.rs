@@ -348,8 +348,8 @@ fn test_json_node_type_arrays() {
 }
 
 // Adaptation: upstream counts process_parent calls through a monkeypatch of the module attribute,
-// which has no Rust analog. The call count is not observable here, so the test checks the list
-// result only.
+// which has no Rust analog. The call count is checked through the check counter in
+// json_metadata::tests::flat_list_is_processed_once, so this test checks the list result only.
 #[test]
 fn test_extract_json_processes_list_once() {
     // A flat list of @context objects is processed once, not once per item.

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::*;
-use crate::cancel::CancelToken;
+use crate::cancel::{CancelToken, assert_every_check_stops};
 use crate::dom::{ParseLimits, parse_document};
 use crate::error::Rejection;
 
@@ -833,6 +833,19 @@ fn extract_metadata_stops_on_cancellation() {
         extract_metadata(&mut tree, root, None, None, false, &HashSet::new(), &call).err(),
         Some(ExtractError::Cancelled)
     );
+}
+
+#[test]
+fn extract_metadata_stops_inside_the_json_readers() {
+    // The JSON-LD reader makes checks of its own; a trip there must end the call at that check,
+    // so the sweep fails if the Stop arm swallows the error and a later reader checks again.
+    let article = r#"{"@context":"https://schema.org","@type":"Article","headline":"A","author":{"name":"Jane Doe"}}"#;
+    let total = assert_every_check_stops(|call| {
+        let mut tree = scripts_page(&[article]);
+        let root = tree.root();
+        extract_metadata(&mut tree, root, None, None, false, &HashSet::new(), call)
+    });
+    assert!(total >= 2, "checks of the run: {total}");
 }
 
 #[test]
