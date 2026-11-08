@@ -34,7 +34,7 @@ use super::validator_cases::{
 };
 use super::validators::{
     Counter, Format, check_date_input, compare_values, correct_year, end_of_utc_day,
-    filter_ymd_candidate, get_max_date, is_valid_date_str, plausible_year_filter,
+    filter_ymd_candidate, get_max_date, is_valid_date_str, plausible_year_filter, update_reference,
     validate_and_convert,
 };
 use crate::cancel::{Call, CancelToken, assert_every_check_stops};
@@ -219,6 +219,58 @@ fn plausible_year_filter_keeps_first_occurrence_order() {
         counts.iter().collect::<Vec<_>>(),
         [("2021-01-01", 2), ("2020-05-05", 3)]
     );
+}
+
+#[test]
+fn plausible_year_filter_drops_non_year_items() {
+    // oracle: plausible_year_filter(htmlstring=text, pattern=DATE, yearpat=(\d{4})-06, earliest=1995-01-01,
+    // latest=2024-01-31) gives [("2021-06-01", 2), ("2020-06-15", 1)]: "2019-01-01" has no match of yearpat
+    // (its month is 01), so it is dropped with its count of 3; "2050-06-01" is out of range
+    static DATE: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"(\d{4}-\d{2}-\d{2})").ok());
+    static YEAR_OF_JUNE: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"(\d{4})-06").ok());
+    let pattern = Pattern {
+        regex: &DATE,
+        not_after: None,
+    };
+    let yearpat = Pattern {
+        regex: &YEAR_OF_JUNE,
+        not_after: None,
+    };
+    let text = "2021-06-01 2019-01-01 2021-06-01 2050-06-01 2020-06-15 2019-01-01 2019-01-01";
+    let counts = plausible_year_filter(
+        text,
+        &pattern,
+        &yearpat,
+        &MIN_DATE,
+        &LATEST,
+        &Call::default(),
+    )
+    .expect("not cancelled");
+    assert_eq!(
+        counts.iter().collect::<Vec<_>>(),
+        [("2021-06-01", 2), ("2020-06-15", 1)]
+    );
+}
+
+#[test]
+fn update_reference_tie_keeps_reference() {
+    // oracle: update_reference(a, b, original) with a = 2020-01-15T10:00:00+01:00 and b = 2020-01-15T10:00:00-05:00
+    // returns a for original True and False; with the two swapped it returns the reference again
+    let east = DateTime::from_isoformat("2020-01-15T10:00:00+01:00").expect("a datetime");
+    let west = DateTime::from_isoformat("2020-01-15T10:00:00-05:00").expect("a datetime");
+    for original in [true, false] {
+        assert_eq!(
+            update_reference(Some(east), west, original),
+            east,
+            "original {original}, reference east"
+        );
+        assert_eq!(
+            update_reference(Some(west), east, original),
+            west,
+            "original {original}, reference west"
+        );
+    }
 }
 
 #[test]

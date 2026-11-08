@@ -462,3 +462,16 @@ fn ignore_case_i_dotless() {
     }
     assert!(!re.is_match("yayy"), "a letter that is no i");
 }
+
+#[test]
+fn ignore_case_i_dotted_capital() {
+    // oracle: re.fullmatch("\u{130}", s, re.I) is true for "i", "I", "\u{131}" and "\u{130}", and false for "y",
+    // "\u{345}" and "\u{3b9}"
+    let re = Regex::new(&format!(r"\A(?i:{})\z", ignore_case_i("\u{130}"))).expect("compiles");
+    for text in ["i", "I", "\u{131}", "\u{130}"] {
+        assert!(re.is_match(text), "{text:?}");
+    }
+    for text in ["y", "\u{345}", "\u{3b9}"] {
+        assert!(!re.is_match(text), "{text:?}");
+    }
+}

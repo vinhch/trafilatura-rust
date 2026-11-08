@@ -710,6 +710,20 @@ IDIOSYNCRASIES_INPUTS = [
     "01.09.2017 " * 1500 + "date: 02.09.2017",
     # more than 1,000 cores and no cue
     "01.09.2017 " * 1500,
+    # the probe windows: the cue ends 59, 60 and 61 code points after a bare core, with ASCII and two-byte filler
+    "01.09.2017" + " " * 44 + "date 02.09.2017",
+    "01.09.2017" + " " * 45 + "date 02.09.2017",
+    "01.09.2017" + " " * 46 + "date 02.09.2017",
+    "01.09.2017" + "ü" * 44 + "date 02.09.2017",
+    "01.09.2017" + "ü" * 45 + "date 02.09.2017",
+    "01.09.2017" + "ü" * 46 + "date 02.09.2017",
+    # a bare core starts 59, 60 and 61 code points after a cue
+    "date 02.09.2017" + " " * 44 + "01.09.2017",
+    "date 02.09.2017" + " " * 45 + "01.09.2017",
+    "date 02.09.2017" + " " * 46 + "01.09.2017",
+    "date 02.09.2017" + "ü" * 44 + "01.09.2017",
+    "date 02.09.2017" + "ü" * 45 + "01.09.2017",
+    "date 02.09.2017" + "ü" * 46 + "01.09.2017",
 ]
 
 PATTERN_SEARCH_INPUTS = [
@@ -996,7 +1010,7 @@ EXAMINE_INPUTS = [
     ('<abbr data-utime="1579082400">x</abbr><abbr class="published" title="2021-03-03">y</abbr>', "abbr"),
     ('<abbr>Posted 15 January 2020 here</abbr>', "abbr"),
     ('<abbr class="published" title="2020-01-15">x</abbr>' * 1001, "abbr"),
-    # examine_time_elements: datetime attributes, the shortcut flags, bare text, the window bound, equal wall clocks
+    # examine_time_elements: datetime attributes, the shortcut flags, bare text, the window bound
     ('<time pubdate="pubdate" datetime="2020-01-15T10:00:00+01:00">15 Jan</time>', "time"),
     ('<time class="entry-date" datetime="2020-01-15">x</time>', "time"),
     ('<time class="entry-time-x" datetime="2020-01-15">x</time>', "time"),
@@ -1004,6 +1018,7 @@ EXAMINE_INPUTS = [
     ('<time datetime="2020-01-15T10:00:00">x</time><time datetime="2021-06-01">y</time>', "time"),
     ('<time datetime="2020-01-15">x</time><time datetime="2019-06-01">y</time>', "time"),
     ('<time datetime="2024-01-31T23:30:00-05:00">x</time>', "time"),
+    # equal wall clocks: either order gives the same date
     ('<time datetime="2024-01-30T23:30:00+05:00">a</time><time datetime="2024-01-30T23:30:00-05:00">b</time>', "time"),
     ('<time datetime="2024-01-30T23:30:00-05:00">a</time><time datetime="2024-01-30T23:30:00+05:00">b</time>', "time"),
     ('<time>2020-01-15 10:00</time>', "time"),
