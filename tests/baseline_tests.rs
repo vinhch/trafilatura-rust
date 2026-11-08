@@ -260,7 +260,7 @@ fn test_baseline_jsonld_content() {
     // tag-shaped comparison expressions (a letter right after "<") must not be swallowed either
     let expr = "For x<y and z>0 the series converges absolutely, with plenty of extra padding to exceed the length gate here.";
     assert!(run(expr).contains("x<y and z>0"));
-    // regression (review round 3): the letters after "<" are single-letter TAG names (p, q, u, s,
+    // regression: the letters after "<" are single-letter TAG names (p, q, u, s,
     // i, b) -- the old greedy [^>]* matched "<q ... c>" as one tag and deleted the whole span
     let tagletters = "If p<q then u<s or i<b and c>d holds, with extra padding to comfortably exceed the one hundred character gate.";
     assert!(run(tagletters).contains("p<q"));
@@ -269,7 +269,7 @@ fn test_baseline_jsonld_content() {
 
 #[test]
 fn test_baseline_teaser_does_not_shadow_longer_body() {
-    // regression (review round 3): a schema.org Product/VideoObject description is a short teaser
+    // regression: a schema.org Product/VideoObject description is a short teaser
     // and must not preempt a longer whole-body dump carrying the real content in bare divs (no
     // <article>, no <p>-family, so no earlier tier reaches it).
     let desc = "Short marketing product blurb standing in as a JSON-LD teaser, just past the one hundred character content gate here.";
@@ -389,7 +389,7 @@ fn test_baseline_paragraph_dedup_keeps_short_repeats() {
 
 #[test]
 fn test_baseline_dedup_keeps_cross_boundary_paragraph() {
-    // regression (review round 3): the substring dedup accumulator must not drop a distinct
+    // regression: the substring dedup accumulator must not drop a distinct
     // paragraph whose text spans the join boundary of two earlier consecutive paragraphs -- a
     // space-joined accumulator saw it as a repeat (fixed by joining on a newline, which trimmed
     // paragraph text never contains). Asserts on emitted paragraphs, not the joined string,
@@ -713,7 +713,7 @@ fn test_html2txt() {
     // oracle: html2txt(invisible) under html5_parsers: the html5 svg carries a namespace, so the
     // cleaning's `svg` name test skips it and upstream asserts "visible"
     assert_eq!(html2txt_str(invisible), "Icon name visible");
-    // regression (review round 3): a caller-supplied tree can hold control chars lxml rejects on
+    // regression: a caller-supplied tree can hold control chars lxml rejects on
     // write; html2txt must not raise (it would null the whole extract via the escalation gate).
     // the control char is dropped (as load_html does for string input), joining the two words
     let (mut ctrl_tree, root) =

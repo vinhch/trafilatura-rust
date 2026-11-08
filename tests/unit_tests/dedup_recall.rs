@@ -407,7 +407,7 @@ fn test_recall_escalation_no_comment_doubling() {
 
 #[test]
 fn test_dfp_long_opening_post_keeps_replies() {
-    // Regression (review round 3): the DFP re-route emptied the captured comments betting on the
+    // Regression: the DFP re-route emptied the captured comments betting on the
     // stage-4 escalation to restore the posts into the body, but the escalation is gated on
     // len_text < ESCALATION_MAX_LENGTH: a thread whose opening post alone exceeds the gate lost
     // every reply from both channels. Captured posts must survive regardless of gates.
@@ -428,7 +428,7 @@ fn test_dfp_long_opening_post_keeps_replies() {
 
 #[test]
 fn test_dfp_precision_keeps_posts() {
-    // Regression (review round 3): precision mode pruned REMOVE_COMMENTS_XPATH from the very tree
+    // Regression: precision mode pruned REMOVE_COMMENTS_XPATH from the very tree
     // the forum re-route had just restored the posts into, and precision closes the stage-3/4
     // rescues, so a DFP page returned no posts at all.
     let doc = thread_doc(DFP_JSONLD, "p", &escalation_intro(), true);
@@ -438,7 +438,7 @@ fn test_dfp_precision_keeps_posts() {
 
 #[test]
 fn test_recall_escalation_blog_comment_leak() {
-    // Regression (review round 3): on a wrapper-less blog layout (broad body selection) with
+    // Regression: on a wrapper-less blog layout (broad body selection) with
     // include_comments=True and an uncapturable div-based reply thread, the recall retry kept the
     // comment containers (its prune gate checked options.comments, the justext branch checked
     // len_comments) and emitted the reader comments as main body text.
@@ -452,7 +452,7 @@ fn test_recall_escalation_blog_comment_leak() {
 
 #[test]
 fn test_escalation_retry_no_comment_capture() {
-    // Regression (review round 3): the stage-4 retry re-ran extract_comments although the caller
+    // Regression: the stage-4 retry re-ran extract_comments although the caller
     // discards the retry's comments triple: a container matching COMMENTS_XPATH but not
     // REMOVE_COMMENTS_XPATH had its text captured and deleted inside the retry, so it vanished from
     // both channels. The retry must not capture comments at all.
