@@ -192,7 +192,8 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   `expected`, `outcome`, and `output_bytes`, `elapsed_ns` and `output_digest` (time) or `alloc_bytes`,
   `alloc_count` and `peak_bytes` (heap).
   The large-page pages have the shapes of large real pages, and `Nm` in a name means N MiB of input:
-  `inline_script_20m` and `inline_script_50m` (one `<script>` of JavaScript), `json_ld_20m` and
+  `inline_script_20m` and `inline_script_50m` (one `<script>` of JavaScript), the same two with metadata
+  on (`inline_script_20m_meta` and `inline_script_50m_meta`, `with_metadata(true)`), `json_ld_20m` and
   `json_ld_50m` (one JSON-LD script), `csv_pre_20m`, `csv_pre_33m` and `csv_pre_50m` (one `<pre>` of
   text), `data_table_20m` (a table of 3-cell rows, `max_nodes` raised to 2,000,000, `too_large` at the
   output limit) and `recall_rerun_20m` (a 20 MiB script on a page whose recall extraction reverts to its

@@ -145,9 +145,10 @@ pub struct Synthetic {
 
 impl Synthetic {
     pub fn extract(&self) -> Result<String, ExtractError> {
-        self.options
-            .build()
-            .extract(&Input::bytes(self.html.as_bytes()), &Call::default())
+        self.options.build().extract(
+            &Input::bytes(self.html.as_bytes()),
+            &Call::default().max_date(RICH_MAX_DATE),
+        )
     }
 }
 
@@ -305,6 +306,16 @@ pub fn synthetic() -> Vec<Synthetic> {
     for (name, body, options) in [
         ("inline_script_20m", inline_script(20 * MIB), Options::new()),
         ("inline_script_50m", inline_script(50 * MIB), Options::new()),
+        (
+            "inline_script_20m_meta",
+            inline_script(20 * MIB),
+            Options::new().with_metadata(true),
+        ),
+        (
+            "inline_script_50m_meta",
+            inline_script(50 * MIB),
+            Options::new().with_metadata(true),
+        ),
         ("json_ld_20m", json_ld(20 * MIB), Options::new()),
         ("json_ld_50m", json_ld(50 * MIB), Options::new()),
         ("csv_pre_20m", csv_pre(20 * MIB), Options::new()),

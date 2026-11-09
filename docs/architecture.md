@@ -236,7 +236,7 @@ gated, because host noise is too large (`parity-harness.md`).
 
 - Output digests: each row of the time file carries a Blake2b digest of its output, for TXT, rich
   Markdown, rich HTML and each synthetic page. A change keeps them equal on the corpus (1,044 pages) and
-  the synthetic pages (16), checked by `parity.measure --check-digests` (`parity-harness.md`).
+  the synthetic pages (18), checked by `parity.measure --check-digests` (`parity-harness.md`).
 - Summed medians: time is the summed 5-run median per option set. Two full runs of one commit on the
   Windows host differed by about 2.5% in summed time, and one run was faster in every option set. The
   summed allocation counts and peaks moved by under 0.02%. A change inside that noise is not a measured win.
