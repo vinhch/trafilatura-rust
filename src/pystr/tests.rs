@@ -163,6 +163,23 @@ fn title_matches_python() {
 }
 
 #[test]
+fn title_sweep_matches_python() {
+    for &(code_point, results) in title::TITLE_SWEEP {
+        let c = char::from_u32(code_point).expect("sweep code points are scalar values");
+        let probes = [
+            c.to_string(),
+            format!("a{c}"),
+            format!("a{c}a"),
+            format!("a\u{3A3}{c}"),
+            format!("a\u{3A3}{c}a"),
+        ];
+        for (probe, expected) in probes.iter().zip(results) {
+            assert_eq!(title(probe), expected, "{probe:?}");
+        }
+    }
+}
+
+#[test]
 fn is_upper_matches_python() {
     for &(start, end) in UPPER {
         for edge in [start, end] {
