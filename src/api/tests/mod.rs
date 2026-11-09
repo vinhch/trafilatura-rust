@@ -620,3 +620,29 @@ fn xmltei_reads_date_from_script_text() {
         .unwrap();
     assert!(output.contains("<date>2014-03-05</date>"), "{output}");
 }
+
+#[test]
+fn metadata_keeps_script_text() {
+    assert!(
+        !Options::new()
+            .with_metadata(true)
+            .build()
+            .limits
+            .drop_script_text
+    );
+}
+
+#[test]
+fn metadata_finds_a_date_only_in_script_text() {
+    // oracle: scripts/oracle.sh 'from trafilatura import bare_extraction; page = "<html><head><title>Title</title></head><body><article><p>The first paragraph describes the subject in some detail, so the extractor keeps it as the main text of the page. A second sentence adds more words about the same subject, and a third one closes the paragraph with enough length to pass the size check.</p></article><script>var meta = {\"datePublished\": \"2014-03-05\"};</script></body></html>"; doc = bare_extraction(page, fast=True, with_metadata=True, date_extraction_params={"original_date": True, "extensive_search": True, "max_date": "2026-11-06"}); print(doc.date)'
+    let document = Options::new()
+        .with_metadata(true)
+        .format(Format::Txt)
+        .build()
+        .bare_extraction(
+            &Input::text(SCRIPT_DATE_PAGE),
+            &Call::default().max_date("2026-11-06"),
+        )
+        .unwrap();
+    assert_eq!(document.date.as_deref(), Some("2014-03-05"));
+}

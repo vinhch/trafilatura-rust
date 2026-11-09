@@ -228,9 +228,9 @@ impl Options {
     }
 
     /// Sets whether the text of `script` and `style` elements is kept in the parse. Off, the text
-    /// of a `style` element and of a `script` whose `type` upstream does not read is not stored. A
-    /// page whose text readers reach dropped text is parsed again with the text kept. The XML-TEI
-    /// format keeps the text either way.
+    /// of a `style` element and of a `script` whose `type` upstream does not read is not stored,
+    /// unless metadata is extracted: a date can sit in such a script, so metadata keeps the text
+    /// either way. A page whose text readers reach dropped text is parsed again with the text kept.
     pub fn keep_script_text(mut self, keep: bool) -> Self {
         self.keep_script_text = keep;
         self
@@ -258,17 +258,18 @@ impl Options {
             settings.lang = self.target_language.clone();
             settings
         };
+        let text = resolve(self.format.unwrap_or(Format::Txt));
         Extractor {
-            text: resolve(self.format.unwrap_or(Format::Txt)),
             document: resolve(self.format.unwrap_or(Format::Python)),
             limits: ParseLimits {
                 max_nodes: self.max_nodes,
                 max_input_bytes: self.max_input_bytes,
                 // deviation: D-14
-                // XML-TEI's header date reads script text, so that format keeps it.
-                drop_script_text: !self.keep_script_text && self.format != Some(Format::XmlTei),
+                // Metadata reads dates from script text, so it keeps the text.
+                drop_script_text: !self.keep_script_text && !text.with_metadata,
                 ..ParseLimits::default()
             },
+            text,
         }
     }
 }

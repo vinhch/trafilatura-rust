@@ -178,7 +178,7 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus`,
 | `only_with_metadata` | `false` | Rejects a page without a date, title or URL with `Rejected(MissingMetadata)`. Implies `with_metadata`. |
 | `author_blacklist` | empty | Names dropped from the author, matched without regard to case; replaces the set. A non-empty set implies `with_metadata`. |
 | `url_blacklist` | empty | URLs rejected with `Rejected(BlacklistedUrl)`; replaces the set. A non-empty set implies `with_metadata`. |
-| `keep_script_text` | `false` | Keeps the text of `script` and `style` elements in the parse, as upstream does (D-14). The `XmlTei` format keeps that text whatever this option says, and also forces `with_metadata` on, as upstream does. |
+| `keep_script_text` | `false` | Keeps the text of `script` and `style` elements in the parse, as upstream does (D-14). Metadata keeps that text whatever this option says, since a date can sit in it, so the option matters only with metadata off. The `XmlTei` format forces `with_metadata` on, as upstream does. |
 
 `Err(Rejected(_))` stands for upstream's `None` and for a raise that escapes upstream's entry point.
 Options that no phase makes work yet are absent, so none silently does nothing: date extraction parameters

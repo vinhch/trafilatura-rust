@@ -130,8 +130,8 @@ first outputs that differ, outputs with a `port-bug` hunk first.
 
 ## Metadata check
 
-`metadata_matches_html5_fixture` in `tests/parity/main.rs` runs `bare_extraction` with `with_metadata(true)`,
-`keep_script_text(true)` and `Call::max_date` set to the index's `max_date`, and no URL. It compares each
+`metadata_matches_html5_fixture` in `tests/parity/main.rs` runs `bare_extraction` with `with_metadata(true)`
+and `Call::max_date` set to the index's `max_date`, and no URL. It compares each
 field of `fixture["html5"]["metadata"]` with the same field of the crate's `Document`. Values compare as
 JSON: strings or `null`, and `categories` and `tags` as arrays, `None` as `[]`.
 

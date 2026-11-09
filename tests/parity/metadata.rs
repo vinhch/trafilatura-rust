@@ -212,7 +212,6 @@ pub(crate) fn run_metadata_page(
     let call = Call::default().max_date(max_date);
     let extracted = Options::new()
         .with_metadata(true)
-        .keep_script_text(true)
         .build()
         .bare_extraction(&Input::bytes(&bytes), &call);
     let actual = match extracted {
