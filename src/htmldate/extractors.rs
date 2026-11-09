@@ -677,8 +677,10 @@ enum FreeTextStep {
 
 /// Pushes an `Enter` step for each child of `id`, the last first, so the first child is popped first.
 fn push_enter_children(tree: &Tree, id: NodeId, stack: &mut Vec<FreeTextStep>) {
-    let children: Vec<NodeId> = tree.children(id).collect();
-    stack.extend(children.into_iter().rev().map(FreeTextStep::Enter));
+    let last_first = std::iter::successors(tree.last_child(id), |&child| {
+        tree.node(child).prev_sibling()
+    });
+    stack.extend(last_first.map(FreeTextStep::Enter));
 }
 
 /// The text and tail pieces of `root`'s subtree, in document order: the text of each fast-tag element, and the

@@ -14,9 +14,7 @@ fn recovered_texts(filler: &str) -> Vec<String> {
     let (mut tree, root) = lxml_fromstring(&html);
     let body = tree.new_element("body");
     recover_wild_text(&mut tree, root, body, &ctx_for(&options, &call), None, None).unwrap();
-    let children: Vec<NodeId> = tree.children(body).collect();
-    children
-        .into_iter()
+    tree.children(body)
         .map(|el| trim(&tree.itertext(el).collect::<String>()))
         .collect()
 }

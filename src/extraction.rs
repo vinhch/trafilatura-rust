@@ -309,7 +309,7 @@ fn salvage(
     call: &Call<'_>,
 ) -> Result<Option<String>, ExtractError> {
     let mut texts = Vec::new();
-    for child in tree.children(postbody).collect::<Vec<_>>() {
+    for child in tree.children(postbody) {
         call.check()?;
         let text = elem_text(tree, child);
         if !text.is_empty() {
@@ -318,7 +318,7 @@ fn salvage(
     }
     let existing = texts.join("\n");
     let mut salvaged = Vec::new();
-    for post in tree.children(forum_posts).collect::<Vec<_>>() {
+    for post in tree.children(forum_posts) {
         call.check()?;
         let text = elem_text(tree, post);
         if !text.is_empty() && !existing.contains(&text) {

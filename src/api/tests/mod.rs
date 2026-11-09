@@ -143,20 +143,20 @@ fn extractor_is_reusable_across_urls_and_threads() {
     let build = || Options::new().links(true).format(Format::Markdown).build();
     let shared = build();
     let results: Vec<(usize, String)> = thread::scope(|scope| {
-        let handles: Vec<_> = (0..8)
-            .map(|index| {
-                let shared = &shared;
-                scope.spawn(move || {
-                    let page = linked_page(&format!("p{index}"));
-                    let url = format!("https://site{index}.example/d/");
-                    let input = Input::text(&page).url(&url);
-                    let reused = shared.extract(&input, &Call::default()).unwrap();
-                    let fresh = build().extract(&input, &Call::default()).unwrap();
-                    assert_eq!(reused, fresh);
-                    (index, reused)
-                })
-            })
-            .collect();
+        // Every thread starts before the first join, so the eight run concurrently.
+        let mut handles = Vec::with_capacity(8);
+        for index in 0..8 {
+            let shared = &shared;
+            handles.push(scope.spawn(move || {
+                let page = linked_page(&format!("p{index}"));
+                let url = format!("https://site{index}.example/d/");
+                let input = Input::text(&page).url(&url);
+                let reused = shared.extract(&input, &Call::default()).unwrap();
+                let fresh = build().extract(&input, &Call::default()).unwrap();
+                assert_eq!(reused, fresh);
+                (index, reused)
+            }));
+        }
         handles
             .into_iter()
             .map(|handle| handle.join().unwrap())

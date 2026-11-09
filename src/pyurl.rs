@@ -494,7 +494,7 @@ pub fn urljoin(base: &str, url: &str) -> Result<String, UrlError> {
         parsed.path = base_parts.path.clone();
         params = base_params;
         if parsed.query.is_empty() {
-            parsed.query = base_parts.query.clone();
+            parsed.query = base_parts.query;
         }
         return Ok(urlunparse(&parsed, &params));
     }

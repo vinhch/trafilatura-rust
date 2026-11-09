@@ -51,6 +51,8 @@ string_slice = "deny"
 # Perf guards: warn on any new site.
 inefficient_to_string = "warn"
 large_types_passed_by_value = "warn"
+needless_collect = "warn"
+redundant_clone = "warn"
 
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false }

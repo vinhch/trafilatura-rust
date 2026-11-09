@@ -233,7 +233,7 @@ pub(crate) fn run_metadata_page(
         return unchecked(vec!["decompress"], None);
     }
     let Some((want, got)) = field_maps(expected, &actual) else {
-        return unchecked(vec!["port-bug"], Some((expected.clone(), actual.clone())));
+        return unchecked(vec!["port-bug"], Some((expected.clone(), actual)));
     };
     let fields = compare_fields(&id, want, got, METADATA_KNOWN);
     let mut classes: Vec<&'static str> = fields.iter().map(|f| f.class).collect();

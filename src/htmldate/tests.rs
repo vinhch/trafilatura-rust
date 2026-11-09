@@ -655,6 +655,13 @@ fn examine_cases_match_python() {
 }
 
 #[test]
+fn free_text_expressions_keeps_document_order() {
+    let tree = parse("<div><p>a</p><p>b</p><p>c</p></div>");
+    let got = free_text_expressions(&tree, tree.root(), &Call::default()).expect("not cancelled");
+    assert_eq!(got, ["a", "b", "c"]);
+}
+
+#[test]
 fn discard_unwanted_drops_tail() {
     // oracle: scripts/oracle.sh 'from parity import html5tree; from htmldate.extractors import discard_unwanted;
     // from lxml.html import tostring; t = html5tree.parse_document(<page>); discard_unwanted(t);

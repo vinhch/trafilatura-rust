@@ -14,8 +14,9 @@ fn preorder(tree: &Tree) -> Vec<NodeId> {
     let mut stack = vec![tree.root()];
     while let Some(id) = stack.pop() {
         order.push(id);
-        let children: Vec<_> = tree.children(id).collect();
-        stack.extend(children.into_iter().rev());
+        stack.extend(std::iter::successors(tree.last_child(id), |&child| {
+            tree.node(child).prev_sibling()
+        }));
     }
     order
 }

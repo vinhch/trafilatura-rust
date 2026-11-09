@@ -275,8 +275,7 @@ fn walk_json(
                 let dicts = as_list(json, Some(node))
                     .into_iter()
                     .filter(|&item| json.kind(item) == Kind::Object);
-                let dicts: Vec<JsonRef> = dicts.collect();
-                pending.extend(dicts.into_iter().rev().map(|item| Task::Item(item, level)));
+                pending.extend(dicts.rev().map(|item| Task::Item(item, level)));
             }
             Task::Item(item, level) => {
                 tick(&mut visited, call)?;
