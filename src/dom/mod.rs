@@ -131,8 +131,7 @@ impl Tree {
     }
 
     /// The element behind `id`, for editing `text`, `tail`, `attrs` and `name`. The links between
-    /// nodes change only through `append`, `insert`, `add_next`, `add_previous`, `remove` and
-    /// `clear`.
+    /// nodes change only through `append`, `insert`, `add_next`, `add_previous` and `remove`.
     #[allow(clippy::indexing_slicing)] // same invariant as `node`
     pub fn node_mut(&mut self, id: NodeId) -> &mut Node {
         &mut self.nodes[id.0 as usize]
