@@ -1,5 +1,10 @@
 use std::time::{Duration, Instant};
 
+use super::author::{
+    AUTHOR_EMAIL, AUTHOR_EMOJI_REMOVE, AUTHOR_PREFIX, AUTHOR_REMOVE_NICKNAME,
+    AUTHOR_REMOVE_NUMBERS, AUTHOR_REMOVE_PREPOSITION, AUTHOR_REMOVE_SPECIAL, AUTHOR_REPLACE_JOIN,
+    AUTHOR_SPLIT, AUTHOR_TWITTER, author_name, joined_names,
+};
 use super::cases::{JSON_CASES, NORMALIZE_AUTHORS_CASES, NORMALIZE_JSON_CASES, PARSE_ERROR_CASES};
 use super::*;
 use crate::cancel::{CancelToken, CheckTrip};

@@ -20,17 +20,11 @@ use crate::xml::delete_element;
 mod content;
 mod tables;
 
-#[cfg(test)]
-use crate::settings::MIN_DUPLICATE_LENGTH;
-#[cfg(test)]
-use content::extract_body;
 pub use content::{extract_comments, extract_content};
-#[cfg(any(test, feature = "__internals"))]
+#[cfg(feature = "__internals")]
 pub use content::{prune_unwanted_sections, recover_wild_text};
 pub use tables::handle_table;
-#[cfg(test)]
-use tables::handle_table_limited;
-#[cfg(any(test, feature = "__internals"))]
+#[cfg(feature = "__internals")]
 pub use tables::span;
 
 /// Cell tags of a table row.

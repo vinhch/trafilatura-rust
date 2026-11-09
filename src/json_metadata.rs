@@ -565,12 +565,6 @@ mod author;
 use author::process_authors;
 
 pub use author::normalize_authors;
-#[cfg(test)]
-use author::{
-    AUTHOR_EMAIL, AUTHOR_EMOJI_REMOVE, AUTHOR_PREFIX, AUTHOR_REMOVE_NICKNAME,
-    AUTHOR_REMOVE_NUMBERS, AUTHOR_REMOVE_PREPOSITION, AUTHOR_REMOVE_SPECIAL, AUTHOR_REPLACE_JOIN,
-    AUTHOR_SPLIT, AUTHOR_TWITTER, author_name, joined_names,
-};
 
 #[cfg(test)]
 mod cases;

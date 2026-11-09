@@ -12,6 +12,10 @@ use crate::dom::{
     DumpMode, LocalName, Ns, ParseLimits, dump, dump_from, parse_document, parse_fragment,
 };
 use crate::error::Rejection;
+use crate::html_processing::convert::{
+    CONVERSION_TAGS, convert_deletions, convert_details, convert_headings, convert_line_breaks,
+    convert_link, convert_lists, convert_quotes, convert_to_html,
+};
 use crate::settings::Extractor;
 use crate::settings::{Config, Format};
 use crate::xpaths::{

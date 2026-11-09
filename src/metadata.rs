@@ -25,10 +25,7 @@ mod page;
 
 use page::{META_URL, extract_author, extract_catstags, extract_license, extract_sitename};
 
-#[cfg(test)]
-use page::{HTMLTITLE_REGEX, LICENSE_REGEX, TEXT_LICENSE_REGEX, examine_title_element};
-
-#[cfg(any(test, feature = "__internals"))]
+#[cfg(feature = "__internals")]
 pub use page::extract_metainfo;
 pub use page::{extract_title, extract_url};
 

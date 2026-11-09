@@ -1,5 +1,8 @@
 use std::collections::HashSet;
 
+use super::page::{
+    HTMLTITLE_REGEX, LICENSE_REGEX, TEXT_LICENSE_REGEX, examine_title_element, extract_metainfo,
+};
 use super::*;
 use crate::cancel::{CancelToken, assert_every_check_stops};
 use crate::dom::{ParseLimits, parse_document};

@@ -684,7 +684,7 @@ mod tei;
 mod to_text;
 pub use control::{control_xml_output, drop_empty_body_elements};
 pub use formats::{build_json_output, xml_to_csv};
-// the crate's own tests reach these through `__internals`
+// the integration tests reach these through `__internals`
 #[cfg(feature = "__internals")]
 pub use control::remove_blank_text;
 pub use markdown::md_link;

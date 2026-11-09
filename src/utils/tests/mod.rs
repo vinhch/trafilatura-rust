@@ -2,6 +2,9 @@ use super::*;
 use encoding_rs::{WINDOWS_1251, WINDOWS_1252};
 
 use crate::settings::{DEFAULT_MAX_INPUT_BYTES, MAX_FILE_SIZE};
+use crate::utils::text::{
+    IMAGE_EXTENSION, RE_FILTER, RE_HTML_LANG, is_image_file, return_printables_and_spaces,
+};
 
 const SIZE: usize = MAX_FILE_SIZE;
 

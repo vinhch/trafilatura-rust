@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use super::tei::{div_line_breaks, text_bodies, union_below};
+use super::control::remove_blank_text;
+use super::tei::{check_tei, div_line_breaks, move_element_one_level_up, text_bodies, union_below};
 use super::*;
 use crate::cancel::{CHECK_INTERVAL, Call, CancelToken, assert_every_check_stops};
 use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};

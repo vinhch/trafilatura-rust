@@ -12,7 +12,11 @@ use super::*;
 use crate::cancel::CancelToken;
 use crate::dom::{DumpMode, ParseLimits, dump, dump_from, parse_document};
 use crate::html_processing::{convert_tags, tree_cleaning};
-use crate::settings::{Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Format, TAG_CATALOG};
+use crate::main_extractor::content::{extract_body, prune_unwanted_sections, recover_wild_text};
+use crate::main_extractor::tables::{handle_table_limited, span};
+use crate::settings::{
+    Config, DEDUPE_SCAN_CAP, DEFAULT_MAX_NODES, Format, MIN_DUPLICATE_LENGTH, TAG_CATALOG,
+};
 
 fn options_with_recall(recall: bool) -> Extractor {
     Extractor::new(

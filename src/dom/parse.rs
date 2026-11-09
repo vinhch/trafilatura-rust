@@ -585,27 +585,7 @@ pub fn parse_fragment(
 
 mod sink;
 
-#[cfg(test)]
-use super::scan::{Pause, TagScanner};
-#[cfg(test)]
-use html5ever::TokenizerResult;
-#[cfg(test)]
-use html5ever::interface::tree_builder::ElementFlags;
-#[cfg(test)]
-use html5ever::interface::tree_builder::TreeSink;
-#[cfg(test)]
-use html5ever::tendril::StrTendril;
-#[cfg(test)]
-use html5ever::tokenizer::{BufferQueue, Tokenizer};
-#[cfg(test)]
-use html5ever::tokenizer::{Token, TokenSink, TokenSinkResult, TokenizerOpts};
-#[cfg(test)]
-use html5ever::tree_builder::{TreeBuilder, create_element};
 use sink::{Driver, drive, new_sink};
-#[cfg(test)]
-use sink::{Sink, parse_opts};
-#[cfg(test)]
-use std::cell::RefCell;
 
 #[cfg(test)]
 mod tests;

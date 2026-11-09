@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::cases::{CASES, SELECTOR_NAMES};
+use super::discard::{OVERALL_CLASS, OVERALL_CONSENT, OVERALL_ID};
 use super::*;
 use crate::dom::{DumpMode, ParseLimits, dump, parse_document};
 use crate::settings::{BASIC_CLEAN_XPATH, COOKIE_CONSENT};

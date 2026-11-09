@@ -48,8 +48,6 @@ pub use discard::{
     COMMENTS_DISCARD_XPATH, DISCARD_IMAGE_ELEMENTS, OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH,
     RAW_TREE_PRUNE_XPATH, TEASER_DISCARD_XPATH,
 };
-#[cfg(test)]
-use discard::{OVERALL_CLASS, OVERALL_CONSENT, OVERALL_ID};
 
 /// Builds a pattern from an upstream token tuple, through `alt`.
 fn token_pattern(tokens: &[&str]) -> Option<Regex> {

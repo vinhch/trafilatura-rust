@@ -3,7 +3,18 @@ mod budget;
 mod formatting;
 mod scanner;
 
-use html5ever::tendril::TendrilSink;
+use std::cell::RefCell;
+
+use html5ever::TokenizerResult;
+use html5ever::interface::tree_builder::{ElementFlags, TreeSink};
+use html5ever::tendril::{StrTendril, TendrilSink};
+use html5ever::tokenizer::{
+    BufferQueue, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+};
+use html5ever::tree_builder::{TreeBuilder, create_element};
+
+use super::sink::{Sink, parse_opts};
+use crate::dom::scan::{Pause, TagScanner};
 
 use super::*;
 

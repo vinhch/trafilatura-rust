@@ -742,10 +742,8 @@ pub fn process_node(tree: &mut Tree, elem: NodeId, ctx: &Ctx<'_>) -> Option<Node
 
 mod convert;
 
-#[cfg(test)]
-use convert::CONVERSION_TAGS;
 pub use convert::{build_html_output, convert_tags};
-#[cfg(any(test, feature = "__internals"))]
+#[cfg(feature = "__internals")]
 pub use convert::{
     convert_deletions, convert_details, convert_headings, convert_line_breaks, convert_link,
     convert_lists, convert_quotes, convert_to_html,
