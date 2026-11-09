@@ -28,8 +28,9 @@ fn find(tree: &Tree, name: &str) -> NodeId {
     panic!("no element named {name}");
 }
 
-// Walks, strip and copy. Expected values come from lxml 6.1.3 / libxml2 2.14.6 through
-// `scripts/oracle.sh`; the trees there are `etree.fromstring` of the same markup, rooted in the
+// Walks, strip and copy. Expected values come from lxml (pinned in `tools/parity/uv.lock`, its libxml2 named
+// in `src/dom/html_cases.rs`) through `scripts/oracle.sh`; the trees there are `etree.fromstring` of the same
+// markup, rooted in the
 // fragment's `div` here.
 
 fn fragment(html: &str) -> Tree {

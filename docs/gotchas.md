@@ -63,9 +63,10 @@ function.
 - The parser is not html5. Upstream parses with `lxml.html.HTMLParser` (libxml2), configured in
   `utils.py` (`HTML_PARSER`: comments and processing instructions removed). libxml2 2.14+ tokenizes
   as HTML5 but builds the tree with its own rules: no implied `tbody`, no adoption agency, different
-  handling of misnested and stray tags. This crate uses html5ever (D-2). lxml wheels bundle libxml2
-  2.14.6 on Linux and macOS but 2.11.9 on Windows, so upstream itself differs by platform: fixtures
-  come from Linux. Upstream may switch parsers (OI-5, checked in `upstream-sync.md`).
+  handling of misnested and stray tags. This crate uses html5ever (D-2). lxml wheels bundle libxml2, and the
+  Windows wheels bundle an older one than the Linux and macOS wheels, so upstream itself differs by platform:
+  fixtures come from Linux. The generated headers name the libxml2 version each run used.
+  Upstream may switch parsers (OI-5, checked in `upstream-sync.md`).
 - html5ever's tree sink cannot stop the parse. After the depth cut, a node-limit abort (D-5), a
   cancellation or a deadline, the sink in `dom/parse/sink.rs` must ignore every later call, and depth is
   checked again when html5ever moves a subtree (reparenting, foster parenting, the adoption agency).

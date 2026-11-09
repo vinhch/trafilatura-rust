@@ -1,6 +1,7 @@
 use super::*;
 
-// Tree edits. Expected values come from lxml 6.1.3 / libxml2 2.14.6 through `scripts/oracle.sh`.
+// Tree edits. Expected values come from lxml (pinned in `tools/parity/uv.lock`, its libxml2 named in
+// `src/dom/html_cases.rs`) through `scripts/oracle.sh`.
 
 fn names(tree: &Tree, id: NodeId) -> Vec<String> {
     tree.children(id)

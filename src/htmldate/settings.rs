@@ -1,4 +1,4 @@
-//! The module-wide settings of htmldate 1.11.0 (`settings.py`) that the port reads. `CACHE_SIZE` and
+//! The module-wide settings of htmldate (`settings.py`, the version `tools/parity/uv.lock` pins) that the port reads. `CACHE_SIZE` and
 //! `MAX_FILE_SIZE` belong to the lru caches and the download, which the port does not have.
 
 use crate::pydatetime::DateTime;

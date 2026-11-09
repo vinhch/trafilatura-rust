@@ -2,7 +2,7 @@
 #
 # Oracle: the value upstream Python trafilatura (at the pinned commit) returns for a snippet, for
 # writing expected values of ported tests. Runs on Linux through uv, elsewhere in Docker, because the
-# lxml wheels bundle libxml2 2.14.6 on Linux and 2.11.9 on Windows (see scripts/fixtures.sh).
+# Windows lxml wheels bundle an older libxml2 than the Linux ones (see scripts/fixtures.sh).
 set -euo pipefail
 
 readonly script_name="oracle.sh"

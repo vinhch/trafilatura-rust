@@ -2,8 +2,8 @@
 
 # Parity fixtures: upstream Python trafilatura at the pinned commit, run over its test corpus. They
 # live in git as one archive, tools/parity/fixtures/fixtures-<version>.tar.zst, and are unpacked into
-# .temp/fixtures/<version>/. Generating them (--generate) is slow and runs on Linux only (the lxml wheels
-# bundle libxml2 2.14.6 there, 2.11.9 on Windows), so Windows and macOS use Docker.
+# .temp/fixtures/<version>/. Generating them (--generate) is slow and runs on Linux only (the Windows lxml
+# wheels bundle an older libxml2 than the Linux ones), so Windows and macOS use Docker.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
