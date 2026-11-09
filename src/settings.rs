@@ -124,8 +124,8 @@ pub struct DateParams {
 }
 
 /// All options of one extraction, as upstream's `Extractor` minus `fast` (D-1), `config`, whose
-/// values are copied into the size fields, and `source`, `min_file_size` and `tei_validation`
-/// (D-27), which no ported code reads.
+/// values are copied into the size fields, and `source`, `min_file_size` and `tei_validation`,
+/// which no ported code reads (`tei_validation`: D-27).
 // upstream: settings.py::Extractor
 #[derive(Clone, Debug)]
 pub struct Extractor {
