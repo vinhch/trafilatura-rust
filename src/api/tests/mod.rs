@@ -410,6 +410,17 @@ fn keep_script_text_keeps_the_parse_text() {
     );
 }
 
+#[test]
+fn metadata_keeps_script_text() {
+    assert!(
+        !Options::new()
+            .with_metadata(true)
+            .build()
+            .limits
+            .drop_script_text
+    );
+}
+
 const METADATA_PAGE: &str = concat!(
     "<html><head><title>T</title><meta name=\"author\" content=\"Jane Doe\"/>",
     "<link rel=\"canonical\" href=\"https://example.org/a\"/></head><body><article>",
@@ -619,17 +630,6 @@ fn xmltei_reads_date_from_script_text() {
         )
         .unwrap();
     assert!(output.contains("<date>2014-03-05</date>"), "{output}");
-}
-
-#[test]
-fn metadata_keeps_script_text() {
-    assert!(
-        !Options::new()
-            .with_metadata(true)
-            .build()
-            .limits
-            .drop_script_text
-    );
 }
 
 #[test]
