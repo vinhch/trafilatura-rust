@@ -140,6 +140,7 @@ fn is_int_space(c: char) -> bool {
 /// follow, and single `_` between digits. A digit is a `decimal_value` digit or one of `a` to `f`
 /// in either case; the prefix is read after Unicode digits become ASCII, as `int` does.
 // upstream: int (CPython, base 16)
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub(crate) fn int_hex(s: &str) -> Option<i128> {
     let trimmed = s.trim_matches(is_int_space);
     let (negative, body) = match trimmed.strip_prefix('-') {

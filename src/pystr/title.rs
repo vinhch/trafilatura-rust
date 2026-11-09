@@ -518,6 +518,7 @@ pub(super) const UPPER: &[(u32, u32)] = &[
 ];
 
 /// `(s, s.title())` for the inputs the title test checks.
+#[cfg(test)]
 #[rustfmt::skip]
 pub(super) const TITLE_CASES: &[(&str, &str)] = &[
     ("hello world", "Hello World"),

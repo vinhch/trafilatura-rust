@@ -191,6 +191,7 @@ fn is_alnum_token(token: &str) -> bool {
 /// The existing hash that [`Simhash::from_parts`] and [`Simhash::validate`] take: an integer, or a
 /// string in one of upstream's two encodings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub enum HashInput<'a> {
     /// An integer, which must lie in `0..2**length` to be a hash.
     Int(i128),
@@ -221,6 +222,7 @@ impl Simhash {
     /// `length` is in 1..=64.
     // deviation: D-25 (upstream accepts any length, a hash longer than 64 bits does not fit a `u64`)
     // upstream: deduplication.py::Simhash.__init__
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     pub fn from_parts(
         input: &str,
         length: usize,
@@ -239,6 +241,7 @@ impl Simhash {
     /// The hash of `length` bits that `input` names, or `None` when it names none. `length` must be in
     /// 1..=64, else the result is `None`.
     // upstream: deduplication.py::Simhash.validate
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     pub fn validate(length: usize, input: HashInput<'_>) -> Option<u64> {
         // deviation: D-25
         if !(1..=HASH_BITS).contains(&length) {
@@ -253,11 +256,13 @@ impl Simhash {
     }
 
     /// The bits of the hash as an integer.
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     pub fn hash(&self) -> u64 {
         self.hash
     }
 
     /// The number of bits of the hash.
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     pub fn length(&self) -> usize {
         self.length
     }
@@ -271,6 +276,7 @@ impl Simhash {
     /// The fraction of this hash's bits that `other` shares, from 0.0 to 1.0, counted over this
     /// hash's length. A shorter hash against a longer one can go negative, as upstream's does.
     // upstream: deduplication.py::Simhash.similarity
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     pub fn similarity(&self, other: &Simhash) -> f64 {
         let differing = (self.hash ^ other.hash).count_ones();
         let agreeing = self.length as i64 - i64::from(differing);
@@ -281,6 +287,7 @@ impl Simhash {
 /// The integer a string names as an existing hash: its decimal digits when there are 18 to 22 of
 /// them, else the value of `int(text, 16)`. `None` where `int` raises or the value leaves `i128`.
 // upstream: deduplication.py::Simhash.validate
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn parse_hash_str(text: &str) -> Option<i128> {
     if pystr::is_decimal(text) && (18..=22).contains(&text.chars().count()) {
         return pystr::int_str(text).ok()?.parse().ok();
@@ -321,6 +328,7 @@ fn token_hash(token: &str) -> u64 {
 /// The blake2b digest of the sampled tokens of `input` joined by spaces, `length` bytes long. Fails
 /// with `DigestSize` unless `length` is in 1..=64.
 // upstream: deduplication.py::generate_bow_hash
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn generate_bow_hash(input: &str, length: usize) -> Result<Vec<u8>, DedupError> {
     let text = sample_tokens(input, HASH_BITS).join(" ");
     let text = text.as_bytes();

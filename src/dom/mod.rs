@@ -172,6 +172,7 @@ impl Tree {
 
     /// Appends character data at the end of `parent`'s content: its `text` while it has no child
     /// element, else the `tail` of its last child.
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     pub fn add_text(&mut self, parent: NodeId, text: &str) {
         if text.is_empty() {
             return;

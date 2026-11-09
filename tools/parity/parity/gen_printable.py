@@ -194,6 +194,7 @@ def title() -> None:
         table("CASED_PROPERTY", "Code points with the Cased property, case-ignorable ones included, as `str.title()` sees them.", ranges(lambda c: (c + "A").title().endswith("a"))),
         table("UPPER", "Code points for which Python's `str.isupper()` is true.", ranges(str.isupper)),
         "/// `(s, s.title())` for the inputs the title test checks.",
+        "#[cfg(test)]",
         "#[rustfmt::skip]",
         f"pub(super) const TITLE_CASES: &[(&str, &str)] = &[{NL}{NL.join(cases)}{NL}];",
         "",

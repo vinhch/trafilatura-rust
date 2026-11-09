@@ -7,6 +7,7 @@ use super::{LocalName, Node, NodeId, Ns, Tree};
 
 /// Which tree the dump describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub enum DumpMode {
     /// The tree as parsed.
     Exact,
@@ -40,17 +41,20 @@ pub(crate) fn is_valid_name(name: &str, allow_colon: bool) -> bool {
 }
 
 /// What lxml refuses in text and attribute values (upstream `utils.INVALID_XML_CHARS`).
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn is_invalid_char(c: char) -> bool {
     matches!(c, '\u{0}'..='\u{8}' | '\u{B}' | '\u{C}' | '\u{E}'..='\u{1F}' | '\u{FFFE}' | '\u{FFFF}')
 }
 
 /// `text` without invalid characters; sets `changed` when any was removed.
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn strip_invalid(text: &str, changed: &mut bool) -> String {
     let cleaned: String = text.chars().filter(|&c| !is_invalid_char(c)).collect();
     *changed |= cleaned.len() != text.len();
     cleaned
 }
 
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, Arc<str>)> {
     let mut attrs: Vec<(LocalName, Arc<str>)> = Vec::new();
     for (name, value) in &node.attrs {
@@ -67,6 +71,7 @@ fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, Arc<str>)> {
 /// Copies `source` as the parity harness copies html5lib trees into lxml: attributes with invalid
 /// names are dropped, an element with an invalid name is replaced by its content, invalid
 /// characters are stripped. Returns the copy of the subtree at `start` and whether anything changed.
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn normalize(source: &Tree, start: NodeId) -> (Tree, bool) {
     let mut changed = false;
     let root = source.node(start);
@@ -112,6 +117,7 @@ fn normalize(source: &Tree, start: NodeId) -> (Tree, bool) {
     (out, changed)
 }
 
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn push_json_string(out: &mut String, text: &str) {
     out.push('"');
     for c in text.chars() {
@@ -132,6 +138,7 @@ fn push_json_string(out: &mut String, text: &str) {
     out.push('"');
 }
 
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn push_text_line(out: &mut String, depth: usize, text: Option<&str>) {
     let Some(text) = text.filter(|text| !text.is_empty()) else {
         return;
@@ -142,6 +149,7 @@ fn push_text_line(out: &mut String, depth: usize, text: Option<&str>) {
     out.push('\n');
 }
 
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn push_element_line(out: &mut String, depth: usize, node: &Node) {
     out.push_str(&"  ".repeat(depth));
     out.push_str(&node.name);
@@ -167,12 +175,14 @@ fn push_element_line(out: &mut String, depth: usize, node: &Node) {
 /// strings. Text and tail: `#text "..."` at the child depth (text) or the element's own depth
 /// (tail); whitespace-only text is kept, empty text is omitted. The flag is true when the copy rule
 /// of `DumpMode::Normalized` changed the tree; it is always false for `Exact`.
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn dump(tree: &Tree, mode: DumpMode) -> (String, bool) {
     dump_from(tree, tree.root(), mode)
 }
 
 /// `dump` of the subtree at `id`, which may be detached from the root (a copy that `copy` returned).
 /// The element at `id` is the root of the dump, so its tail is left out.
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn dump_from(tree: &Tree, id: NodeId, mode: DumpMode) -> (String, bool) {
     let (copy, changed) = match mode {
         DumpMode::Exact => (None, false),

@@ -51,8 +51,7 @@ pub struct Config {
     /// Largest decompressed size, in bytes, of byte input; only the `decompress` feature reads it,
     /// and a decoded string is never cut.
     pub max_file_size: usize,
-    /// Smallest input in bytes for `utils::text::is_acceptable_length`, which no extraction path calls, so
-    /// extraction ignores it.
+    /// Smallest input in bytes, upstream's `MIN_FILE_SIZE`; no extraction path reads the value.
     pub min_file_size: usize,
     /// Element count above which a page is discarded; `None` = no limit.
     pub max_tree_size: Option<usize>,
@@ -124,8 +123,9 @@ pub struct DateParams {
     pub max_date: Option<String>,
 }
 
-/// All options of one extraction, as upstream's `Extractor` minus `fast` (D-1) and `config`, whose
-/// values are copied into the size fields.
+/// All options of one extraction, as upstream's `Extractor` minus `fast` (D-1), `config`, whose
+/// values are copied into the size fields, and `source`, `min_file_size` and `tei_validation`
+/// (D-27), which no ported code reads.
 // upstream: settings.py::Extractor
 #[derive(Clone, Debug)]
 pub struct Extractor {
@@ -157,20 +157,14 @@ pub struct Extractor {
     pub max_repetitions: usize,
     /// See `Config::max_file_size`.
     pub max_file_size: usize,
-    /// See `Config::min_file_size`.
-    pub min_file_size: usize,
     /// See `Config::max_tree_size`.
     pub max_tree_size: Option<usize>,
-    /// Where the page came from, when no URL is given.
-    pub source: Option<String>,
     /// URL of the page.
     pub url: Option<String>,
     /// Whether metadata is extracted; resolved as upstream does.
     pub with_metadata: bool,
     /// Whether pages without metadata are rejected.
     pub only_with_metadata: bool,
-    /// Whether XML-TEI output is validated.
-    pub tei_validation: bool,
     /// Parameters of the date search.
     pub date_params: DateParams,
     /// Authors whose pages are dropped.
@@ -219,9 +213,7 @@ impl Extractor {
             min_duplcheck_size: config.min_duplcheck_size,
             max_repetitions: config.max_repetitions,
             max_file_size: config.max_file_size,
-            min_file_size: config.min_file_size,
             max_tree_size: config.max_tree_size,
-            source: None,
             url: None,
             with_metadata: with_metadata
                 || only_with_metadata
@@ -229,7 +221,6 @@ impl Extractor {
                 || !author_blacklist.is_empty()
                 || format == Format::XmlTei,
             only_with_metadata,
-            tei_validation: false,
             date_params: set_date_params(config.extensive_date_search),
             author_blacklist,
             url_blacklist,

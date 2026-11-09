@@ -6,7 +6,6 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::cancel::{CHECK_INTERVAL, Call};
-use crate::context::Ctx;
 use crate::courlan::{fix_relative_urls, get_base_url};
 use crate::dom::{NodeId, Tree};
 use crate::error::ExtractError;
@@ -272,12 +271,6 @@ pub fn is_image_file(image_src: Option<&str>) -> bool {
         .is_some_and(|extension| extension.is_match(image_src))
 }
 
-/// Whether the document length is within the acceptable boundaries.
-// upstream: utils.py::is_acceptable_length
-pub fn is_acceptable_length(my_len: usize, ctx: &Ctx<'_>) -> bool {
-    (ctx.options.min_file_size..=ctx.options.max_file_size).contains(&my_len)
-}
-
 /// Whether `target` is one of the pieces `re.split(r"([a-z]{2})", value.lower())` returns: the
 /// two-letter codes and what lies between them.
 fn lang_attr_matches(value: &str, target: &str) -> bool {
@@ -341,11 +334,14 @@ pub fn language_classifier(_temp_text: &str, _temp_comments: &str) -> Option<Str
 // upstream: utils.py::language_filter
 // todo(OI-4): language
 pub fn language_filter(
-    _temp_text: &str,
-    _temp_comments: &str,
-    _target_language: Option<&str>,
+    temp_text: &str,
+    temp_comments: &str,
+    target_language: Option<&str>,
 ) -> bool {
-    false
+    let Some(target) = target_language else {
+        return false;
+    };
+    language_classifier(temp_text, temp_comments).is_some_and(|lang| lang != target)
 }
 
 /// Whether the element's text, or its tail when it has no text, is empty, space only or a social

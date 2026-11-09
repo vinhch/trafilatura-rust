@@ -167,18 +167,6 @@ impl Tree {
         self.node_mut(id).attrs.clear();
     }
 
-    /// Empties the element like lxml's `clear()`: text, tail and attributes are dropped and the
-    /// children are detached with their tails. The element keeps its place in its parent.
-    pub fn clear(&mut self, id: NodeId) {
-        while let Some(child) = self.node(id).first_child {
-            self.detach(child);
-        }
-        let node = self.node_mut(id);
-        node.text = None;
-        node.tail = None;
-        node.attrs.clear();
-    }
-
     /// Removes the descendants of `id` named in `tags` at every depth and keeps their content, like
     /// lxml's `strip_tags`: the text of a stripped element joins the tail of its previous sibling,
     /// or the text of its parent; its children take its place; its tail joins the tail of its last

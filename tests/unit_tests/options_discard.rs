@@ -221,7 +221,7 @@ fn extractor_resolves_like_upstream() {
         (2, None)
     );
     assert_eq!(
-        (defaults.max_file_size, defaults.min_file_size),
+        (defaults.max_file_size, Config::default().min_file_size),
         (20_000_000, 10)
     );
     assert!(defaults.date_params.original_date && defaults.date_params.extensive_search);

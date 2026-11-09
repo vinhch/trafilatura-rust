@@ -606,6 +606,7 @@ fn load(
 /// length in characters. A document that does not load (an empty tree) gives an empty `body`,
 /// `""` and 0.
 // upstream: baseline.py::baseline
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn baseline(
     input: HtmlInput<'_>,
     limits: &ParseLimits,

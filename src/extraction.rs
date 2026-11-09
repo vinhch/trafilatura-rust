@@ -445,6 +445,7 @@ pub enum Source<'a> {
     /// with `ParseLimits::drop_script_text` on is extracted as is, without the rerun. The subtree
     /// must be at most `MAX_DEPTH` deep, as the parser guarantees, or the caller must provide the
     /// stack the recursive output walks need.
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     Tree(&'a Tree, NodeId),
 }
 

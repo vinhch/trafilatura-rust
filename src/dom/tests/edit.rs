@@ -196,34 +196,6 @@ fn append_into_own_descendant_is_noop() {
 }
 
 #[test]
-fn clear_drops_text_tail_attrs_children() {
-    // oracle: e = html.fromstring("<div id='x' class='y'>t<b/>u</div>"); b = e[0]; e.clear()
-    //   -> e.text None, e.tail None, dict(e.attrib) == {}, len(e) == 0, b.getparent() None
-    let mut tree = Tree::new(LocalName::from("html"), Ns::Html, vec![]);
-    let root = tree.root();
-    let div = tree.new_element("div");
-    tree.append(root, div);
-    tree.set(div, "id", "x");
-    tree.set(div, "class", "y");
-    tree.node_mut(div).text = Some("t".into());
-    tree.node_mut(div).tail = Some("u".into());
-    let b = tree.new_element("b");
-    tree.append(div, b);
-    tree.node_mut(b).tail = Some("bt".into());
-    tree.clear(div);
-    let node = tree.node(div);
-    assert_eq!((&node.text, &node.tail), (&None, &None));
-    assert!(node.attrs.is_empty());
-    assert_eq!(tree.child_count(div), 0);
-    assert_eq!(tree.first_child(div), None);
-    assert_eq!(tree.node(b).parent(), None);
-    assert_eq!(tree.node(b).prev_sibling(), None);
-    assert_eq!(tree.node(b).tail.as_deref(), Some("bt"));
-    // The cleared element stays in its parent.
-    assert_eq!(tree.node(div).parent(), Some(root));
-}
-
-#[test]
 fn set_replaces_existing_attribute_in_place() {
     // oracle: e = html.fromstring("<div id='x' class='y'/>"); e.set("id", "z")
     //   -> list(e.attrib.items()) == [("id", "z"), ("class", "y")]

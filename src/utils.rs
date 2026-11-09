@@ -202,6 +202,7 @@ fn is_mostly_utf8(content: &[u8]) -> bool {
 /// Decompresses `content` if needed and decodes it to text: strict UTF-8 first, then the guessed
 /// encodings, then UTF-8 with U+FFFD for what is invalid. Borrows when no copy is needed.
 // upstream: utils.py::decode_file
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn decode_file(content: &[u8], max_size: usize) -> Cow<'_, str> {
     decode_bytes(decompress(content, max_size))
 }
@@ -503,10 +504,7 @@ pub use text::{
     safe_relative_url, sanitize, sanitize_tree, text_chars_test, textfilter, trim,
 };
 #[cfg(test)]
-use text::{
-    IMAGE_EXTENSION, RE_FILTER, RE_HTML_LANG, is_acceptable_length, is_image_file,
-    return_printables_and_spaces,
-};
+use text::{IMAGE_EXTENSION, RE_FILTER, RE_HTML_LANG, is_image_file, return_printables_and_spaces};
 
 #[cfg(test)]
 mod tests;

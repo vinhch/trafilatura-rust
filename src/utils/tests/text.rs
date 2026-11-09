@@ -1,10 +1,7 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
 
 use super::*;
-use crate::context::Ctx;
 use crate::dom::parse_fragment;
-use crate::settings::{Config, Extractor, Format};
 
 fn tree(html: &str) -> Tree {
     parse_document(html, &ParseLimits::default(), &Call::default()).expect("parses")
@@ -443,34 +440,9 @@ fn check_html_lang_lowercases_like_python_str_lower() {
 }
 
 #[test]
-fn is_acceptable_length_matches_python() {
-    let options = Extractor::new(
-        Config::default(),
-        Format::Txt,
-        false,
-        false,
-        None,
-        false,
-        false,
-        HashSet::new(),
-        HashSet::new(),
-    );
-    let call = Call::default();
-    let ctx = Ctx {
-        options: Cow::Borrowed(&options),
-        call: &call,
-    };
-    // oracle: [is_acceptable_length(n, Extractor()) for n in (0, 9, 10, 11, 20000000, 20000001)]
-    let results: Vec<bool> = [0, 9, 10, 11, 20_000_000, 20_000_001]
-        .into_iter()
-        .map(|len| is_acceptable_length(len, &ctx))
-        .collect();
-    assert_eq!(results, [false, false, true, true, true, false]);
-}
-
-#[test]
-fn language_filter_stub_rejects_text() {
+fn language_filter_stub_keeps_text() {
     assert!(!language_filter("text", "comments", Some("de")));
+    assert!(!language_filter("text", "comments", None));
 }
 
 #[test]

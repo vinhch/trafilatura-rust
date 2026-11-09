@@ -28,11 +28,6 @@ fn read_scripts(texts: &[&str]) -> (Document, Result<(), JsonFailure>) {
     (document, result)
 }
 
-fn opengraph(head: &str) -> Document {
-    let tree = page(head);
-    extract_opengraph(&tree, tree.root(), &Call::default()).unwrap()
-}
-
 fn examine(head: &str) -> Document {
     let tree = page(head);
     examine_meta(&tree, tree.root(), &Call::default()).unwrap()

@@ -26,53 +26,29 @@
 //! ```
 
 mod api;
-#[allow(dead_code)]
 mod baseline;
 mod cancel;
-// Items the pipeline reaches only from later phases or from the tests stay `pub` in a private module
-// (`context`, `settings`, `utils`, `pystr` and `xpaths` among them) and are re-exported only as far as
-// the public API and `__internals` need.
-#[allow(dead_code)]
 mod context;
-#[allow(dead_code)]
 mod courlan;
-#[allow(dead_code)]
 mod deduplication;
-// The tree has no caller outside the `__internals` feature until the pipeline lands.
-#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 mod dom;
 mod error;
-#[allow(dead_code)]
 mod extraction;
-#[allow(dead_code)]
 mod html_processing;
 mod htmldate;
-#[allow(dead_code)]
 mod json_metadata;
-#[allow(dead_code)]
 mod main_extractor;
-#[allow(dead_code)]
 mod metadata;
 mod pydatetime;
-#[allow(dead_code)]
 mod pyhtml;
-#[allow(dead_code)]
 mod pyidna;
-#[allow(dead_code)]
 mod pyjson;
-#[allow(dead_code)]
 mod pystr;
-#[allow(dead_code)]
 mod pyunicodedata;
-#[allow(dead_code)]
 mod pyurl;
-#[allow(dead_code)]
 mod settings;
-#[allow(dead_code)]
 mod utils;
-#[allow(dead_code)]
 mod xml;
-#[allow(dead_code)]
 mod xpaths;
 
 pub use api::{

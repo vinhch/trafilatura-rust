@@ -10,7 +10,7 @@ function.
   tree models text and tail directly (`dom::Node`); emulating them through text nodes needs care at
   every move, strip and delete. The tail travels with its node on `append`, `insert`, `addnext` and
   `addprevious`, and `copy.deepcopy` copies it (`Tree::copy`). `clear()` drops the element's text,
-  tail and attributes (`Tree::clear`).
+  tail and attributes.
 - Deleting keeps or drops the tail. Upstream's `delete_element(element, keep_tail=...)` (`xml.py`)
   decides per call site, `lxml.etree.strip_tags` merges children's text into the parent, and a plain
   `parent.remove(child)` takes the tail out of the parent's content (it stays on the removed node).
