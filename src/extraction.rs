@@ -552,7 +552,6 @@ fn bare_extraction_pass(
             return Err(ExtractError::Rejected(Rejection::BlacklistedUrl));
         }
         if options.only_with_metadata {
-            // `names()` lists the missing fields in this order: date, title, url
             let missing = MissingFields::new(
                 document.field("date").is_none(),
                 document.field("title").is_none(),
