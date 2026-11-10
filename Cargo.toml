@@ -11,6 +11,12 @@ readme = "README.md"
 keywords = ["html", "extraction", "scraping", "boilerplate", "text"]
 categories = ["text-processing", "parser-implementations"]
 publish = false
+# The packaged crate is the library: no tests, fixtures, examples or repo tooling. A source file left
+# out here fails the verify build of `cargo package` (scripts/test.{sh,ps1}).
+include = ["/src/", "!/src/**/tests.rs", "!/src/**/tests/", "!/src/**/*cases.rs", "/build.rs", "/README.md", "/LICENSE", "/NOTICE"]
+
+[package.metadata.docs.rs]
+features = ["decompress"]
 
 # The upstream Python release this port follows. AGENTS.md, docs/upstream-sync.md, build.rs and
 # scripts/upstream.{sh,ps1} read it from here; no other file states it.
