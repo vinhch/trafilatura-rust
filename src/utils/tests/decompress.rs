@@ -284,9 +284,9 @@ fn decode_file_keeps_raw_bytes_when_oversized() {
 #[test]
 fn html2txt_oversized_gzip_is_too_large() {
     let compressed = gzip(&vec![0u8; MAX_FILE_SIZE + 1]);
-    let result = crate::api::Input::bytes(&compressed);
+    let input = crate::api::Input::bytes(&compressed);
     assert_eq!(
-        crate::api::html2txt(&result, false, &Call::default()),
+        crate::api::html2txt(&input, false, &Call::default()),
         Err(too_large())
     );
 }

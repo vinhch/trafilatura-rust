@@ -515,6 +515,23 @@ fn only_with_metadata_rejects_a_page_without_date() {
 }
 
 #[test]
+fn only_with_metadata_lists_missing_fields_in_upstream_order() {
+    let options = Options::new().only_with_metadata(true);
+    let page = METADATA_PAGE.replace("<title>T</title>", "");
+    let error = document_of(&options, &page, &Call::default()).err();
+    assert_eq!(
+        error,
+        Some(ExtractError::Rejected(Rejection::MissingMetadata(
+            MissingFields::new(true, true, false).unwrap()
+        )))
+    );
+    assert_eq!(
+        error.map(|error| error.to_string()).as_deref(),
+        Some("page rejected: required metadata is missing: date, title")
+    );
+}
+
+#[test]
 fn author_blacklist_drops_the_author() {
     let options = Options::new()
         .with_metadata(true)
