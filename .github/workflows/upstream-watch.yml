@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# A second run waits for the first, so it sees the issue the first one opened.
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
 jobs:
   watch:
     runs-on: ubuntu-latest

@@ -30,8 +30,10 @@ tag="$(awk '/^target:/ { print $2 }' "$work/upstream.txt")"
 }
 title="Upstream release $tag"
 
-# All states: a closed issue still means the release was handled.
-if gh issue list --state all --limit 500 --json title | jq -e --arg title "$title" 'any(.[]; .title == $title)' >/dev/null; then
+# All states: a closed issue still means the release was handled. The list is read first so a failed call
+# stops the script instead of reading as "no such issue".
+issues="$(gh issue list --state all --limit 500 --json title)"
+if jq -e --arg title "$title" 'any(.[]; .title == $title)' <<<"$issues" >/dev/null; then
   echo "$script_name: an issue titled '$title' exists"
   exit 0
 fi
