@@ -1,0 +1,9 @@
+# One nextest config for local runs and CI (scripts/test.sh, scripts/test.sh --report).
+# measure_time, measure_heap and measure_threads replace the test harness, which nextest cannot list;
+# scripts/measure and scripts/regression run them.
+[profile.default]
+default-filter = "not binary(/^measure_(time|heap|threads)$/)"
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"

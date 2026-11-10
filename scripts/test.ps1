@@ -34,15 +34,17 @@ function Fail {
 
 function Show-Usage {
     @"
-Usage: scripts/$ScriptName [--no-deny]
+Usage: scripts/$ScriptName [--no-deny] [--report]
 
 Runs scripts/version.ps1 --check, the size check (scripts/size-check.ps1), cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
-items only the tests use), cargo test --locked --all-features (doc tests included), the batch example (examples/batch), the stack tests again
+items only the tests use), cargo nextest run --locked --all-features plus cargo test --locked --all-features --doc
+(nextest runs no doc tests), the batch example (examples/batch), the stack tests again
 in the dev profile (opt-level 0, a real debug build) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
+  --report     Run nextest with its ci profile, which writes target/nextest/ci/junit.xml for the CI test report.
   -h, --help   Show this message.
 "@
 }
@@ -56,10 +58,12 @@ function Invoke-Checked {
 }
 
 $RunDeny = $true
+$Report = $false
 foreach ($Argument in $args) {
     switch ($Argument) {
         { $_ -in '-h', '--help' } { Show-Usage; exit 0 }
         '--no-deny' { $RunDeny = $false }
+        '--report' { $Report = $true }
         default { Fail "unknown argument: $Argument" }
     }
 }
@@ -81,7 +85,16 @@ Invoke-Checked @('cargo', 'fmt', '--check')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--all-targets', '--all-features', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--', '-D', 'warnings')
 Invoke-Checked @('cargo', 'clippy', '--locked', '--no-default-features', '--', '-D', 'warnings')
-Invoke-Checked @('cargo', 'test', '--locked', '--all-features')
+# Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.
+cargo nextest --version *> $null
+if ($LASTEXITCODE -ne 0) {
+    Fail 'cargo-nextest is not installed (cargo install cargo-nextest --locked)'
+}
+$NextestArgs = @('nextest', 'run', '--locked', '--all-features')
+if ($Report) { $NextestArgs += @('--profile', 'ci') }
+Invoke-Checked (@('cargo') + $NextestArgs)
+# nextest runs no doc tests.
+Invoke-Checked @('cargo', 'test', '--locked', '--all-features', '--doc')
 # The batch example runs the public API over the committed pages in examples/batch (docs/batch.md).
 Invoke-Checked @('cargo', 'run', '--locked', '--example', 'batch', '--', 'examples/batch')
 # The test profile builds at opt-level 1; the dev profile stays at 0, where stack frames are largest.

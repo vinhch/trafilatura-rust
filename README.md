@@ -47,7 +47,7 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 
 | Command | Does |
 | --- | --- |
-| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, the size check (`scripts/size-check.sh`), fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests (the parity test when fixtures exist), the batch example (`examples/batch`), the stack tests again in the dev profile (a debug build), `cargo deny check`. `test.ps1` needs PowerShell 7.2 or later; Windows PowerShell 5.1 refuses it. |
+| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, the size check (`scripts/size-check.sh`), fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests under `cargo nextest` (the parity test when fixtures exist) plus the doc tests, the batch example (`examples/batch`), the stack tests again in the dev profile (a debug build), `cargo deny check`; needs cargo-nextest and cargo-deny installed. `--report` runs nextest with its `ci` profile, which writes `target/nextest/ci/junit.xml`. `test.ps1` needs PowerShell 7.2 or later; Windows PowerShell 5.1 refuses it. |
 | `cargo mutants -j 4 --output .work/mutants` | mutation testing of the modules in `examine_globs` (`.cargo/mutants.toml`: `src/main_extractor.rs`, `src/main_extractor/tables.rs`, `src/main_extractor/content.rs`, `src/metadata.rs`, `src/metadata/page.rs`, `src/htmldate/validators.rs`, `src/htmldate/core.rs`, `src/htmldate/core/patterns.rs`, `src/htmldate/core/search.rs`, `src/htmldate/core/examiners.rs`) with the settings in `.cargo/mutants.toml`; needs `cargo install --locked cargo-mutants@27.1.0` and the environment in the header of `.cargo/mutants.toml`; rerun each timeout alone with `-j 1`, since under load it can hide a survivor; CI runs it sharded |
 | `scripts/fixtures.sh` / `scripts/fixtures.ps1` | no flags: unpacks the tracked parity fixture archive into `.temp/fixtures/<version>`; `--generate` regenerates the fixtures from upstream, `--pack` writes the archive (`docs/parity-harness.md`) |
 | `scripts/fuzz.sh` / `scripts/fuzz.ps1` | runs one fuzz target (`parse_document`, `extract`) for N seconds (default 60) with the libFuzzer limits, or with `--cmin <target>` minimizes that target's corpus; `.sh` needs cargo-fuzz and the `x86_64-unknown-linux-gnuasan` target (Linux x86_64), `.ps1` runs it in a container built from `scripts/fuzz.Dockerfile` (the CI toolchain, cargo-fuzz and the target baked in) and needs an x86_64 Docker host |
@@ -68,8 +68,9 @@ weekly and on demand. `bench.yml` runs
 `scripts/regression.sh` on pull requests targeting `main` and reports the heap and time change of the
 sample against the base in the job summary; it is not a required check. Actions are pinned by commit
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with
-`rust-version` (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh`, so CI and a
-local run execute the same checks. Which job runs the parity test: `docs/parity-harness.md`.
+`rust-version` (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh --report`, so CI and a
+local run execute the same checks. It publishes the nextest results with `dorny/test-reporter` and uploads
+the JUnit file as the artifact `test-report-<os>`. Which job runs the parity test: `docs/parity-harness.md`.
 
 ## License
 

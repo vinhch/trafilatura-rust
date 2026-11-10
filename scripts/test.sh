@@ -20,15 +20,17 @@ readonly stack_tests=(
 
 usage() {
   cat <<EOF
-Usage: scripts/$script_name [--no-deny]
+Usage: scripts/$script_name [--no-deny] [--report]
 
 Runs scripts/version.sh --check, the size check (scripts/size-check.sh), cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
-items only the tests use), cargo test --locked --all-features (doc tests included), the batch example (examples/batch), the stack tests again
+items only the tests use), cargo nextest run --locked --all-features plus cargo test --locked --all-features --doc
+(nextest runs no doc tests), the batch example (examples/batch), the stack tests again
 in the dev profile (opt-level 0, a real debug build) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
+  --report     Run nextest with its ci profile, which writes target/nextest/ci/junit.xml for the CI test report.
   -h, --help   Show this message.
 EOF
 }
@@ -39,6 +41,7 @@ fail() {
 }
 
 run_deny=true
+report=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -h | --help)
@@ -47,6 +50,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-deny)
       run_deny=false
+      ;;
+    --report)
+      report=true
       ;;
     *)
       fail "unknown argument: $1"
@@ -65,7 +71,15 @@ cargo fmt --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo clippy --locked -- -D warnings
 cargo clippy --locked --no-default-features -- -D warnings
-cargo test --locked --all-features
+# Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.
+cargo nextest --version >/dev/null 2>&1 || fail "cargo-nextest is not installed (cargo install cargo-nextest --locked)"
+nextest_args=(--locked --all-features)
+if [ "$report" = true ]; then
+  nextest_args+=(--profile ci)
+fi
+cargo nextest run "${nextest_args[@]}"
+# nextest runs no doc tests.
+cargo test --locked --all-features --doc
 # The batch example runs the public API over the committed pages in examples/batch (docs/batch.md).
 cargo run --locked --example batch -- examples/batch
 # The test profile builds at opt-level 1; the dev profile stays at 0, where stack frames are largest.

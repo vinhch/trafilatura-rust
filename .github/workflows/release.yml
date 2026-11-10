@@ -35,6 +35,10 @@ jobs:
     name: verify
     needs: guard
     uses: ./.github/workflows/_ci.yml
+    # The called test job asks for checks: write, which its caller must grant.
+    permissions:
+      contents: read
+      checks: write
 
   publish:
     name: publish
