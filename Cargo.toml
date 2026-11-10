@@ -1,6 +1,6 @@
 [package]
 name = "trafilatura-rust"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 # Kept equal to the toolchain the CI workflow pins, so the CI run doubles as the MSRV check.
 rust-version = "1.98.1"
@@ -10,9 +10,8 @@ repository = "https://github.com/vinhch/trafilatura-rust"
 readme = "README.md"
 keywords = ["html", "extraction", "scraping", "boilerplate", "text"]
 categories = ["text-processing", "parser-implementations"]
-publish = false
 # The packaged crate is the library: no tests, fixtures, examples or repo tooling. A source file left
-# out here fails the verify build of `cargo package` (scripts/test.{sh,ps1}).
+# out here fails the verify build of `cargo publish --dry-run` (scripts/test.{sh,ps1}).
 include = ["/src/", "!/src/**/tests.rs", "!/src/**/tests/", "!/src/**/*cases.rs", "/build.rs", "/README.md", "/LICENSE", "/NOTICE"]
 
 [package.metadata.docs.rs]

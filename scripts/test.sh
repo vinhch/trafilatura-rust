@@ -27,8 +27,9 @@ cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
 items only the tests use), cargo nextest run --locked --all-features plus cargo test --locked --all-features --doc
 (nextest runs no doc tests), the batch example (examples/batch), the stack tests again
-in the dev profile (opt-level 0, a real debug build), cargo package --locked --all-features --allow-dirty
-(packs the files the include list in Cargo.toml selects and builds the library from them) and cargo deny check.
+in the dev profile (opt-level 0, a real debug build), cargo publish --dry-run --locked --all-features --allow-dirty
+(packs the files the include list in Cargo.toml selects, builds the library from them and checks the manifest
+against crates.io without uploading) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
   --report     Run nextest with its ci profile, which writes target/nextest/ci/junit.xml for the CI test report.
@@ -92,8 +93,9 @@ stack_listing="$(cargo test "${stack_args[@]}" --list)"
 stack_found="$(grep -c ': test$' <<<"$stack_listing" || true)"
 [ "$stack_found" -eq "${#stack_tests[@]}" ] || fail "stack tests: expected ${#stack_tests[@]}, found $stack_found"
 cargo test "${stack_args[@]}"
-# The verify build compiles the library from the packaged files only, so a source file left out of `include` fails here.
-cargo package --locked --all-features --allow-dirty
+# The dry run packages, verifies the build from the packaged files only (so a source file left out of `include` fails here)
+# and checks the manifest against crates.io without uploading.
+cargo publish --dry-run --locked --all-features --allow-dirty
 if [ "$run_deny" = true ]; then
   # Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.
   cargo deny --version >/dev/null 2>&1 || fail "cargo-deny is not installed (cargo install cargo-deny, or pass --no-deny)"

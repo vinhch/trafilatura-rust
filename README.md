@@ -8,7 +8,8 @@ from other languages.
 Status: the extraction pipeline of upstream's fast mode works through the public API (`Options`,
 `Extractor`, `html2txt`): main text and comments from bytes or a string, as text, Markdown, HTML, XML,
 XML-TEI, JSON or CSV, or as the `Document` of `bare_extraction`, with metadata when
-`Options::with_metadata` is set. Not yet there: `fast=False`. The crate is not published.
+`Options::with_metadata` is set. Not yet there: `fast=False`. Add the crate with `cargo add trafilatura-rust`; the
+`decompress` feature (`cargo add trafilatura-rust --features decompress`) accepts gzip, zstd, brotli and zlib input.
 Extraction is checked by upstream's unit and filter tests ported by name, by cases generated from
 upstream Python, and by comparing the text, Markdown, HTML, XML, XML-TEI and JSON output of the corpus
 pages with upstream's (`docs/phase-plan.md` has the roadmap).
@@ -47,11 +48,11 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 
 The scripts, docs and workflows named in this README live in the [GitHub repository](https://github.com/vinhch/trafilatura-rust), not in the published package.
 
-The test scripts need network access: cargo reads the crates.io index for the package step.
+The test scripts need network access: the package step, `cargo publish --dry-run`, reads the crates.io index.
 
 | Command | Does |
 | --- | --- |
-| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, the pin check (`scripts/pin-check.sh`), the size check (`scripts/size-check.sh`), fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests under `cargo nextest` (the parity test when fixtures exist) plus the doc tests, the batch example (`examples/batch`), the stack tests again in the dev profile (a debug build), the package verify step (`cargo package`, which builds the library from the files `include` in `Cargo.toml` selects), `cargo deny check`; needs cargo-nextest and cargo-deny installed. `--report` runs nextest with its `ci` profile, which writes `target/nextest/ci/junit.xml`. `test.ps1` needs PowerShell 7.2 or later; Windows PowerShell 5.1 refuses it. |
+| `scripts/test.sh` / `scripts/test.ps1` | every check the CI test job runs: version check, the pin check (`scripts/pin-check.sh`), the size check (`scripts/size-check.sh`), fmt, clippy `-D warnings` (all features and targets, default features, no default features), tests under `cargo nextest` (the parity test when fixtures exist) plus the doc tests, the batch example (`examples/batch`), the stack tests again in the dev profile (a debug build), the package verify step (`cargo publish --dry-run`, which builds the library from the files `include` in `Cargo.toml` selects and checks the manifest against crates.io without uploading), `cargo deny check`; needs cargo-nextest and cargo-deny installed. `--report` runs nextest with its `ci` profile, which writes `target/nextest/ci/junit.xml`. `test.ps1` needs PowerShell 7.2 or later; Windows PowerShell 5.1 refuses it. |
 | `cargo mutants -j 4 --output .work/mutants` | mutation testing of the modules in `examine_globs` (`.cargo/mutants.toml`: `src/main_extractor.rs`, `src/main_extractor/tables.rs`, `src/main_extractor/content.rs`, `src/metadata.rs`, `src/metadata/page.rs`, `src/htmldate/validators.rs`, `src/htmldate/core.rs`, `src/htmldate/core/patterns.rs`, `src/htmldate/core/search.rs`, `src/htmldate/core/examiners.rs`) with the settings in `.cargo/mutants.toml`; needs `cargo install --locked cargo-mutants@27.1.0` and the environment in the header of `.cargo/mutants.toml`; rerun each timeout alone with `-j 1`, since under load it can hide a survivor; CI runs it sharded |
 | `scripts/fixtures.sh` / `scripts/fixtures.ps1` | no flags: unpacks the tracked parity fixture archive into `.temp/fixtures/<version>`; `--generate` regenerates the fixtures from upstream, `--pack` writes the archive (`docs/parity-harness.md`) |
 | `scripts/fuzz.sh` / `scripts/fuzz.ps1` | runs one fuzz target (`parse_document`, `extract`) for N seconds (default 60) with the libFuzzer limits, or with `--cmin <target>` minimizes that target's corpus; `.sh` needs cargo-fuzz and the `x86_64-unknown-linux-gnuasan` target (Linux x86_64), `.ps1` runs it in a container built from `scripts/fuzz.Dockerfile` (the CI toolchain, cargo-fuzz and the target baked in) and needs an x86_64 Docker host |
