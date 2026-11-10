@@ -42,8 +42,8 @@ cargo clippy --locked -- -D warnings and with --no-default-features (the library
 items only the tests use), cargo nextest run --locked --all-features plus cargo test --locked --all-features --doc
 (nextest runs no doc tests), the batch example (examples/batch), the stack tests again
 in the dev profile (opt-level 0, a real debug build), cargo publish --dry-run --locked --all-features --allow-dirty
-(packs the files the include list in Cargo.toml selects, builds the library from them and checks the manifest
-against crates.io without uploading) and cargo deny check.
+(packs the files the include list in Cargo.toml selects, builds the library from them and reads the crates.io
+index, all without uploading) and cargo deny check.
 
   --no-deny    Skip cargo deny, for a machine without it installed. CI never passes this.
   --report     Run nextest with its ci profile, which writes target/nextest/ci/junit.xml for the CI test report.
@@ -115,7 +115,7 @@ $StackFound = @($StackListing | Where-Object { $_ -match ': test$' }).Count
 if ($StackFound -ne $StackTests.Count) { Fail "stack tests: expected $($StackTests.Count), found $StackFound" }
 Invoke-Checked (@('cargo') + $StackArgs)
 # The dry run packages, verifies the build from the packaged files only (so a source file left out of `include` fails here)
-# and checks the manifest against crates.io without uploading.
+# and reads the crates.io index, all without uploading.
 Invoke-Checked @('cargo', 'publish', '--dry-run', '--locked', '--all-features', '--allow-dirty')
 if ($RunDeny) {
     # Asked through cargo, which also finds subcommands in ~/.cargo/bin when that is not on PATH.
