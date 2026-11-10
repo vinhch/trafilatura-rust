@@ -51,6 +51,11 @@ mod utils;
 mod xml;
 mod xpaths;
 
+// Compiles the README examples as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 pub use api::{
     BatchEnd, BatchError, BatchOptions, Extractor, Format, Input, Options, Skipped, html2txt,
 };
