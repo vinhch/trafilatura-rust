@@ -4,6 +4,11 @@ The steps that move the port from the pinned upstream release to a newer one. Fo
 in one change. The pin lives in `Cargo.toml` under `[package.metadata.upstream]`; the module-to-file
 map is in `architecture.md`.
 
+The `upstream-watch` workflow (`.github/workflows/upstream-watch.yml`) runs weekly and opens an issue
+titled `Upstream release <tag>` when upstream tags a release newer than the pin; start from that issue.
+GitHub disables a scheduled workflow after 60 days without repository activity, so check in the Actions
+tab that it is enabled.
+
 1. `git -C <checkout> fetch --tags`, then `scripts/upstream.sh` (or `.ps1`). It prints the pin, the
    newest tag, the commits and the files changed under `trafilatura/` and `tests/`.
 2. For each changed upstream file, find its Rust module in the module map. Read the upstream diff

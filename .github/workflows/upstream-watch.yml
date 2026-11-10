@@ -1,0 +1,31 @@
+# Opens an issue when upstream Python trafilatura tags a release newer than the pin (docs/upstream-sync.md).
+name: upstream-watch
+
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Full history and tags: scripts/upstream.sh reads the highest v* tag and the commits since the pin.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: adbar/trafilatura
+          path: upstream
+          fetch-depth: 0
+      - name: Open an issue for a new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
+        run: bash .github/scripts/upstream-watch.sh

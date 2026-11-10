@@ -67,7 +67,6 @@ Work worth doing after the phases it depends on, not scheduled yet.
 
 | Id | Followup | After |
 | --- | --- | --- |
-| F-5 | A scheduled upstream watch: a workflow that runs `scripts/upstream.sh` weekly and opens an issue when a new upstream tag appears; the issue starts an agent-run sync that follows `docs/upstream-sync.md`. | In Phase 7b |
 | F-14 | `dom/`: replace the walk to the root per placement and the subtree walk on reparent with stored depth if the `scripts/measure` table shows `load Python / Rust` below 0.5 (parse time above twice upstream). | A measured need |
 | F-16 | `prune_xpath` (D-7): an XPath engine, or a caller-supplied predicate in place of the XPath strings. | After Phase 7 |
 | F-25 | Shrink the trees if a measurement of an element-dense page under the node limit shows its peak needs it: `Node` (128 bytes) with links as `Option<NonZeroU32>` and `attrs` as a boxed slice; `SinkNode` (120 bytes, also spent on every text node) with the element fields apart from text nodes; text shared between a tree and its `Tree::copy` (copies are about 10% of `extract` time). `text` and `tail` stay growable strings: the ported code appends to them, and a reallocation per append would make that quadratic. | A measured need |

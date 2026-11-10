@@ -69,7 +69,8 @@ minutes with AddressSanitizer and minimizes the corpus cache, and runs `cargo-mu
 the modules in `examine_globs` in 17 shards that fail on a surviving mutant not listed in `.cargo/mutants.toml`,
 weekly and on demand. `bench.yml` runs
 `scripts/regression.sh` on pull requests targeting `main` and reports the heap and time change of the
-sample against the base in the job summary; it is not a required check. Actions are pinned by commit
+sample against the base in the job summary; it is not a required check. `upstream-watch.yml` runs weekly and
+opens an issue when upstream tags a release newer than the pin (`docs/upstream-sync.md`). Actions are pinned by commit
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with
 `rust-version` (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh --report`, so CI and a
 local run execute the same checks. It publishes the nextest results with `dorny/test-reporter` and uploads
