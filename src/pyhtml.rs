@@ -148,7 +148,7 @@ fn numeric(code: u32) -> Option<char> {
 
 /// Python `html.unescape(s)`.
 ///
-/// Fails with `InvalidValue` on a decimal character reference of more than [`MAX_STR_DIGITS`]
+/// Fails with `InvalidValue` on a decimal character reference of more than `MAX_STR_DIGITS`
 /// digits, leading zeros counted: Python's `int` raises `ValueError` there. A hex reference has no
 /// limit.
 // upstream: html.unescape (CPython)

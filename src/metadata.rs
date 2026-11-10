@@ -350,7 +350,7 @@ fn or_value(field: &mut Option<String>, value: Option<&str>) {
 }
 
 /// Parses and extracts the metadata of the JSON-LD scripts into `metadata`. A script that raises in
-/// upstream ends the loop with [`JsonFailure::Raised`]; what earlier scripts and the raising one set
+/// upstream ends the loop with `JsonFailure::Raised`; what earlier scripts and the raising one set
 /// before it stays in `metadata`.
 // upstream: metadata.py::extract_meta_json
 pub fn extract_meta_json(
