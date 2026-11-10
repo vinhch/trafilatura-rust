@@ -60,29 +60,45 @@ const MAX_MEMBERS: usize = 1000;
 #[cfg(feature = "decompress")]
 const ZSTD_MAX_WINDOW: u64 = 1 << 27;
 
-/// Decompresses `content` by magic number, or by trying brotli then zlib, capped at `max_size`;
-/// returns the input unchanged when it is not compressed, corrupt, truncated or too large.
-// upstream: utils.py::handle_compressed_file
+/// Why a bounded gzip or zstd decoder stopped before the end of its input.
 #[cfg(feature = "decompress")]
-pub fn handle_compressed_file(content: &[u8], max_size: usize) -> Cow<'_, [u8]> {
-    let unpacked = if content.starts_with(&[0x1f, 0x8b, 0x08]) {
-        bounded_gzip_members(content, max_size)
-    } else if content.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
-        bounded_zstd_frames(content, max_size)
-    } else {
-        bounded_unbrotli(content, max_size).or_else(|| bounded_inflate(content, max_size))
-    };
-    unpacked.map_or(Cow::Borrowed(content), Cow::Owned)
+#[derive(Debug, PartialEq, Eq)]
+enum CapError {
+    /// Corrupt, truncated or with more than `MAX_MEMBERS` members: the bytes are kept as they are.
+    Failed,
+    /// The output is longer than `max_size`.
+    Oversized,
 }
 
-/// Appends `source` to `out` up to its end; `None` when it errors or `out` exceeds `max_size`.
+/// Gzip or zstd output past `max_size`, which `load_html` rejects as `InputTooLarge`.
+#[cfg_attr(not(feature = "decompress"), allow(dead_code))]
+struct Oversized;
+
+/// Decompresses `content` by magic number, or by trying brotli then zlib, capped at `max_size`;
+/// returns the input unchanged when it is not compressed, corrupt, truncated or too large. An
+/// oversized gzip or zstd input is rejected by `load_html`, not here.
+// Test-only: the library reaches the decoder through `decompress`, which keeps the oversized case.
+#[cfg(all(test, feature = "decompress"))]
+pub fn handle_compressed_file(content: &[u8], max_size: usize) -> Cow<'_, [u8]> {
+    decompress(content, max_size).unwrap_or(Cow::Borrowed(content))
+}
+
+/// Appends `source` to `out` up to its end. `Oversized` when `out` passes `max_size`; `Failed`
+/// when `source` errors first.
 // upstream: utils.py::_capped
 #[cfg(feature = "decompress")]
-fn capped(source: impl std::io::Read, max_size: usize, out: &mut Vec<u8>) -> Option<()> {
+fn capped(source: impl std::io::Read, max_size: usize, out: &mut Vec<u8>) -> Result<(), CapError> {
     use std::io::Read;
-    let room = u64::try_from(max_size.saturating_add(1).saturating_sub(out.len())).ok()?;
-    source.take(room).read_to_end(out).ok()?;
-    (out.len() <= max_size).then_some(())
+    let room = u64::try_from(max_size.saturating_add(1).saturating_sub(out.len()))
+        .map_err(|_| CapError::Failed)?;
+    source
+        .take(room)
+        .read_to_end(out)
+        .map_err(|_| CapError::Failed)?;
+    if out.len() > max_size {
+        return Err(CapError::Oversized);
+    }
+    Ok(())
 }
 
 /// What follows the NUL padding that gzip allows between members.
@@ -94,7 +110,7 @@ fn skip_nul_padding(rest: &[u8]) -> &[u8] {
 
 // upstream: utils.py::_bounded_members (gzip)
 #[cfg(feature = "decompress")]
-fn bounded_gzip_members(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
+fn bounded_gzip_members(content: &[u8], max_size: usize) -> Result<Vec<u8>, CapError> {
     let mut out = Vec::new();
     let mut rest = content;
     for _ in 0..MAX_MEMBERS {
@@ -102,29 +118,32 @@ fn bounded_gzip_members(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
         capped(&mut member, max_size, &mut out)?;
         rest = skip_nul_padding(member.into_inner());
         if rest.is_empty() {
-            return Some(out);
+            return Ok(out);
         }
     }
-    None
+    Err(CapError::Failed)
 }
 
 // upstream: utils.py::_bounded_members (zstd)
 #[cfg(feature = "decompress")]
-fn bounded_zstd_frames(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
+fn bounded_zstd_frames(content: &[u8], max_size: usize) -> Result<Vec<u8>, CapError> {
     use ruzstd::decoding::StreamingDecoder;
     let mut out = Vec::new();
     let mut rest = content;
     for _ in 0..MAX_MEMBERS {
-        let mut frame = StreamingDecoder::new_with_max_window_size(rest, ZSTD_MAX_WINDOW).ok()?;
+        let mut frame = StreamingDecoder::new_with_max_window_size(rest, ZSTD_MAX_WINDOW)
+            .map_err(|_| CapError::Failed)?;
         capped(&mut frame, max_size, &mut out)?;
-        // A frame cut short, or cut off by the cap, is not a whole document.
-        frame.decoder.is_finished().then_some(())?;
+        // A frame cut short is not a whole document.
+        if !frame.decoder.is_finished() {
+            return Err(CapError::Failed);
+        }
         rest = skip_nul_padding(frame.into_inner());
         if rest.is_empty() {
-            return Some(out);
+            return Ok(out);
         }
     }
-    None
+    Err(CapError::Failed)
 }
 
 // upstream: utils.py::_bounded_inflate
@@ -135,7 +154,8 @@ fn bounded_inflate(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
         flate2::bufread::ZlibDecoder::new(content),
         max_size,
         &mut out,
-    )?;
+    )
+    .ok()?;
     Some(out)
 }
 
@@ -148,7 +168,8 @@ fn bounded_unbrotli(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
         brotli_decompressor::Decompressor::new(content, 4096),
         max_size,
         &mut out,
-    )?;
+    )
+    .ok()?;
     // Input that is not brotli can decode to nothing without an error.
     (!out.is_empty()).then_some(out)
 }
@@ -200,22 +221,42 @@ fn is_mostly_utf8(content: &[u8]) -> bool {
 }
 
 /// Decompresses `content` if needed and decodes it to text: strict UTF-8 first, then the guessed
-/// encodings, then UTF-8 with U+FFFD for what is invalid. Borrows when no copy is needed.
+/// encodings, then UTF-8 with U+FFFD for what is invalid. Borrows when no copy is needed. An
+/// oversized gzip or zstd gives the raw bytes, as upstream does.
 // upstream: utils.py::decode_file
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn decode_file(content: &[u8], max_size: usize) -> Cow<'_, str> {
-    decode_bytes(decompress(content, max_size))
+    decode_bytes(decompress(content, max_size).unwrap_or(Cow::Borrowed(content)))
 }
 
-/// The decompression step of `decode_file`.
-fn decompress(content: &[u8], max_size: usize) -> Cow<'_, [u8]> {
+/// The decompression step of `decode_file` and `load_html`. Gzip and zstd output past `max_size`
+/// gives `Err(Oversized)`; corrupt or truncated input, and brotli or zlib output past the cap,
+/// give the bytes unchanged, as upstream does.
+// upstream: utils.py::handle_compressed_file
+fn decompress(content: &[u8], max_size: usize) -> Result<Cow<'_, [u8]>, Oversized> {
     // deviation: D-4 (without the `decompress` feature the bytes are used as they are)
-    #[cfg(feature = "decompress")]
-    return handle_compressed_file(content, max_size);
     #[cfg(not(feature = "decompress"))]
     {
         let _ = max_size;
-        Cow::Borrowed(content)
+        Ok(Cow::Borrowed(content))
+    }
+    #[cfg(feature = "decompress")]
+    {
+        let frames = if content.starts_with(&[0x1f, 0x8b, 0x08]) {
+            bounded_gzip_members(content, max_size)
+        } else if content.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
+            bounded_zstd_frames(content, max_size)
+        } else {
+            let unpacked =
+                bounded_unbrotli(content, max_size).or_else(|| bounded_inflate(content, max_size));
+            return Ok(unpacked.map_or(Cow::Borrowed(content), Cow::Owned));
+        };
+        match frames {
+            Ok(out) => Ok(Cow::Owned(out)),
+            Err(CapError::Failed) => Ok(Cow::Borrowed(content)),
+            // deviation: D-29 (upstream keeps the raw bytes when the output is too large)
+            Err(CapError::Oversized) => Err(Oversized),
+        }
     }
 }
 
@@ -352,8 +393,10 @@ fn leading_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<&str> {
 }
 
 /// Decodes, repairs and parses `input`; rejects with `Rejection::EmptyTree` what upstream
-/// returns `None` for, and byte input with a binary magic prefix (below). `max_size` only caps
-/// the decompression of byte input (upstream's `max_size`); a decoded string is never cut.
+/// returns `None` for, and byte input with a binary magic prefix (below). `max_size` caps the
+/// decompression of byte input: gzip or zstd output past it is rejected with
+/// `Rejection::InputTooLarge(InputLimit::MaxFileSize)` (D-29), where upstream parses the raw bytes
+/// instead. A decoded string is never cut.
 ///
 /// Expects a full document: a single-block fragment without `html` near its start is rejected,
 /// as upstream does. Input over `limits.max_input_bytes` is rejected first with
@@ -380,7 +423,10 @@ pub fn load_html(
     }
     let html = match input {
         HtmlInput::Bytes(bytes) => {
-            let bytes = decompress(bytes, max_size);
+            // deviation: D-29 (upstream parses the raw bytes of oversized gzip or zstd)
+            let bytes = decompress(bytes, max_size).map_err(|Oversized| {
+                ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxFileSize))
+            })?;
             if is_binary(&bytes) {
                 return Err(ExtractError::Rejected(Rejection::EmptyTree));
             }

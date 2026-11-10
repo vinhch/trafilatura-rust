@@ -378,8 +378,9 @@ fn context<'a>(
 }
 
 /// The text of `input`'s `body` with word boundaries kept at block tags, `clean` removing
-/// potentially undesirable elements first. An empty document gives `Ok("")`. The URL and record id
-/// of `input` are not used.
+/// potentially undesirable elements first. An empty document gives `Ok("")`. Byte input whose
+/// gzip or zstd output passes `settings::MAX_FILE_SIZE` gives `Err(InputTooLarge(MaxFileSize))`
+/// (D-29). The URL and record id of `input` are not used.
 // upstream: baseline.py::html2txt
 pub fn html2txt(input: &Input<'_>, clean: bool, call: &Call<'_>) -> Result<String, ExtractError> {
     baseline::html2txt(input.html, clean, &ParseLimits::default(), call)

@@ -154,3 +154,102 @@ fn decompress_zstd_and_brotli_bombs() {
     );
     assert_eq!(handle_compressed_file(BROTLI_ZEROS, SIZE).len(), 100_000);
 }
+
+fn load_at(bytes: &[u8], max_size: usize) -> Result<Tree, ExtractError> {
+    load_html(
+        HtmlInput::Bytes(bytes),
+        max_size,
+        &ParseLimits::default(),
+        &Call::default(),
+    )
+}
+
+fn too_large() -> ExtractError {
+    ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxFileSize))
+}
+
+#[test]
+fn oversized_gzip_is_too_large() {
+    let compressed = gzip(&[b'0'; 2000]);
+    assert_eq!(load_at(&compressed, 1000).map(drop), Err(too_large()));
+}
+
+#[test]
+fn oversized_zstd_is_too_large() {
+    let compressed = zstd(&[b'0'; 2000]);
+    assert_eq!(load_at(&compressed, 1000).map(drop), Err(too_large()));
+}
+
+#[test]
+fn gzip_at_cap_is_accepted() {
+    let at_cap = format!("<html><body><p>{}</p></body></html>", "a".repeat(967));
+    assert_eq!(at_cap.len(), 1000);
+    assert!(load_at(&gzip(at_cap.as_bytes()), 1000).is_ok());
+    let over = format!("<html><body><p>{}</p></body></html>", "a".repeat(968));
+    assert_eq!(over.len(), 1001);
+    assert_eq!(
+        load_at(&gzip(over.as_bytes()), 1000).map(drop),
+        Err(too_large())
+    );
+}
+
+#[test]
+fn oversized_gzip_members_add_up() {
+    // Each member is under the cap; the output of both is over it.
+    let member = gzip(&[b'0'; 600]);
+    let two = [member.clone(), member].concat();
+    assert_eq!(load_at(&two, 1000).map(drop), Err(too_large()));
+}
+
+#[test]
+fn corrupt_gzip_still_empty_tree() {
+    let whole = gzip(HTML.as_bytes());
+    let cut = whole.get(..whole.len() - 8).unwrap();
+    assert_eq!(
+        load_at(cut, SIZE).map(drop),
+        Err(ExtractError::Rejected(Rejection::EmptyTree))
+    );
+}
+
+#[test]
+fn oversized_brotli_and_zlib_keep_upstream_path() {
+    // Values of 0.1.0 on the parent commit: both give EmptyTree at this cap.
+    assert_eq!(
+        load_at(BROTLI_ZEROS, 1000).map(drop),
+        Err(ExtractError::Rejected(Rejection::EmptyTree))
+    );
+    assert_eq!(
+        load_at(&zlib(&[b'0'; 2000]), 1000).map(drop),
+        Err(ExtractError::Rejected(Rejection::EmptyTree))
+    );
+}
+
+#[test]
+fn brotli_like_text_under_small_cap_is_unchanged() {
+    // Plain text whose first bytes read as brotli keeps upstream's raw path at a small cap.
+    let mut text = b"Quick read <html><body><p>".to_vec();
+    text.extend(std::iter::repeat_n(b'x', 1200));
+    text.extend_from_slice(b"</p></body></html>");
+    let small = load_at(&text, 1000).map(|tree| tree.tostring(tree.root(), false, false));
+    let full = load_at(&text, SIZE).map(|tree| tree.tostring(tree.root(), false, false));
+    assert!(small.is_ok());
+    assert_eq!(small, full);
+}
+
+#[test]
+fn decode_file_keeps_raw_bytes_when_oversized() {
+    let compressed = gzip(&[b'0'; 2000]);
+    let decoded = decode_file(&compressed, 1000);
+    assert_eq!(decoded, decode_bytes(Cow::Borrowed(&compressed)));
+    assert!(!decoded.is_empty());
+}
+
+#[test]
+fn html2txt_oversized_gzip_is_too_large() {
+    let compressed = gzip(&vec![0u8; MAX_FILE_SIZE + 1]);
+    let result = crate::api::Input::bytes(&compressed);
+    assert_eq!(
+        crate::api::html2txt(&result, false, &Call::default()),
+        Err(too_large())
+    );
+}
