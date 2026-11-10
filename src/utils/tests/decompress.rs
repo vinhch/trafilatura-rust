@@ -226,14 +226,51 @@ fn oversized_brotli_and_zlib_keep_upstream_path() {
 
 #[test]
 fn brotli_like_text_under_small_cap_is_unchanged() {
-    // Plain text whose first bytes read as brotli keeps upstream's raw path at a small cap.
-    let mut text = b"Quick read <html><body><p>".to_vec();
-    text.extend(std::iter::repeat_n(b'x', 1200));
-    text.extend_from_slice(b"</p></body></html>");
-    let small = load_at(&text, 1000).map(|tree| tree.tostring(tree.root(), false, false));
-    let full = load_at(&text, SIZE).map(|tree| tree.tostring(tree.root(), false, false));
+    // A valid brotli stream whose uncompressed meta-block decodes to a 1,244-byte page: past the
+    // cap of 1000, so brotli fails there and upstream keeps the raw bytes. Cap 0 decodes nothing,
+    // so it gives the raw-bytes result that 0.1.0 gives at cap 1000.
+    let mut page = b"Quick read <html><body><p>".to_vec();
+    page.extend(std::iter::repeat_n(b'x', 1200));
+    page.extend_from_slice(b"</p></body></html>");
+    let stream = brotli_uncompressed(&page);
+    assert_eq!(bounded_unbrotli(&stream, 1000), None);
+    assert_eq!(bounded_unbrotli(&stream, SIZE), Some(page));
+    let small = load_at(&stream, 1000).map(|tree| tree.tostring(tree.root(), false, false));
+    let raw = load_at(&stream, 0).map(|tree| tree.tostring(tree.root(), false, false));
     assert!(small.is_ok());
-    assert_eq!(small, full);
+    assert_eq!(small, raw);
+}
+
+/// A brotli stream of one uncompressed meta-block holding `literal`, then the empty last
+/// meta-block (RFC 7932, section 9.2). WBITS is 16, so `literal` is at most 65,536 bytes.
+fn brotli_uncompressed(literal: &[u8]) -> Vec<u8> {
+    let mut bits = vec![false]; // WBITS: 16
+    bits.push(false); // ISLAST
+    bits.extend([false, false]); // MNIBBLES: 4 nibbles
+    push_bits(&mut bits, literal.len() - 1, 16); // MLEN - 1
+    bits.push(true); // ISUNCOMPRESSED
+    bits.resize(bits.len().next_multiple_of(8), false);
+    let mut out = pack_bits(&bits);
+    out.extend_from_slice(literal);
+    out.push(0b11); // ISLAST, ISLASTEMPTY, then padding
+    out
+}
+
+/// Appends the low `width` bits of `value`, least significant first.
+fn push_bits(bits: &mut Vec<bool>, value: usize, width: usize) {
+    bits.extend((0..width).map(|at| (value >> at) & 1 == 1));
+}
+
+/// Packs bits into bytes, least significant bit first.
+fn pack_bits(bits: &[bool]) -> Vec<u8> {
+    bits.chunks(8)
+        .map(|chunk| {
+            chunk
+                .iter()
+                .enumerate()
+                .fold(0_u8, |byte, (at, &bit)| byte | (u8::from(bit) << at))
+        })
+        .collect()
 }
 
 #[test]
