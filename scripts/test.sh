@@ -22,7 +22,7 @@ usage() {
   cat <<EOF
 Usage: scripts/$script_name [--no-deny] [--report]
 
-Runs scripts/version.sh --check, the size check (scripts/size-check.sh), cargo fmt --check,
+Runs scripts/version.sh --check, the pin check (scripts/pin-check.sh), the size check (scripts/size-check.sh), cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
 items only the tests use), cargo nextest run --locked --all-features plus cargo test --locked --all-features --doc
@@ -66,6 +66,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 scripts/version.sh --check
+scripts/pin-check-test.sh
+scripts/pin-check.sh
 scripts/size-check-test.sh
 scripts/size-check.sh
 cargo fmt --check

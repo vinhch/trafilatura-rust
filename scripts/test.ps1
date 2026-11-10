@@ -36,7 +36,7 @@ function Show-Usage {
     @"
 Usage: scripts/$ScriptName [--no-deny] [--report]
 
-Runs scripts/version.ps1 --check, the size check (scripts/size-check.ps1), cargo fmt --check,
+Runs scripts/version.ps1 --check, the pin check (scripts/pin-check.ps1), the size check (scripts/size-check.ps1), cargo fmt --check,
 cargo clippy --locked --all-targets --all-features -- -D warnings,
 cargo clippy --locked -- -D warnings and with --no-default-features (the library alone, which warns about
 items only the tests use), cargo nextest run --locked --all-features plus cargo test --locked --all-features --doc
@@ -75,6 +75,13 @@ Set-Location (Split-Path -Parent $PSScriptRoot)
 $global:LASTEXITCODE = 0
 & (Join-Path $PSScriptRoot 'version.ps1') --check
 if ($global:LASTEXITCODE -ne 0) { Fail "'version.ps1 --check' exited with $global:LASTEXITCODE" }
+# The pin-check scripts also call exit only on failure, so each code is reset before its call.
+$global:LASTEXITCODE = 0
+& (Join-Path $PSScriptRoot 'pin-check-test.ps1')
+if ($global:LASTEXITCODE -ne 0) { Fail "'pin-check-test.ps1' exited with $global:LASTEXITCODE" }
+$global:LASTEXITCODE = 0
+& (Join-Path $PSScriptRoot 'pin-check.ps1')
+if ($global:LASTEXITCODE -ne 0) { Fail "'pin-check.ps1' exited with $global:LASTEXITCODE" }
 # The size-check scripts also call exit only on failure, so each code is reset before its call.
 $global:LASTEXITCODE = 0
 & (Join-Path $PSScriptRoot 'size-check-test.ps1')
