@@ -1,4 +1,4 @@
-# trafilatura-rust
+# trafilatura-rust ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/vinhch/trafilatura-rust/ci.yml?branch=main) [![Crates.io Version](https://img.shields.io/crates/v/trafilatura-rust)](https://crates.io/crates/trafilatura-rust)
 
 A Rust port of [trafilatura](https://github.com/adbar/trafilatura), the Python library that extracts the main text, comments and metadata of web pages. The goal is the same output as upstream Python at the pinned release, with a synchronous, cancellable, bounded and panic-free API that is safe to call from other languages.
 
