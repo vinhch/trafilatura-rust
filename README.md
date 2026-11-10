@@ -1,15 +1,8 @@
 # trafilatura-rust
 
-A Rust port of [trafilatura](https://github.com/adbar/trafilatura), the Python library that extracts
-the main text, comments and metadata of web pages. The goal is the same output as upstream Python at
-the pinned release, with a synchronous, cancellable, bounded and panic-free API that is safe to call
-from other languages.
+A Rust port of [trafilatura](https://github.com/adbar/trafilatura), the Python library that extracts the main text, comments and metadata of web pages. The goal is the same output as upstream Python at the pinned release, with a synchronous, cancellable, bounded and panic-free API that is safe to call from other languages.
 
-The extraction pipeline of upstream's fast mode works end to end: main text and comments from bytes or
-a string, as text, Markdown, HTML, XML, XML-TEI, JSON or CSV, or as a `Document` with the page's
-metadata. Upstream's unit and filter tests, ported by name, check it, along with cases generated from
-upstream Python and a comparison of the text, Markdown, HTML, XML, XML-TEI and JSON output of the
-corpus pages with upstream's.
+The extraction pipeline of upstream's fast mode works end to end: main text and comments from bytes or a string, as text, Markdown, HTML, XML, XML-TEI, JSON or CSV, or as a `Document` with the page's metadata. Upstream's unit and filter tests, ported by name, check it, along with cases generated from upstream Python and a comparison of the text, Markdown, HTML, XML, XML-TEI and JSON output of the corpus pages with upstream's.
 
 ## Installation
 
@@ -69,8 +62,7 @@ fn main() -> Result<(), trafilatura_rust::ExtractError> {
 
 ## API Reference
 
-The tables name each item and what it is for; [docs.rs](https://docs.rs/trafilatura-rust) has the
-full contracts and the default of every option.
+The tables name each item and what it is for; [docs.rs](https://docs.rs/trafilatura-rust) has the full contracts and the default of every option.
 
 ### Entry points
 
@@ -134,8 +126,7 @@ full contracts and the default of every option.
 
 ### Config
 
-`Config` holds upstream's `settings.cfg` keys as public fields; build one with
-`Config { min_extracted_size: 500, ..Config::default() }`.
+`Config` holds upstream's `settings.cfg` keys as public fields; build one with `Config { min_extracted_size: 500, ..Config::default() }`.
 
 | Field | Means |
 | --- | --- |
@@ -167,8 +158,7 @@ Every field is an `Option`, and metadata fields are set only when metadata is ex
 
 ### Errors
 
-`ExtractError` is `Rejected(Rejection)`, `Cancelled` or `DeadlineExceeded`. A rejection stands for
-upstream's `None` result, and its variant says which check fired:
+`ExtractError` is `Rejected(Rejection)`, `Cancelled` or `DeadlineExceeded`. A rejection stands for upstream's `None` result, and its variant says which check fired:
 
 | `Rejection` | When |
 | --- | --- |
@@ -187,8 +177,7 @@ upstream's `None` result, and its variant says which check fired:
 
 ### Cancellation and deadlines
 
-Every call carries a `Call`. A `CancelToken` stops it from another thread, a deadline stops it at an
-instant; the pipeline checks both at stage boundaries and inside its loops over nodes.
+Every call carries a `Call`. A `CancelToken` stops it from another thread, a deadline stops it at an instant; the pipeline checks both at stage boundaries and inside its loops over nodes.
 
 ```rust
 use std::time::{Duration, Instant};
@@ -224,9 +213,7 @@ std::thread::scope(|scope| {
 
 ### Batches
 
-`Extractor::extract_batch` runs a closure over an iterator on a fixed number of scoped worker
-threads, under one `Call` for the whole batch and an optional deadline per item. Results reach a
-callback on the calling thread, with each item's index.
+`Extractor::extract_batch` runs a closure over an iterator on a fixed number of scoped worker threads, under one `Call` for the whole batch and an optional deadline per item. Results reach a callback on the calling thread, with each item's index.
 
 ```rust
 use std::num::NonZeroUsize;
@@ -255,14 +242,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-[`docs/batch.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/batch.md) covers thread
-counts, deadlines, memory bounds and running batches from a host's own pool.
+[`docs/batch.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/batch.md) covers thread counts, deadlines, memory bounds and running batches from a host's own pool.
 
 ### Deduplication
 
-Deduplication is on when a call carries a `DedupCache`; there is no option for it. Calls that share
-the cache count each text they see, and a text seen more than `Config::max_repetitions` times is
-rejected.
+Deduplication is on when a call carries a `DedupCache`; there is no option for it. Calls that share the cache count each text they see, and a text seen more than `Config::max_repetitions` times is rejected.
 
 ```rust
 use trafilatura_rust::{Call, DedupCache, ExtractError, Input, Options, Rejection};
@@ -284,8 +268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Compressed input
 
-With the `decompress` feature, `Input::bytes` accepts gzip, zstd, brotli and zlib payloads as they
-come off the wire, and `Config::max_file_size` bounds the decompressed size.
+With the `decompress` feature, `Input::bytes` accepts gzip, zstd, brotli and zlib payloads as they come off the wire, and `Config::max_file_size` bounds the decompressed size.
 
 ```rust,no_run
 use trafilatura_rust::{Call, Input, Options};
@@ -299,8 +282,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Reproducible dates
 
-The date search rejects dates after a latest date, which defaults to today's UTC date, so the same
-page can give a different `date` on another day. `Call::max_date` fixes it per call.
+The date search rejects dates after a latest date, which defaults to today's UTC date, so the same page can give a different `date` on another day. `Call::max_date` fixes it per call.
 
 ```rust
 use trafilatura_rust::Call;
@@ -310,35 +292,22 @@ let call = Call::default().max_date("2026-12-31");
 
 ## Scope and limitations
 
-- Fast mode only. The port covers upstream's `fast=True` path; the readability and jusText fallbacks
-  that upstream runs by default are not ported yet
-  ([D-1](https://github.com/vinhch/trafilatura-rust/blob/main/docs/deviations.md)). When extraction
-  finds nothing usable it returns a `Rejection` that says why, and a caller that wants a fallback runs
-  its own extractor on that error.
-- Bounded input. Besides upstream's limits, `max_nodes`, `max_input_bytes`, a nesting depth of 256
-  and 1,000 attributes per tag bound each call; the
-  [deviations](https://github.com/vinhch/trafilatura-rust/blob/main/docs/deviations.md) list every
-  difference from upstream.
+- Fast mode only. The port covers upstream's `fast=True` path; the readability and jusText fallbacks that upstream runs by default are not ported yet ([D-1](https://github.com/vinhch/trafilatura-rust/blob/main/docs/deviations.md)). When extraction finds nothing usable it returns a `Rejection` that says why, and a caller that wants a fallback runs its own extractor on that error.
+- Bounded input. Besides upstream's limits, `max_nodes`, `max_input_bytes`, a nesting depth of 256 and 1,000 attributes per tag bound each call; the [deviations](https://github.com/vinhch/trafilatura-rust/blob/main/docs/deviations.md) list every difference from upstream.
 - No I/O. The crate fetches nothing and writes nothing; it takes a page you already have.
 - Threads. Only `extract_batch` starts threads, and none outlives the call.
 
-The [roadmap](https://github.com/vinhch/trafilatura-rust/blob/main/docs/phase-plan.md) lists what
-comes next.
+The [roadmap](https://github.com/vinhch/trafilatura-rust/blob/main/docs/phase-plan.md) lists what comes next.
 
 ## Why another Rust port
 
-Other Rust ports exist, but most translate the Go port, which follows an older Python release. This
-one ports Python directly:
+Other Rust ports exist, but most translate the Go port, which follows an older Python release. This one ports Python directly:
 
-- Upstream tracking: one Rust module per Python module, each function names its Python source, and
-  `scripts/upstream.sh` lists upstream changes since the pinned release.
-- Parity: output is compared with upstream Python output, not a benchmark score; intended differences
-  are listed in `docs/deviations.md`.
+- Upstream tracking: one Rust module per Python module, each function names its Python source, and `scripts/upstream.sh` lists upstream changes since the pinned release.
+- Parity: output is compared with upstream Python output, not a benchmark score; intended differences are listed in `docs/deviations.md`.
 - Production safety: cancellation, deadlines and input limits in the API, no panics, few dependencies.
 
-Is it better? `scripts/measure` times `extract` per page on both sides and prints the Python / Rust
-comparison (`docs/parity-harness.md`); the numbers depend on the machine, so run it on yours.
-The bet is that staying close to upstream makes each Python release cheaper to follow.
+Is it better? `scripts/measure` times `extract` per page on both sides and prints the Python / Rust comparison (`docs/parity-harness.md`); the numbers depend on the machine, so run it on yours. The bet is that staying close to upstream makes each Python release cheaper to follow.
 
 ## Documents
 
@@ -353,12 +322,7 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 
 ## Development
 
-The scripts, docs and workflows named here live in the
-[GitHub repository](https://github.com/vinhch/trafilatura-rust), not in the published package.
-`scripts/test.sh` (or `scripts/test.ps1`) runs every check the CI test job runs.
-[`docs/development.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/development.md)
-lists the prerequisites, the scripts, the workflows and the release steps, and `AGENTS.md` holds the
-porting rules.
+The scripts, docs and workflows named here live in the [GitHub repository](https://github.com/vinhch/trafilatura-rust), not in the published package. `scripts/test.sh` (or `scripts/test.ps1`) runs every check the CI test job runs. [`docs/development.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/development.md) lists the prerequisites, the scripts, the workflows and the release steps, and `AGENTS.md` holds the porting rules.
 
 ## Credits
 
