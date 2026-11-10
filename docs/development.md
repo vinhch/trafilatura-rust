@@ -69,3 +69,8 @@ moves by hand with `rust-version` and the nightly date (OI-6 in `docs/phase-plan
 on `origin/main` and that the tag names the version in `Cargo.toml`; then it runs `_ci.yml` and
 publishes to crates.io through trusted publishing in the `crates-io` environment, which accepts
 deployments only from `v*` tags and waits for a required reviewer.
+
+After the publish, the `github-release` job creates the GitHub Release of the tag with generated
+notes, marked a pre-release when the tag has a `-` suffix. If it fails after the publish succeeded,
+use "Re-run failed jobs": re-running all jobs asks for the environment approval again, and
+`cargo publish` then fails because the version already exists.

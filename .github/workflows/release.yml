@@ -60,3 +60,20 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: cargo publish --locked
+
+  github-release:
+    name: github-release
+    # After the publish, so no release exists for a version crates.io does not have.
+    needs: publish
+    runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow's: creating a release needs contents: write.
+    permissions:
+      contents: write
+    steps:
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          # A pre-release tag names a pre-release; Cargo reads the same suffix from the version.
+          prerelease: ${{ contains(github.ref_name, '-') }}
