@@ -48,29 +48,29 @@ const HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
-# fn main() -> Result<(), trafilatura_rust::ExtractError> {
-// One Extractor serves any number of calls, on any number of threads.
-let extractor = Options::new().with_metadata(true).build();
-let input = Input::text(HTML).url("https://example.org/news/library");
-let call = Call::default();
+fn main() -> Result<(), trafilatura_rust::ExtractError> {
+    // One Extractor serves any number of calls, on any number of threads.
+    let extractor = Options::new().with_metadata(true).build();
+    let input = Input::text(HTML).url("https://example.org/news/library");
+    let call = Call::default();
 
-// The main text as a string, in the format of the options (plain text here).
-let text = extractor.extract(&input, &call)?;
-assert!(text.contains("approved the new central library"));
-assert!(!text.contains("All rights reserved"));
+    // The main text as a string, in the format of the options (plain text here).
+    let text = extractor.extract(&input, &call)?;
+    assert!(text.contains("approved the new central library"));
+    assert!(!text.contains("All rights reserved"));
 
-// The same page as a Document: the text plus the metadata fields.
-let document = extractor.bare_extraction(&input, &call)?;
-assert_eq!(document.title.as_deref(), Some("Council approves the new library"));
-assert_eq!(document.author.as_deref(), Some("Ada Lovelace"));
-# Ok(())
-# }
+    // The same page as a Document: the text plus the metadata fields.
+    let document = extractor.bare_extraction(&input, &call)?;
+    assert_eq!(document.title.as_deref(), Some("Council approves the new library"));
+    assert_eq!(document.author.as_deref(), Some("Ada Lovelace"));
+    Ok(())
+}
 ```
 
 ## API Reference
 
 The tables name each item and what it is for; [docs.rs](https://docs.rs/trafilatura-rust) has the
-full contracts and the default of every option, which are upstream's.
+full contracts and the default of every option.
 
 ### Entry points
 
@@ -89,7 +89,7 @@ full contracts and the default of every option, which are upstream's.
 | `Input::bytes(&[u8])` | A page as raw bytes in an unknown encoding; compressed bytes need the `decompress` feature |
 | `Input::text(&str)` | A page as text |
 | `Input::url(&str)` | The page's URL, which resolves relative links; it belongs to the call, so one `Extractor` serves many sites |
-| `Input::record_id(&str)` | The record id, written to the metadata header of the text, Markdown and HTML outputs |
+| `Input::record_id(&str)` | The record id, which `extract` writes to its output: the metadata header of the text, Markdown and HTML formats, the `id` field of the others |
 | `Call::cancel(&CancelToken)` | Stops the call with `ExtractError::Cancelled` once the token is cancelled |
 | `Call::deadline(Instant)` | Stops the call with `ExtractError::DeadlineExceeded` once the instant has passed |
 | `Call::max_date(&str)` | The latest date the metadata accepts, `YYYY-MM-DD`; without it, today's UTC date |
@@ -98,7 +98,7 @@ full contracts and the default of every option, which are upstream's.
 
 ### Options
 
-`Options::new()` starts from upstream's defaults; each setter takes and returns the options.
+`Options::new()` starts from upstream's defaults plus the crate's own limits (`max_nodes`, `max_input_bytes`: D-5, D-11); each setter takes and returns the options.
 
 | Setter | Sets |
 | --- | --- |
@@ -159,7 +159,7 @@ Every field is an `Option`, and metadata fields are set only when metadata is ex
 | `url`, `hostname` | The page's URL and its host |
 | `date` | Publication date, `YYYY-MM-DD` |
 | `categories`, `tags` | `Vec<String>` |
-| `fingerprint`, `id` | Content fingerprint; the record id the caller gave |
+| `fingerprint`, `id` | Content fingerprint and record id; only `extract` computes them, for its outputs, so they are `None` from `bare_extraction` |
 | `license`, `language`, `image`, `pagetype` | License, page language, main image, page type |
 | `text`, `comments` | Main text and comments, with `Format::Python` only |
 | `raw_text` | The main text before the conversion to the output format |
@@ -180,7 +180,7 @@ upstream's `None` result, and its variant says which check fired:
 | `TooShort` | The extracted text is under the `Config` minimums |
 | `Duplicate` | A shared `DedupCache` has seen the text more than `max_repetitions` times |
 | `WrongLanguage` | The detected language does not match `target_language` |
-| `InputTooLarge` | The raw input exceeds `max_input_bytes` |
+| `InputTooLarge` | The raw input exceeds `max_input_bytes`, or a JSON node count or offset does not fit 32 bits |
 | `InvalidValue` | A value upstream raises on, such as `Format::Python` passed to `extract` |
 
 ## Advanced Usage
@@ -232,27 +232,27 @@ callback on the calling thread, with each item's index.
 use std::num::NonZeroUsize;
 use trafilatura_rust::{BatchEnd, BatchOptions, Call, Input, Options};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-let extractor = Options::new().build();
-let pages = vec!["<html><body><p>One</p></body></html>"; 8];
-let threads = NonZeroUsize::new(4).ok_or("thread count is zero")?;
-let mut outcomes = vec![None; pages.len()];
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let extractor = Options::new().build();
+    let pages = vec!["<html><body><p>One</p></body></html>"; 8];
+    let threads = NonZeroUsize::new(4).ok_or("thread count is zero")?;
+    let mut outcomes = vec![None; pages.len()];
 
-let end = extractor.extract_batch(
-    pages.iter(),
-    BatchOptions::new(threads),
-    &Call::default(),
-    |page, call| extractor.extract(&Input::text(page), call).is_ok(),
-    |index, result| {
-        if let Some(slot) = outcomes.get_mut(index) {
-            *slot = result.ok();
-        }
-    },
-)?;
-assert_eq!(end, BatchEnd::Completed);
-assert!(outcomes.iter().all(Option::is_some));
-# Ok(())
-# }
+    let end = extractor.extract_batch(
+        pages.iter(),
+        BatchOptions::new(threads),
+        &Call::default(),
+        |page, call| extractor.extract(&Input::text(page), call).is_ok(),
+        |index, result| {
+            if let Some(slot) = outcomes.get_mut(index) {
+                *slot = result.ok();
+            }
+        },
+    )?;
+    assert_eq!(end, BatchEnd::Completed);
+    assert!(outcomes.iter().all(Option::is_some));
+    Ok(())
+}
 ```
 
 [`docs/batch.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/batch.md) covers thread
@@ -267,19 +267,19 @@ rejected.
 ```rust
 use trafilatura_rust::{Call, DedupCache, ExtractError, Input, Options, Rejection};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-let extractor = Options::new().build();
-let cache = DedupCache::new(4096)?;
-let page = format!("<html><body>{}</body></html>", "<p>abc</p>".repeat(50));
-let call = Call::default().dedup(&cache);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let extractor = Options::new().build();
+    let cache = DedupCache::new(4096)?;
+    let page = format!("<html><body>{}</body></html>", "<p>abc</p>".repeat(50));
+    let call = Call::default().dedup(&cache);
 
-for _ in 0..3 {
-    assert!(extractor.extract(&Input::text(&page), &call).is_ok());
+    for _ in 0..3 {
+        assert!(extractor.extract(&Input::text(&page), &call).is_ok());
+    }
+    let fourth = extractor.extract(&Input::text(&page), &call);
+    assert!(matches!(fourth, Err(ExtractError::Rejected(Rejection::Duplicate))));
+    Ok(())
 }
-let fourth = extractor.extract(&Input::text(&page), &call);
-assert!(matches!(fourth, Err(ExtractError::Rejected(Rejection::Duplicate))));
-# Ok(())
-# }
 ```
 
 ### Compressed input
@@ -290,11 +290,11 @@ come off the wire, and `Config::max_file_size` bounds the decompressed size.
 ```rust,no_run
 use trafilatura_rust::{Call, Input, Options};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
-let bytes = std::fs::read("page.html.gz")?;
-let text = Options::new().build().extract(&Input::bytes(&bytes), &Call::default())?;
-# Ok(())
-# }
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = std::fs::read("page.html.gz")?;
+    let text = Options::new().build().extract(&Input::bytes(&bytes), &Call::default())?;
+    Ok(())
+}
 ```
 
 ### Reproducible dates

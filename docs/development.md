@@ -61,8 +61,8 @@ moves by hand with `rust-version` and the nightly date (OI-6 in `docs/phase-plan
 
 ## Releasing
 
-1. Set `version` in `Cargo.toml` and run `scripts/version.sh --check`.
-2. Commit `chore: release X.Y.Z` on `main` and push `main`.
+1. Set `version` in `Cargo.toml`, run `cargo update -p trafilatura-rust` so `Cargo.lock` follows (the release checks run cargo with `--locked`), and run `scripts/version.sh --check`.
+2. Commit `Cargo.toml` and `Cargo.lock` as `chore: release X.Y.Z` on `main` and push `main`.
 3. Push the tag `vX.Y.Z` on that commit.
 
 `release.yml` runs on tags matching `v[0-9]*.[0-9]*.[0-9]*`. Its guard checks that the tagged commit is
