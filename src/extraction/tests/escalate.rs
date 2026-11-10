@@ -45,6 +45,7 @@ fn escalate_swallows_rejection() {
     // oracle: the cascade with `core._recall_retry` raising ValueError keeps the first-pass text:
     //   `except Exception` leaves r_text empty, so the floor fails
     let options = cascade_options(false, false, true);
+    // The limit's value is not checked: the test asserts only that the rejection is swallowed.
     let result = run_escalate(
         &options,
         100,
