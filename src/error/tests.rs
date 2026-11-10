@@ -36,6 +36,44 @@ fn input_limit_display() {
 }
 
 #[test]
+fn missing_fields_lists_all_in_upstream_order() {
+    let names = |date, title, url| {
+        MissingFields::new(date, title, url)
+            .unwrap()
+            .names()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(names(true, false, true), ["date", "url"]);
+    assert_eq!(names(true, true, true), ["date", "title", "url"]);
+    let missing = MissingFields::new(true, false, true).unwrap();
+    assert_eq!(
+        Rejection::MissingMetadata(missing).to_string(),
+        "required metadata is missing: date, url"
+    );
+    assert_eq!(MissingFields::new(false, false, false), None);
+}
+
+#[test]
+fn missing_fields_report_each_flag() {
+    let missing = MissingFields::new(false, true, false).unwrap();
+    assert!(!missing.date());
+    assert!(missing.title());
+    assert!(!missing.url());
+}
+
+#[test]
+fn too_short_display() {
+    assert_eq!(
+        Rejection::TooShort {
+            text_chars: 3,
+            comments_chars: 0
+        }
+        .to_string(),
+        "extracted text is too short: 3 text chars, 0 comment chars"
+    );
+}
+
+#[test]
 fn caught_maps_errors() {
     assert_eq!(caught::<u8>(Ok(3)), Ok(Some(3)));
     for rejection in [

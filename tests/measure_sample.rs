@@ -12,7 +12,7 @@ mod measure;
 use std::path::PathBuf;
 
 use measure::{CorpusPage, outcome, sample};
-use trafilatura_rust::{ExtractError, InputLimit, Rejection, TreeLimit};
+use trafilatura_rust::{Call, ExtractError, Input, InputLimit, Options, Rejection, TreeLimit};
 
 fn rejected(rejection: Rejection) -> Result<(), ExtractError> {
     Err(ExtractError::Rejected(rejection))
@@ -20,14 +20,27 @@ fn rejected(rejection: Rejection) -> Result<(), ExtractError> {
 
 #[test]
 fn outcome_words_match_0_1_0() {
-    assert_eq!(
-        outcome(&rejected(Rejection::TooShort)),
-        "Rejected(TooShort)"
-    );
-    assert_eq!(
-        outcome(&rejected(Rejection::MissingMetadata)),
-        "Rejected(MissingMetadata)"
-    );
+    // `MissingFields` has no public constructor, so the payload comes from a real rejection
+    let no_metadata = Options::new()
+        .only_with_metadata(true)
+        .build()
+        .bare_extraction(
+            &Input::text("<html><body><p>x</p></body></html>"),
+            &Call::default(),
+        )
+        .map(|_| ());
+    assert!(matches!(
+        no_metadata,
+        Err(ExtractError::Rejected(Rejection::MissingMetadata(_)))
+    ));
+    assert_eq!(outcome(&no_metadata), "Rejected(MissingMetadata)");
+    for (text_chars, comments_chars) in [(0, 0), (3, 7)] {
+        let short = rejected(Rejection::TooShort {
+            text_chars,
+            comments_chars,
+        });
+        assert_eq!(outcome(&short), "Rejected(TooShort)");
+    }
     for limit in [
         InputLimit::MaxInputBytes,
         InputLimit::MaxFileSize,

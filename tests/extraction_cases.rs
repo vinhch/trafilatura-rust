@@ -82,15 +82,16 @@ fn extract_matches_ties_invalid_value_to_a_raise() {
         &rejected(Rejection::InvalidValue),
         &Ok(None)
     ));
-    assert!(extract_matches(&rejected(Rejection::TooShort), &Ok(None)));
+    let too_short = Rejection::TooShort {
+        text_chars: 0,
+        comments_chars: 0,
+    };
+    assert!(extract_matches(&rejected(too_short), &Ok(None)));
     assert!(extract_matches(
         &rejected(Rejection::InvalidValue),
         &Err("TypeError")
     ));
-    assert!(!extract_matches(
-        &rejected(Rejection::TooShort),
-        &Err("ValueError")
-    ));
+    assert!(!extract_matches(&rejected(too_short), &Err("ValueError")));
     assert!(!extract_matches(&Ok("a".into()), &Ok(None)));
 }
 

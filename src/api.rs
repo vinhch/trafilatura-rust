@@ -199,7 +199,7 @@ impl Options {
     }
 
     /// Sets whether a page without a date, a title or a URL is rejected with
-    /// `Rejection::MissingMetadata`. Implies metadata extraction.
+    /// `Rejection::MissingMetadata`, which names the missing fields. Implies metadata extraction.
     pub fn only_with_metadata(mut self, on: bool) -> Self {
         self.only_with_metadata = on;
         self

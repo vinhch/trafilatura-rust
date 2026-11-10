@@ -24,12 +24,18 @@ pub enum Rejection {
     WrongHtmlLang,
     /// The URL is blacklisted.
     BlacklistedUrl,
-    /// Required metadata is missing.
-    MissingMetadata,
+    /// Required metadata is missing; the payload names the fields.
+    MissingMetadata(MissingFields),
     /// The tree exceeds a limit; the payload names which one.
     TreeTooLarge(TreeLimit),
-    /// The extracted text is shorter than the minimum.
-    TooShort,
+    /// The extracted text is shorter than the minimum. Both counts are in characters (`chars()`),
+    /// the text and the comments each measured against its own minimum.
+    TooShort {
+        /// The characters of the extracted text.
+        text_chars: usize,
+        /// The characters of the extracted comments.
+        comments_chars: usize,
+    },
     /// The text is a duplicate of one seen before.
     Duplicate,
     /// The detected language does not match the target language.
@@ -41,6 +47,48 @@ pub enum Rejection {
     /// character reference of more than 4300 digits, a URL `urljoin` rejects, a `hi` rend with no
     /// HTML tag, a heading level `int` rejects, a Discourse `posts` value that is not iterable).
     InvalidValue,
+}
+
+/// The metadata fields a page lacks, carried by [`Rejection::MissingMetadata`]. Each flag is `true`
+/// when that field is missing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MissingFields {
+    date: bool,
+    title: bool,
+    url: bool,
+}
+
+impl MissingFields {
+    /// The missing fields, or `None` when all three are present.
+    pub(crate) fn new(date: bool, title: bool, url: bool) -> Option<Self> {
+        (date || title || url).then_some(Self { date, title, url })
+    }
+
+    /// Whether the `date` field is missing.
+    pub fn date(self) -> bool {
+        self.date
+    }
+
+    /// Whether the `title` field is missing.
+    pub fn title(self) -> bool {
+        self.title
+    }
+
+    /// Whether the `url` field is missing.
+    pub fn url(self) -> bool {
+        self.url
+    }
+
+    /// The names of the missing fields, in upstream's check order: `date`, `title`, `url`.
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
+        [
+            ("date", self.date),
+            ("title", self.title),
+            ("url", self.url),
+        ]
+        .into_iter()
+        .filter_map(|(name, missing)| missing.then_some(name))
+    }
 }
 
 /// The limit a [`Rejection::TreeTooLarge`] hit, so the caller knows which setting to change.
@@ -106,8 +154,17 @@ impl fmt::Display for Rejection {
                 f.write_str("html lang attribute does not match the target language")
             }
             Self::BlacklistedUrl => f.write_str("URL is blacklisted"),
-            Self::MissingMetadata => f.write_str("required metadata is missing"),
-            Self::TooShort => f.write_str("extracted text is too short"),
+            Self::MissingMetadata(missing) => {
+                let names: Vec<&str> = missing.names().collect();
+                write!(f, "required metadata is missing: {}", names.join(", "))
+            }
+            Self::TooShort {
+                text_chars,
+                comments_chars,
+            } => write!(
+                f,
+                "extracted text is too short: {text_chars} text chars, {comments_chars} comment chars"
+            ),
             Self::Duplicate => f.write_str("duplicate text"),
             Self::WrongLanguage => {
                 f.write_str("detected language does not match the target language")

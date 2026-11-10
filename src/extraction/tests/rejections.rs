@@ -20,7 +20,10 @@ fn extract_python_format_rejects_after_extraction() {
     );
     assert_eq!(
         internal_page(&full_page("", ""), None, &options).unwrap_err(),
-        rejected(Rejection::TooShort)
+        rejected(Rejection::TooShort {
+            text_chars: 0,
+            comments_chars: 0
+        })
     );
 }
 
@@ -184,13 +187,34 @@ fn too_short_rejected() {
         let label = format!("min {min_output} {min_comments} {kept:?}");
         match kept {
             Some(text) => assert_eq!(result.unwrap().text.as_deref(), Some(text), "{label}"),
-            None => assert_eq!(
-                result.unwrap_err(),
-                rejected(Rejection::TooShort),
+            None => assert!(
+                matches!(
+                    result,
+                    Err(ExtractError::Rejected(Rejection::TooShort { .. }))
+                ),
                 "{label}"
             ),
         }
     }
+}
+
+#[test]
+fn too_short_reports_char_counts() {
+    // The article text has 27 chars and 33 UTF-8 bytes; the comment has 11 chars and 13 bytes.
+    // The text count includes the comment line that joins the text: 27 + 1 newline + 11 = 39.
+    let text = "Café déjà vu, naïve résumé.";
+    let reply = "<div id=\"comments\"><p>Réponse ici</p></div>";
+    let mut options = bare_options(Format::Python, true);
+    options.min_output_size = 100;
+    options.min_output_comm_size = 100;
+    let page = full_page(&format!("<article><p>{text}</p></article>{reply}"), "");
+    assert_eq!(
+        bare_page(&page, &options).unwrap_err(),
+        rejected(Rejection::TooShort {
+            text_chars: 39,
+            comments_chars: 11
+        })
+    );
 }
 
 #[test]

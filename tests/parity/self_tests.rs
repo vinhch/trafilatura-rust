@@ -47,7 +47,10 @@ fn classify_output_names_each_class() {
     let rejected = |r| Err(ExtractError::Rejected(r));
     let text: Result<String, ExtractError> = Ok("a".to_string());
     let other: Result<String, ExtractError> = Ok("b".to_string());
-    let too_short = rejected(Rejection::TooShort);
+    let too_short = rejected(Rejection::TooShort {
+        text_chars: 0,
+        comments_chars: 0,
+    });
     let invalid = rejected(Rejection::InvalidValue);
     let case = |expected, upstream_error, actual| OutputCase {
         id: "page",

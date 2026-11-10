@@ -11,7 +11,7 @@ use crate::cancel::Call;
 use crate::context::Ctx;
 use crate::deduplication::{content_fingerprint, duplicate_test, run_scoped};
 use crate::dom::{LocalName, NodeId, Ns, ParseLimits, Tree};
-use crate::error::{ExtractError, Rejection, TreeLimit, caught};
+use crate::error::{ExtractError, MissingFields, Rejection, TreeLimit, caught};
 use crate::html_processing::{
     build_html_output, convert_tags, prune_unwanted_nodes, tick, tree_cleaning,
 };
@@ -551,12 +551,16 @@ fn bare_extraction_pass(
         {
             return Err(ExtractError::Rejected(Rejection::BlacklistedUrl));
         }
-        if options.only_with_metadata
-            && !["date", "title", "url"]
-                .iter()
-                .all(|&name| document.field(name).is_some())
-        {
-            return Err(ExtractError::Rejected(Rejection::MissingMetadata));
+        if options.only_with_metadata {
+            // `names()` lists the missing fields in this order: date, title, url
+            let missing = MissingFields::new(
+                document.field("date").is_none(),
+                document.field("title").is_none(),
+                document.field("url").is_none(),
+            );
+            if let Some(missing) = missing {
+                return Err(ExtractError::Rejected(Rejection::MissingMetadata(missing)));
+            }
         }
         document
     } else {
@@ -594,10 +598,13 @@ fn bare_extraction_pass(
     call.check()?;
 
     check_tree_size(&mut tree, postbody, options.max_tree_size)?;
-    if temp_text.chars().count() < options.min_output_size
-        && temp_comments.chars().count() < options.min_output_comm_size
-    {
-        return Err(ExtractError::Rejected(Rejection::TooShort));
+    let text_chars = temp_text.chars().count();
+    let comments_chars = temp_comments.chars().count();
+    if text_chars < options.min_output_size && comments_chars < options.min_output_comm_size {
+        return Err(ExtractError::Rejected(Rejection::TooShort {
+            text_chars,
+            comments_chars,
+        }));
     }
     if duplicate_test(&tree, postbody, ctx) {
         return Err(ExtractError::Rejected(Rejection::Duplicate));

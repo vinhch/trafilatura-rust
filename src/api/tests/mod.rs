@@ -6,7 +6,7 @@ mod batch;
 use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;
-use crate::error::{InputLimit, Rejection, TreeLimit};
+use crate::error::{InputLimit, MissingFields, Rejection, TreeLimit};
 use crate::settings::{self, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES, today_utc};
 use crate::utils::HtmlInput;
 
@@ -505,10 +505,12 @@ fn url_blacklist_alone_turns_metadata_on() {
 #[test]
 fn only_with_metadata_rejects_a_page_without_date() {
     let options = Options::new().only_with_metadata(true);
-    assert_eq!(
-        document_of(&options, METADATA_PAGE, &Call::default()).err(),
-        Some(ExtractError::Rejected(Rejection::MissingMetadata))
-    );
+    let error = document_of(&options, METADATA_PAGE, &Call::default()).err();
+    let Some(ExtractError::Rejected(Rejection::MissingMetadata(missing))) = error else {
+        panic!("{error:?}");
+    };
+    assert_eq!(missing, MissingFields::new(true, false, false).unwrap());
+    assert_eq!(missing.names().collect::<Vec<_>>(), ["date"]);
 }
 
 #[test]
