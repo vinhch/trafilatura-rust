@@ -16,8 +16,9 @@ use super::{
     handle_textelem, in_tags,
 };
 
-/// Determines the cell element type and mints a new element; fails with `Rejection::TreeTooLarge`
-/// once table construction has already minted `budget` cells in this tree.
+/// Determines the cell element type and mints a new element; fails with
+/// `Rejection::TreeTooLarge(TreeLimit::TableCells)` once table construction has already minted
+/// `budget` cells in this tree.
 // upstream: main_extractor.py::define_cell_type
 fn define_cell_type(
     tree: &mut Tree,

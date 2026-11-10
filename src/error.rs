@@ -95,11 +95,11 @@ impl MissingFields {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TreeLimit {
-    /// The node budget: `ParseLimits::max_nodes`, or the budget of html5ever's clones and work on
+    /// The node budget, `Options::max_nodes`, or the budget of html5ever's clones and work on
     /// formatting elements derived from it (D-5).
     MaxNodes,
-    /// More than `MAX_TAG_ATTRIBUTES` attributes on one tag, or on an `html` or `body` element
-    /// merged from repeated tags (D-5). Always on.
+    /// More than 1,000 attributes on one tag, or on an `html` or `body` element merged from
+    /// repeated tags (D-5). Always on.
     TagAttributes,
     /// More children of the extracted body than `Config::max_tree_size`, counted after the `hi`
     /// elements are dissolved. `children` is that count.

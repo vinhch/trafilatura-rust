@@ -201,7 +201,8 @@ fn too_short_rejected() {
 #[test]
 fn too_short_reports_char_counts() {
     // The article text has 27 chars and 33 UTF-8 bytes; the comment has 11 chars and 13 bytes.
-    // The text count includes the comment line that joins the text: 27 + 1 newline + 11 = 39.
+    // The baseline rescue (extraction.rs, baseline.rs) wins with a text that joins the article and
+    // the reply with a newline: 27 + 1 newline + 11 = 39.
     let text = "Café déjà vu, naïve résumé.";
     let reply = "<div id=\"comments\"><p>Réponse ici</p></div>";
     let mut options = bare_options(Format::Python, true);

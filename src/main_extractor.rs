@@ -58,7 +58,8 @@ pub const QUOTE_TAGS: &[&str] = &[
 // upstream: main_extractor.py::_MAX_SPAN
 pub const MAX_SPAN: usize = 100;
 
-/// Cells table construction may mint in one tree before it fails with `Rejection::TreeTooLarge`.
+/// Cells table construction may mint in one tree before it fails with
+/// `Rejection::TreeTooLarge(TreeLimit::TableCells)`.
 /// The count runs over every table and every cascade pass of one extraction and ignores the nodes
 /// the parse and the tree copies add, so the cascade can grow the arena to a few times the page
 /// without costing a table its budget. A page whose arena stayed under this size never reaches it.

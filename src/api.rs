@@ -173,8 +173,8 @@ impl Options {
         self
     }
 
-    /// Sets the element count above which a page is rejected with `Rejection::TreeTooLarge`,
-    /// counted while parsing; `None` lifts the limit.
+    /// Sets the element count above which a page is rejected with
+    /// `Rejection::TreeTooLarge(TreeLimit::MaxNodes)`, counted while parsing; `None` lifts the limit.
     pub fn max_nodes(mut self, max_nodes: Option<usize>) -> Self {
         self.max_nodes = max_nodes;
         self
@@ -378,9 +378,11 @@ fn context<'a>(
 }
 
 /// The text of `input`'s `body` with word boundaries kept at block tags, `clean` removing
-/// potentially undesirable elements first. An empty document gives `Ok("")`. Byte input whose
-/// gzip or zstd output passes `settings::MAX_FILE_SIZE` gives `Err(InputTooLarge(MaxFileSize))`
-/// (D-29). The URL and record id of `input` are not used.
+/// potentially undesirable elements first. An empty document gives `Ok("")`. The errors are
+/// `Err(Rejected(TreeTooLarge(_)))` past the default `max_nodes`, `Err(Rejected(InputTooLarge(_)))`
+/// for input over the default `max_input_bytes` and for gzip or zstd output past
+/// `settings::MAX_FILE_SIZE` (`InputTooLarge(MaxFileSize)`, D-29), and `Err(Cancelled)`. The URL
+/// and record id of `input` are not used.
 // upstream: baseline.py::html2txt
 pub fn html2txt(input: &Input<'_>, clean: bool, call: &Call<'_>) -> Result<String, ExtractError> {
     baseline::html2txt(input.html, clean, &ParseLimits::default(), call)

@@ -21,9 +21,10 @@ use crate::settings::{DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES};
 pub const MAX_DEPTH: usize = 256;
 
 /// Attributes one tag, or one `html` or `body` element merged from repeated tags, may carry; above
-/// it parsing fails with `Rejection::TreeTooLarge`. It bounds html5ever's duplicate check, which is
-/// quadratic in the attributes of one tag: a page at the input cap made of tags of this many
-/// attributes stays in the order of an ordinary parse. Real pages stay far below 100.
+/// it parsing fails with `Rejection::TreeTooLarge(TreeLimit::TagAttributes)`. It bounds html5ever's
+/// duplicate check, which is quadratic in the attributes of one tag: a page at the input cap made of
+/// tags of this many attributes stays in the order of an ordinary parse. Real pages stay far below
+/// 100.
 // deviation: D-5
 pub const MAX_TAG_ATTRIBUTES: usize = 1_000;
 
@@ -77,11 +78,11 @@ const SHARED_VALUE_BYTES: usize = 32;
 pub struct ParseLimits {
     /// Element nesting depth at which parsing stops and the partial tree is kept.
     pub max_depth: usize,
-    /// Element count above which parsing fails with `Rejection::TreeTooLarge`, html5ever's clones of
-    /// open formatting elements included; so does a total of more than `ATTRIBUTES_PER_NODE`
-    /// attributes per allowed element, clones included, or of more than `COMPARE_WORK_PER_NODE` units
-    /// of html5ever's work on formatting elements per allowed element. `None` = no limit. Defaults to
-    /// `DEFAULT_MAX_NODES`.
+    /// Element count above which parsing fails with `Rejection::TreeTooLarge(TreeLimit::MaxNodes)`,
+    /// html5ever's clones of open formatting elements included; so does a total of more than
+    /// `ATTRIBUTES_PER_NODE` attributes per allowed element, clones included, or of more than
+    /// `COMPARE_WORK_PER_NODE` units of html5ever's work on formatting elements per allowed
+    /// element. `None` = no limit. Defaults to `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
     /// Raw input length above which loading fails with
     /// `Rejection::InputTooLarge(InputLimit::MaxInputBytes)`, checked before decompression;

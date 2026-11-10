@@ -239,9 +239,9 @@ impl TagScanner {
     }
 
     /// Scans `html[from..end]` (`end` a char boundary, not before a U+FEFF); returns the position it
-    /// stopped at, a char boundary in `from..=end`, and why. Err(Rejected(TreeTooLarge)) once one tag
-    /// passes MAX_TAG_ATTRIBUTES. Called again while a pause is unanswered, it returns the same pause
-    /// at `from`.
+    /// stopped at, a char boundary in `from..=end`, and why.
+    /// `Err(Rejected(TreeTooLarge(TagAttributes)))` once one tag passes MAX_TAG_ATTRIBUTES. Called
+    /// again while a pause is unanswered, it returns the same pause at `from`.
     pub(super) fn scan(
         &mut self,
         html: &str,
