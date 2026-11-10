@@ -44,12 +44,19 @@ jobs:
     name: publish
     needs: verify
     runs-on: ubuntu-latest
-    # The environment's required reviewers are the last gate before crates.io, and it holds the token.
+    # The environment's required reviewers are the last gate before crates.io; crates.io trusts this
+    # workflow in this environment (trusted publishing) and issues a token that lives 30 minutes.
     environment: crates-io
+    # Job-level permissions replace the workflow's, so contents: read stays for the checkout.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@18f0487477426dce244608110aa2660c2893deb7 # 1.98.1
+      - uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+        id: auth
       - name: Publish to crates.io
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
         run: cargo publish --locked
