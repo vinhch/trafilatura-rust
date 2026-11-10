@@ -4,6 +4,21 @@ use super::*;
 use crate::cancel::CancelToken;
 use crate::utils::as_list;
 
+#[test]
+fn to_u32_rejects_counts_past_32_bits_as_json_size() {
+    assert_eq!(to_u32(0).ok(), Some(0));
+    let largest = usize::try_from(u32::MAX).unwrap();
+    assert_eq!(to_u32(largest).ok(), Some(u32::MAX));
+    if let Ok(past) = usize::try_from(u64::from(u32::MAX) + 1) {
+        assert!(matches!(
+            to_u32(past),
+            Err(Stop::Call(ExtractError::Rejected(
+                Rejection::InputTooLarge(InputLimit::JsonSize)
+            )))
+        ));
+    }
+}
+
 /// `@` stands for a backslash in test text, so the source holds no backslash-u escape.
 fn bs(text: &str) -> String {
     text.replace('@', "\\")

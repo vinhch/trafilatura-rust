@@ -8,6 +8,7 @@ use super::author::{
 use super::cases::{JSON_CASES, NORMALIZE_AUTHORS_CASES, NORMALIZE_JSON_CASES, PARSE_ERROR_CASES};
 use super::*;
 use crate::cancel::{CancelToken, CheckTrip};
+use crate::error::InputLimit;
 use crate::pyjson::dumps_str;
 
 fn fields(document: &Document) -> [Option<&str>; 4] {
@@ -183,7 +184,7 @@ fn unescape_error_is_raised_and_other_errors_stop() {
     for error in [
         ExtractError::Cancelled,
         ExtractError::DeadlineExceeded,
-        ExtractError::Rejected(Rejection::InputTooLarge),
+        ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::JsonSize)),
     ] {
         assert_eq!(JsonFailure::from(error.clone()), JsonFailure::Stop(error));
     }

@@ -20,7 +20,9 @@ fn load_html_rejects_input_over_the_input_cap() {
     for input in [HtmlInput::Str(page), HtmlInput::Bytes(page.as_bytes())] {
         assert!(matches!(
             load_html(input, SIZE, &capped(len - 1), &call),
-            Err(ExtractError::Rejected(Rejection::InputTooLarge))
+            Err(ExtractError::Rejected(Rejection::InputTooLarge(
+                InputLimit::MaxInputBytes
+            )))
         ));
     }
     let unlimited = ParseLimits {

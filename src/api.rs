@@ -181,7 +181,8 @@ impl Options {
     }
 
     /// Sets the raw input length, in bytes, above which a page is rejected with
-    /// `Rejection::InputTooLarge` before decompression, decoding or parsing; `None` lifts the limit.
+    /// `Rejection::InputTooLarge(InputLimit::MaxInputBytes)` before decompression, decoding or
+    /// parsing; `None` lifts the limit.
     pub fn max_input_bytes(mut self, max_input_bytes: Option<usize>) -> Self {
         self.max_input_bytes = max_input_bytes;
         self

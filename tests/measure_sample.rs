@@ -12,7 +12,7 @@ mod measure;
 use std::path::PathBuf;
 
 use measure::{CorpusPage, outcome, sample};
-use trafilatura_rust::{ExtractError, Rejection, TreeLimit};
+use trafilatura_rust::{ExtractError, InputLimit, Rejection, TreeLimit};
 
 fn rejected(rejection: Rejection) -> Result<(), ExtractError> {
     Err(ExtractError::Rejected(rejection))
@@ -28,10 +28,16 @@ fn outcome_words_match_0_1_0() {
         outcome(&rejected(Rejection::MissingMetadata)),
         "Rejected(MissingMetadata)"
     );
-    assert_eq!(
-        outcome(&rejected(Rejection::InputTooLarge)),
-        "Rejected(InputTooLarge)"
-    );
+    for limit in [
+        InputLimit::MaxInputBytes,
+        InputLimit::MaxFileSize,
+        InputLimit::JsonSize,
+    ] {
+        assert_eq!(
+            outcome(&rejected(Rejection::InputTooLarge(limit))),
+            "Rejected(InputTooLarge)"
+        );
+    }
     assert_eq!(
         outcome(&rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))),
         "too_large"

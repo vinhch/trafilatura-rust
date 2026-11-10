@@ -166,7 +166,7 @@ pub fn outcome<T>(result: &Result<T, ExtractError>) -> String {
             Rejection::TooShort => "Rejected(TooShort)".to_string(),
             Rejection::Duplicate => "Rejected(Duplicate)".to_string(),
             Rejection::WrongLanguage => "Rejected(WrongLanguage)".to_string(),
-            Rejection::InputTooLarge => "Rejected(InputTooLarge)".to_string(),
+            Rejection::InputTooLarge(_) => "Rejected(InputTooLarge)".to_string(),
             Rejection::InvalidValue => "Rejected(InvalidValue)".to_string(),
             _ => format!("{err:?}"),
         },

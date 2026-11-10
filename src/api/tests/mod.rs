@@ -6,7 +6,7 @@ mod batch;
 use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;
-use crate::error::{Rejection, TreeLimit};
+use crate::error::{InputLimit, Rejection, TreeLimit};
 use crate::settings::{self, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES, today_utc};
 use crate::utils::HtmlInput;
 
@@ -268,15 +268,16 @@ fn max_input_bytes_option_reaches_load() {
         "<p>some text in a paragraph</p>".repeat(20)
     );
     let limited = Options::new().max_input_bytes(Some(10)).build();
+    let too_large = rejected(Rejection::InputTooLarge(InputLimit::MaxInputBytes));
     assert_eq!(
         limited.extract(&Input::text(&page), &Call::default()),
-        rejected(Rejection::InputTooLarge)
+        too_large
     );
     assert_eq!(
         limited
             .bare_extraction(&Input::text(&page), &Call::default())
             .unwrap_err(),
-        ExtractError::Rejected(Rejection::InputTooLarge)
+        ExtractError::Rejected(Rejection::InputTooLarge(InputLimit::MaxInputBytes))
     );
     let unlimited = Options::new().max_input_bytes(None).build();
     assert_eq!(

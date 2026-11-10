@@ -19,6 +19,23 @@ fn tree_limit_display() {
 }
 
 #[test]
+fn input_limit_display() {
+    let display = |limit| Rejection::InputTooLarge(limit).to_string();
+    assert_eq!(
+        display(InputLimit::MaxInputBytes),
+        "input is too large: max_input_bytes"
+    );
+    assert_eq!(
+        display(InputLimit::MaxFileSize),
+        "input is too large: max_file_size"
+    );
+    assert_eq!(
+        display(InputLimit::JsonSize),
+        "input is too large: JSON node count or offset past 32 bits"
+    );
+}
+
+#[test]
 fn caught_maps_errors() {
     assert_eq!(caught::<u8>(Ok(3)), Ok(Some(3)));
     for rejection in [

@@ -61,7 +61,7 @@ pub use api::{
 };
 pub use cancel::{Call, CancelToken};
 pub use deduplication::{DedupCache, DedupError};
-pub use error::{ExtractError, Rejection, TreeLimit};
+pub use error::{ExtractError, InputLimit, Rejection, TreeLimit};
 pub use settings::{Config, Document, Focus};
 
 /// Crate internals for the crate's own integration tests; unstable, not public API.

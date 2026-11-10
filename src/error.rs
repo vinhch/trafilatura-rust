@@ -34,8 +34,8 @@ pub enum Rejection {
     Duplicate,
     /// The detected language does not match the target language.
     WrongLanguage,
-    /// The raw input exceeds `max_input_bytes`, or a JSON node count or offset does not fit 32 bits.
-    InputTooLarge,
+    /// The input exceeds a size limit; the payload names which one.
+    InputTooLarge(InputLimit),
     /// A value upstream raises on: either a `ValueError` or `TypeError` upstream catches (a tag name
     /// lxml refuses to create; it returns no result) or a raise that escapes `extract` (a span or
     /// character reference of more than 4300 digits, a URL `urljoin` rejects, a `hi` rend with no
@@ -74,10 +74,33 @@ impl fmt::Display for TreeLimit {
     }
 }
 
+/// The limit an [`Rejection::InputTooLarge`] hit, so the caller knows which setting to change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InputLimit {
+    /// The raw input is longer than `max_input_bytes` (D-11). Checked before decompression.
+    MaxInputBytes,
+    /// The decompressed input is longer than `Config::max_file_size` (D-29).
+    MaxFileSize,
+    /// A JSON node count or offset does not fit 32 bits, which is text over 4 GiB.
+    JsonSize,
+}
+
+impl fmt::Display for InputLimit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MaxInputBytes => f.write_str("max_input_bytes"),
+            Self::MaxFileSize => f.write_str("max_file_size"),
+            Self::JsonSize => f.write_str("JSON node count or offset past 32 bits"),
+        }
+    }
+}
+
 impl fmt::Display for Rejection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TreeTooLarge(limit) => write!(f, "tree is too large: {limit}"),
+            Self::InputTooLarge(limit) => write!(f, "input is too large: {limit}"),
             Self::EmptyTree => f.write_str("empty tree"),
             Self::WrongHtmlLang => {
                 f.write_str("html lang attribute does not match the target language")
@@ -89,7 +112,6 @@ impl fmt::Display for Rejection {
             Self::WrongLanguage => {
                 f.write_str("detected language does not match the target language")
             }
-            Self::InputTooLarge => f.write_str("input is too large"),
             Self::InvalidValue => f.write_str("a value upstream cannot parse"),
         }
     }

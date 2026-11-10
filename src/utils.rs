@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::cancel::Call;
 use crate::dom::{ParseLimits, Tree, parse_document};
-use crate::error::{ExtractError, Rejection};
+use crate::error::{ExtractError, InputLimit, Rejection};
 use crate::pystr;
 
 /// Input accepted by `load_html`.
@@ -357,9 +357,10 @@ fn leading_lines(text: &str, max_chars: usize, max_lines: usize) -> Vec<&str> {
 ///
 /// Expects a full document: a single-block fragment without `html` near its start is rejected,
 /// as upstream does. Input over `limits.max_input_bytes` is rejected first with
-/// `Rejection::InputTooLarge`; byte input that starts with the magic number of a binary file (zip,
-/// PDF, image, undecompressed gzip or zstd) and has no `html` near its start gives `EmptyTree`
-/// without being decoded or parsed, even when upstream would parse it (D-12).
+/// `Rejection::InputTooLarge(InputLimit::MaxInputBytes)`; byte input that starts with the magic
+/// number of a binary file (zip, PDF, image, undecompressed gzip or zstd) and has no `html` near
+/// its start gives `EmptyTree` without being decoded or parsed, even when upstream would parse it
+/// (D-12).
 // upstream: utils.py::load_html
 pub fn load_html(
     input: HtmlInput<'_>,
@@ -373,7 +374,9 @@ pub fn load_html(
         HtmlInput::Str(text) => text.len(),
     };
     if limits.max_input_bytes.is_some_and(|max| input_len > max) {
-        return Err(ExtractError::Rejected(Rejection::InputTooLarge));
+        return Err(ExtractError::Rejected(Rejection::InputTooLarge(
+            InputLimit::MaxInputBytes,
+        )));
     }
     let html = match input {
         HtmlInput::Bytes(bytes) => {

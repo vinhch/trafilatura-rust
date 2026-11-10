@@ -83,8 +83,9 @@ pub struct ParseLimits {
     /// of html5ever's work on formatting elements per allowed element. `None` = no limit. Defaults to
     /// `DEFAULT_MAX_NODES`.
     pub max_nodes: Option<usize>,
-    /// Raw input length above which loading fails with `Rejection::InputTooLarge`, checked before
-    /// decompression; `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
+    /// Raw input length above which loading fails with
+    /// `Rejection::InputTooLarge(InputLimit::MaxInputBytes)`, checked before decompression;
+    /// `None` = no limit. Defaults to `DEFAULT_MAX_INPUT_BYTES`.
     pub max_input_bytes: Option<usize>,
     /// Drops the text of HTML `style` elements and of HTML `script` elements whose `type` is not one
     /// upstream reads (`READ_SCRIPT_TYPES`); `parse_document` only, `parse_fragment` ignores it.

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::cancel::Call;
-use crate::error::{ExtractError, Rejection};
+use crate::error::{ExtractError, InputLimit, Rejection};
 use crate::html_processing::tick;
 use crate::pystr::MAX_STR_DIGITS;
 
@@ -166,7 +166,11 @@ impl From<ExtractError> for Stop {
 }
 
 fn to_u32(n: usize) -> Result<u32, Stop> {
-    u32::try_from(n).map_err(|_| Stop::Call(ExtractError::Rejected(Rejection::InputTooLarge)))
+    u32::try_from(n).map_err(|_| {
+        Stop::Call(ExtractError::Rejected(Rejection::InputTooLarge(
+            InputLimit::JsonSize,
+        )))
+    })
 }
 
 /// Keys of one large object. A key that held a lone surrogate is identified by its UTF-16 units,
@@ -635,8 +639,8 @@ impl<'a> Parser<'a> {
 /// strings, `NaN`, `Infinity` and `-Infinity` are numbers, a lone surrogate escape reads as U+FFFF,
 /// an integer of more than 4300 digits and nesting deeper than 9998 levels fail. `Ok(None)` is a
 /// Python parse failure; `Err` is a cancellation or deadline from `call`, which is checked once per
-/// value, or `Rejection::InputTooLarge` when a node count or offset does not fit 32 bits (text over
-/// 4 GiB).
+/// value, or `Rejection::InputTooLarge(InputLimit::JsonSize)` when a node count or offset does not
+/// fit 32 bits (text over 4 GiB).
 // upstream: json.loads (CPython)
 pub fn loads(text: &str, strict: bool, call: &Call<'_>) -> Result<Option<Json>, ExtractError> {
     try_loads(text, strict, call).map(Result::ok)
