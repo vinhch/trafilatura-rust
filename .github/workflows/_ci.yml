@@ -86,3 +86,44 @@ jobs:
           # .temp is a hidden directory, which the action skips by default.
           include-hidden-files: true
           if-no-files-found: ignore
+
+  minimal-versions:
+    name: minimal-versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The master commit: the release-branch pin of the test job hard-codes 1.98.1 and takes no `toolchain`
+      # input, and cargo-minimal-versions would then run silently on stable through RUSTC_BOOTSTRAP. The
+      # nightly is pinned by date and moves with the other toolchain pins (OI-6 in docs/phase-plan.md);
+      # --direct needs -Z direct-minimal-versions.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: nightly-2026-11-05
+      - name: Show the toolchain
+        run: rustc --version
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-hack@0.6.46,cargo-minimal-versions@0.1.38
+      - name: Read the upstream pin
+        id: pin
+        shell: bash
+        run: echo "commit=$(sed -n 's/^commit = "\(.*\)"$/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - name: Check out upstream at the pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: adbar/trafilatura
+          ref: ${{ steps.pin.outputs.commit }}
+          path: upstream
+      # No uv: without flags the script only unpacks the archive, with a tar that reads zstd.
+      - name: Unpack the parity fixtures
+        shell: bash
+        run: scripts/fixtures.sh
+      - name: Test at the lowest allowed versions
+        shell: bash
+        env:
+          TRAFILATURA_UPSTREAM: ${{ github.workspace }}/upstream
+          # The fixtures are unpacked above: a missing set must fail here, not skip the parity test.
+          PARITY_REQUIRE_FIXTURES: '1'
+        run: cargo minimal-versions test --direct --all-features

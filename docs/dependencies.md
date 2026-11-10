@@ -20,6 +20,9 @@ adding, changing or removing one. A row is added with the dependency and removed
   unmaintained crates, unknown sources and unknown licenses.
 - Each dependency has a row in the table below: what it replaces upstream and why this crate.
   No exact `=` pins and no git dependencies; Dependabot moves versions weekly.
+- Each requirement in `Cargo.toml` (normal, optional and dev) is a real minimum: the `minimal-versions` job
+  in `_ci.yml` resolves each to its lowest allowed version and runs the tests with the parity fixtures.
+  Raise the requirement when a newer version is needed.
 - Optional functionality goes behind a cargo feature so the default build stays small.
 - The `fuzz/` crate has its own `Cargo.lock`, outside `cargo deny` and its license allow list (libFuzzer
 is NCSA), moved by its own Dependabot entry, and never shipped to users.
