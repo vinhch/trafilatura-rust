@@ -5,8 +5,11 @@
 
 use super::*;
 use crate::cancel::Call;
+use crate::context::Ctx;
 use crate::dom::{MAX_DEPTH, ParseLimits, parse_document};
+use crate::html_processing::tree_cleaning;
 use crate::settings::Focus;
+use std::borrow::Cow;
 
 /// The smallest stack a host may give a thread; the contract's bound.
 const STACK_BYTES: usize = 512 * 1024;
@@ -133,22 +136,40 @@ fn pages() -> Vec<Page> {
         );
         // the frame's script is not a type upstream reads, so the parse drops its text; it comes
         // before the shape, because the parser stops at the depth bound and reads nothing past it
-        let limits = ParseLimits {
-            drop_script_text: true,
-            ..ParseLimits::default()
-        };
-        let tree = parse_document(&html, &limits, &Call::default()).unwrap();
-        assert!(
-            tree.dropped_script_text,
-            "{shape:?} in the recall frame: the parse dropped no script text"
-        );
-        pages.push(Page {
+        let page = Page {
             name: format!("{shape:?} in the recall frame"),
             html,
             recall: true,
-        });
+        };
+        assert_rerun_taken(&page);
+        pages.push(page);
     }
     pages
+}
+
+/// Asserts that the first pass of a recall page takes the script-text rerun: cleaning on a
+/// dropped-script parse leaves a dropped script to the readers, which sets `needs_script_text`, the
+/// flag `bare_extraction_pass` reads before it runs again on a full parse (`extraction.rs`).
+fn assert_rerun_taken(page: &Page) {
+    let call = Call::default();
+    let limits = ParseLimits {
+        drop_script_text: true,
+        ..ParseLimits::default()
+    };
+    let mut tree = parse_document(&page.html, &limits, &call).unwrap();
+    let root = tree.root();
+    // the text options, as the first pass of `extract` and `bare_extraction` runs them
+    let options = page.extractor(Format::Txt).text;
+    let ctx = Ctx {
+        options: Cow::Borrowed(&options),
+        call: &call,
+    };
+    tree_cleaning(&mut tree, root, &ctx).unwrap();
+    assert!(
+        tree.needs_script_text,
+        "{}: the first pass takes no script-text rerun",
+        page.name
+    );
 }
 
 /// Runs `check` on a thread with the contract's stack, and rethrows what it panicked with.
