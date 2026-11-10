@@ -107,9 +107,10 @@ upstream has no equivalent.
   output as one with no token and no deadline. `Call` also carries `max_date`, which sets the latest
   date the metadata accepts, and an optional duplicate cache (`Call::dedup`): with a cache, a completed
   run's output depends on the cache's state (D-22).
-- Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them
-  (`MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
-  means no limit). Nesting depth stops at 256 as libxml2 does (`MAX_DEPTH` in `dom/parse.rs`): parsing
+- Bounded. `MAX_FILE_SIZE` and `MAX_TREE_SIZE` are ported exactly as upstream applies them, except that
+  gzip and zstd output past `MAX_FILE_SIZE` is rejected as `InputTooLarge(MaxFileSize)` (D-29).
+  `MAX_TREE_SIZE` counts the children of the output body, strips `hi` first, then rejects; empty
+  means no limit. Nesting depth stops at 256 as libxml2 does (`MAX_DEPTH` in `dom/parse.rs`): parsing
   ends at the cut and the partial tree is kept. That is upstream behavior, always on. Limits the port
   adds are options: `max_input_bytes` (`ParseLimits::max_input_bytes`: raw input length, checked first in
   `load_html` before decompression) is on by default at `DEFAULT_MAX_INPUT_BYTES`, 64 MiB (D-11), and a

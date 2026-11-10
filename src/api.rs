@@ -379,9 +379,9 @@ fn context<'a>(
 
 /// The text of `input`'s `body` with word boundaries kept at block tags, `clean` removing
 /// potentially undesirable elements first. An empty document gives `Ok("")`. The errors are
-/// `Err(Rejected(TreeTooLarge(_)))` past the default `max_nodes`, `Err(Rejected(InputTooLarge(_)))`
-/// for input over the default `max_input_bytes` and for gzip or zstd output past
-/// `settings::MAX_FILE_SIZE` (`InputTooLarge(MaxFileSize)`, D-29), and `Err(Cancelled)`. The URL
+/// `Err(Rejected(TreeTooLarge(_)))` past a tree limit, `Err(Rejected(InputTooLarge(_)))` for input
+/// over the default `max_input_bytes` and for gzip or zstd output past the default `max_file_size`
+/// (`InputTooLarge(MaxFileSize)`, D-29), and `Err(Cancelled)` or `Err(DeadlineExceeded)`. The URL
 /// and record id of `input` are not used.
 // upstream: baseline.py::html2txt
 pub fn html2txt(input: &Input<'_>, clean: bool, call: &Call<'_>) -> Result<String, ExtractError> {

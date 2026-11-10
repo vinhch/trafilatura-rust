@@ -128,7 +128,8 @@ impl fmt::Display for TreeLimit {
 pub enum InputLimit {
     /// The raw input is longer than `max_input_bytes` (D-11). Checked before decompression.
     MaxInputBytes,
-    /// The decompressed input is longer than `Config::max_file_size` (D-29).
+    /// gzip or zstd output is longer than `Config::max_file_size` (D-29); brotli and zlib are not
+    /// checked.
     MaxFileSize,
     /// A JSON node count or offset does not fit 32 bits, which is text over 4 GiB.
     JsonSize,

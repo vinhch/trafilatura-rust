@@ -74,9 +74,10 @@ enum CapError {
 #[cfg_attr(not(feature = "decompress"), allow(dead_code))]
 struct Oversized;
 
-/// Decompresses `content` by magic number, or by trying brotli then zlib, capped at `max_size`;
-/// returns the input unchanged when it is not compressed, corrupt, truncated or too large. An
-/// oversized gzip or zstd input is rejected by `load_html`, not here.
+/// Decompresses `content` by magic number, or by trying brotli then zlib, capped at `max_size`,
+/// when the `decompress` feature is on; the input is returned unchanged otherwise, and when it is
+/// not compressed, corrupt, truncated or too large. With the feature, an oversized gzip or zstd
+/// input is rejected by `load_html`, not here.
 // upstream: utils.py::handle_compressed_file
 pub fn handle_compressed_file(content: &[u8], max_size: usize) -> Cow<'_, [u8]> {
     decompress(content, max_size).unwrap_or(Cow::Borrowed(content))

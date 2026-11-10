@@ -101,8 +101,9 @@ These hold for the whole crate; `docs/architecture.md` (Runtime contract) has th
 - Cancellable: every extraction entry point takes a `Call`. Check it at stage boundaries and inside
   every loop over nodes, about every `CHECK_INTERVAL` nodes; a ported function that checks it returns
   `Result`; a check never changes a branch.
-- Bounded: `MAX_FILE_SIZE` and `MAX_TREE_SIZE` as upstream applies them, nesting depth 256, and the
-  added `max_nodes` and 1,000 attributes per tag (D-5) and the input cap `max_input_bytes` (D-11).
+- Bounded: `MAX_FILE_SIZE` and `MAX_TREE_SIZE` as upstream applies them, except that gzip and zstd
+  output past `MAX_FILE_SIZE` is rejected (D-29), nesting depth 256, and the added `max_nodes` and
+  1,000 attributes per tag (D-5) and the input cap `max_input_bytes` (D-11).
   Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a 512 KiB stack
   in a debug build, so a default thread stack is enough (a musl host that spawns its own threads sets
   512 KiB). `scripts/test.sh` runs these tests in the dev profile from a list; a new one goes on that list.
