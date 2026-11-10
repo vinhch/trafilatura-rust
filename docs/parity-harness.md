@@ -185,7 +185,7 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
   the first is `ok`, the second `too_large` (`DEFAULT_MAX_NODES` is 500,000). `cell_budget` is a table
   of exactly `MAX_OUTPUT_NODES` cells (10,000 rows of colspan 100) and `cell_budget_over` has one row
   more; the target fails after writing when an outcome differs from the page's expected one (`ok`,
-  or `too_large` for `Rejected(TreeTooLarge)`). `ordered_list_50k` and `ordered_list_200k` are
+  or `too_large` for `Rejected(TreeTooLarge(_))`). `ordered_list_50k` and `ordered_list_200k` are
   Markdown lists of 50,000 and 200,000 items inside `<article>` (a bare `<ol>` in `<body>` is flattened
   and never reaches `xml::list_marker`); the heap target skips them, because dhat would multiply their
   runtime (the 200k list alone takes about 150 s). A synthetic entry holds `name`, `input_bytes`,

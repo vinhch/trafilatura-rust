@@ -120,7 +120,7 @@ upstream has no equivalent.
   (`ATTRIBUTES_PER_NODE` per allowed node, clones included) and html5ever's work on formatting
   elements, compares and clones (`COMPARE_WORK_PER_NODE` per allowed node) are budgeted from `max_nodes` and lifted with it (D-5); the parse stops at the first token after a budget is crossed.
   Table construction is bounded by the cells
-  it mints: it fails with `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in
+  it mints: it fails with `Rejection::TreeTooLarge(TreeLimit::TableCells)` once it has minted `MAX_OUTPUT_NODES` of them in
   one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, and each recursive walk has a stack
   test in the list in `scripts/test.sh`. The stack bound those tests prove is stated in the
   [README](../README.md#scope-and-limitations).
@@ -158,7 +158,7 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus`,
 | `Format` | `Txt`, `Markdown`, `Html`, `Xml`, `XmlTei`, `Json`, `Csv`, `Python`; non-exhaustive. Maps onto `settings::Format`. |
 | `Focus`, `Config` | `Focus` is `Balanced`, `Precision` or `Recall`, in place of upstream's two `favor_*` flags, so upstream's recall-wins resolution cannot arise. `Config` holds the values of `settings.cfg`; `Config::default()` is the cfg file. |
 | `Document` | Non-exhaustive result: the metadata fields (`Option<String>`; `categories` and `tags` `Option<Vec<String>>`), `text`, `comments` and `raw_text`. It owns the body and comments body as a compact tree of its own, so the call's arena is freed on return. |
-| `html2txt(&Input, clean, &Call)` | Upstream `html2txt`. An empty document gives `Ok("")`; `TreeTooLarge` and cancellation are errors. |
+| `html2txt(&Input, clean, &Call)` | Upstream `html2txt`. An empty document gives `Ok("")`; `TreeTooLarge`, `InputTooLarge` (input over the default `max_input_bytes`, or gzip and zstd output over `max_file_size`) and cancellation are errors. |
 
 `Options` defaults and what they map to:
 
@@ -172,10 +172,10 @@ root with `Call`, `CancelToken`, `ExtractError`, `Rejection`, `Config`, `Focus`,
 | `tables` | `true` | |
 | `target_language` | none | Two-letter code; with the language classifier a stub (OI-4) only the `html` `lang` check rejects. |
 | `config` | `Config::default()` | |
-| `max_input_bytes` | `Some(DEFAULT_MAX_INPUT_BYTES)` | `ParseLimits::max_input_bytes` (D-11): raw input length above which `Rejection::InputTooLarge` is returned, before decompression; `None` lifts the limit. The free `html2txt` always uses the default. |
+| `max_input_bytes` | `Some(DEFAULT_MAX_INPUT_BYTES)` | `ParseLimits::max_input_bytes` (D-11): raw input length above which `Rejection::InputTooLarge(InputLimit::MaxInputBytes)` is returned, before decompression; `None` lifts the limit. The free `html2txt` always uses the default. |
 | `max_nodes` | `Some(DEFAULT_MAX_NODES)` | `ParseLimits::max_nodes` (D-5); `None` lifts the limit. `ParseLimits::max_depth` is not exposed. |
 | `with_metadata` | `false` | Metadata goes into the `Document` of `bare_extraction`, into the header of the text, Markdown and HTML outputs, and into the XML, XML-TEI, JSON and CSV outputs. A URL or author blacklist, or `only_with_metadata`, turns it on; `XmlTei` forces it on (see `keep_script_text`). |
-| `only_with_metadata` | `false` | Rejects a page without a date, title or URL with `Rejected(MissingMetadata)`. Implies `with_metadata`. |
+| `only_with_metadata` | `false` | Rejects a page without a date, title or URL with `Rejected(MissingMetadata(_))`, which names the missing fields. Implies `with_metadata`. |
 | `author_blacklist` | empty | Names dropped from the author, matched without regard to case; replaces the set. A non-empty set implies `with_metadata`. |
 | `url_blacklist` | empty | URLs rejected with `Rejected(BlacklistedUrl)`; replaces the set. A non-empty set implies `with_metadata`. |
 | `keep_script_text` | `false` | Keeps the text of `script` and `style` elements in the parse, as upstream does (D-14). Metadata keeps that text whatever this option says, since a date can sit in it, so the option matters only with metadata off. The `XmlTei` format forces `with_metadata` on, as upstream does. |

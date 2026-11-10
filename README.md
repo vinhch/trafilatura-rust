@@ -165,12 +165,12 @@ Every field is an `Option`, and metadata fields are set only when metadata is ex
 | `EmptyTree` | The document has no usable tree |
 | `WrongHtmlLang` | The `html` element's `lang` does not match `target_language` |
 | `BlacklistedUrl` | The URL is in `url_blacklist` |
-| `MissingMetadata` | `only_with_metadata` is set and a date, title or URL is missing |
-| `TreeTooLarge` | A node limit is exceeded: `max_nodes` while parsing, `Config::max_tree_size` on the extracted body, or the cell budget of a table |
-| `TooShort` | The extracted text is under the `Config` minimums |
+| `MissingMetadata(MissingFields)` | `only_with_metadata` is set and a date, title or URL is missing; `MissingFields` names which (`date()`, `title()`, `url()`, `names()`, in upstream's order) |
+| `TreeTooLarge(TreeLimit)` | A tree limit is exceeded: `TreeLimit::MaxNodes` (`max_nodes` while parsing), `TagAttributes` (more than 1,000 attributes on one tag), `MaxTreeSize { children }` (`Config::max_tree_size` on the extracted body, `children` is the count), or `TableCells` (the cell budget of a table) |
+| `TooShort { text_chars, comments_chars }` | The extracted text is under the `Config` minimums; both counts are in characters |
 | `Duplicate` | A shared `DedupCache` has seen the text more than `max_repetitions` times |
 | `WrongLanguage` | The detected language does not match `target_language` |
-| `InputTooLarge` | The raw input exceeds `max_input_bytes`, or a JSON node count or offset does not fit 32 bits |
+| `InputTooLarge(InputLimit)` | A size limit is exceeded: `MaxInputBytes` (the raw input is over `max_input_bytes`), `MaxFileSize` (gzip or zstd input whose decompressed output is over `Config::max_file_size`; corrupt or truncated streams are not rejected), or `JsonSize` (a JSON node count or offset does not fit 32 bits) |
 | `InvalidValue` | A value upstream raises on, such as `Format::Python` passed to `extract` |
 
 ## Advanced Usage
