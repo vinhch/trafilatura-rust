@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::context::Ctx;
 use crate::dom::{LiveIter, NodeId, Tree};
-use crate::error::{ExtractError, Rejection};
+use crate::error::{ExtractError, Rejection, TreeLimit};
 use crate::html_processing::{handle_textnode, has_content, process_node, tick};
 use crate::pystr;
 use crate::settings::{Focus, INLINE_CONSUMING};
@@ -26,7 +26,9 @@ fn define_cell_type(
 ) -> Result<NodeId, ExtractError> {
     // deviation: D-9
     if tree.table_cells >= budget {
-        return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+        return Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::TableCells,
+        )));
     }
     tree.table_cells = tree.table_cells.saturating_add(1);
     let cell = tree.new_element("cell");

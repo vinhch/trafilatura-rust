@@ -11,7 +11,37 @@ mod measure;
 
 use std::path::PathBuf;
 
-use measure::{CorpusPage, sample};
+use measure::{CorpusPage, outcome, sample};
+use trafilatura_rust::{ExtractError, Rejection, TreeLimit};
+
+fn rejected(rejection: Rejection) -> Result<(), ExtractError> {
+    Err(ExtractError::Rejected(rejection))
+}
+
+#[test]
+fn outcome_words_match_0_1_0() {
+    assert_eq!(
+        outcome(&rejected(Rejection::TooShort)),
+        "Rejected(TooShort)"
+    );
+    assert_eq!(
+        outcome(&rejected(Rejection::MissingMetadata)),
+        "Rejected(MissingMetadata)"
+    );
+    assert_eq!(
+        outcome(&rejected(Rejection::InputTooLarge)),
+        "Rejected(InputTooLarge)"
+    );
+    assert_eq!(
+        outcome(&rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))),
+        "too_large"
+    );
+    assert_eq!(outcome(&Err::<(), _>(ExtractError::Cancelled)), "Cancelled");
+    assert_eq!(
+        outcome(&Err::<(), _>(ExtractError::DeadlineExceeded)),
+        "DeadlineExceeded"
+    );
+}
 
 fn page(id: &str, size_bytes: u64) -> CorpusPage {
     CorpusPage {

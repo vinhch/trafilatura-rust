@@ -138,7 +138,9 @@ fn no_attributes_are_kept_once_the_node_limit_is_hit() {
     assert!(inner.stopped);
     assert_eq!(
         inner.abort,
-        Some(ExtractError::Rejected(Rejection::TreeTooLarge))
+        Some(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::MaxNodes
+        )))
     );
     let with_attrs = inner.nodes.iter().filter(|n| !n.attrs.is_empty()).count();
     assert!(with_attrs <= 5_000, "{with_attrs} nodes kept attributes");
@@ -182,7 +184,7 @@ fn merged_attributes_are_capped() {
     assert_eq!(tree.node(body).attrs.len(), MAX_TAG_ATTRIBUTES);
     assert_eq!(
         parse(MAX_TAG_ATTRIBUTES + 1).unwrap_err(),
-        ExtractError::Rejected(Rejection::TreeTooLarge)
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes))
     );
 }
 
@@ -249,7 +251,9 @@ fn assert_clones_trip_the_attribute_budget(entries: usize, paragraphs: usize, ma
     let inner = parser.tokenizer.sink.sink.inner.borrow();
     assert_eq!(
         inner.abort,
-        Some(ExtractError::Rejected(Rejection::TreeTooLarge))
+        Some(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::MaxNodes
+        )))
     );
     let kept: usize = inner.nodes.iter().map(|node| node.attrs.len()).sum();
     assert!(kept <= max * ATTRIBUTES_PER_NODE, "{kept} attributes kept");
@@ -272,7 +276,7 @@ fn attribute_budget_counts_clones() {
     assert_clones_trip_the_attribute_budget(250, 40, DEFAULT_MAX_NODES);
     assert_eq!(
         parse(&reconstruction_page(250, 2_000), false).unwrap_err(),
-        ExtractError::Rejected(Rejection::TreeTooLarge)
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
     );
 }
 
@@ -366,7 +370,7 @@ fn attribute_budget_is_exact() {
     assert!(parse_with(&page(0)).is_ok());
     assert_eq!(
         parse_with(&page(1)).unwrap_err(),
-        ExtractError::Rejected(Rejection::TreeTooLarge)
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
     );
     let unlimited = ParseLimits {
         max_nodes: None,
@@ -390,7 +394,7 @@ fn node_limit_is_exact_for_elements_created_at_end_of_input() {
         );
         assert_eq!(
             parse_document(html, &limited(count - 1), &call).unwrap_err(),
-            ExtractError::Rejected(Rejection::TreeTooLarge),
+            ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes)),
             "{html:?}: limit == count - 1"
         );
     }

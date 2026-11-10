@@ -56,9 +56,14 @@ fn max_tree_size_rejects() {
             let label = format!("{count} x {unit} limit {limit:?} {kind}");
             match (children, result) {
                 (Some(n), Ok(doc)) => assert_eq!(doc.tree.child_count(doc.body), n, "{label}"),
-                (None, Err(error)) => {
-                    assert_eq!(error, rejected(Rejection::TreeTooLarge), "{label}")
-                }
+                // each unit is one child of the body, so the count after the strip is `count`
+                (None, Err(error)) => assert_eq!(
+                    error,
+                    rejected(Rejection::TreeTooLarge(TreeLimit::MaxTreeSize {
+                        children: count
+                    })),
+                    "{label}"
+                ),
                 (_, result) => panic!("{label}: {:?}", result.map(|doc| doc.raw_text)),
             }
         }
@@ -82,7 +87,7 @@ fn node(
 
 #[test]
 fn max_tree_size_strips_hi_before_counting() {
-    // (limit, children as built, `Ok` or the error, the body afterwards)
+    // (limit, children as built, `Ok` or the error's count after the strip, the body afterwards)
     // oracle: core.bare_extraction(page, options=o) inside html5_parsers(), o.max_tree_size = limit,
     //   core.trafilatura_sequence stubbed to return (body, "some text", Element("body"), ""):
     //   d is not None, and etree.tostring(body, with_tail=False)
@@ -129,7 +134,9 @@ fn max_tree_size_strips_hi_before_counting() {
         (
             stuck,
             3,
-            Err(rejected(Rejection::TreeTooLarge)),
+            Err(rejected(Rejection::TreeTooLarge(TreeLimit::MaxTreeSize {
+                children: 5,
+            }))),
             "<body><p>1</p><p>2</p><p>3</p><p>a</p><p>b</p></body>",
         ),
         (stuck, 4, Ok(()), unchanged_stuck),

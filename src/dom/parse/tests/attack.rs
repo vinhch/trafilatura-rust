@@ -11,7 +11,7 @@ fn huge_tag_is_rejected_within_a_second() {
         let elapsed = start.elapsed();
         assert_eq!(
             result.unwrap_err(),
-            ExtractError::Rejected(Rejection::TreeTooLarge)
+            ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes))
         );
         assert!(
             elapsed < std::time::Duration::from_secs(1),

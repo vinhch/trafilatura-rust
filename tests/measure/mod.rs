@@ -122,7 +122,7 @@ pub fn dhat_file(page: &str, run: &str) -> Option<PathBuf> {
 pub enum Expect {
     /// `Ok(_)`.
     Ok,
-    /// `Err(Rejected(TreeTooLarge))`.
+    /// `Err(Rejected(TreeTooLarge(_)))`.
     TooLarge,
 }
 
@@ -152,11 +152,26 @@ impl Synthetic {
     }
 }
 
-/// The result of a call as the word `Expect::outcome` uses, or the error's debug form.
+/// The result of a call as the word `Expect::outcome` uses. Each rejection has a fixed word equal to
+/// 0.1.0's debug form, so a payload never changes the digest of a rejected page.
 pub fn outcome<T>(result: &Result<T, ExtractError>) -> String {
     match result {
         Ok(_) => "ok".to_string(),
-        Err(ExtractError::Rejected(Rejection::TreeTooLarge)) => "too_large".to_string(),
+        Err(err @ ExtractError::Rejected(rejection)) => match rejection {
+            Rejection::TreeTooLarge(_) => "too_large".to_string(),
+            Rejection::EmptyTree => "Rejected(EmptyTree)".to_string(),
+            Rejection::WrongHtmlLang => "Rejected(WrongHtmlLang)".to_string(),
+            Rejection::BlacklistedUrl => "Rejected(BlacklistedUrl)".to_string(),
+            Rejection::MissingMetadata => "Rejected(MissingMetadata)".to_string(),
+            Rejection::TooShort => "Rejected(TooShort)".to_string(),
+            Rejection::Duplicate => "Rejected(Duplicate)".to_string(),
+            Rejection::WrongLanguage => "Rejected(WrongLanguage)".to_string(),
+            Rejection::InputTooLarge => "Rejected(InputTooLarge)".to_string(),
+            Rejection::InvalidValue => "Rejected(InvalidValue)".to_string(),
+            _ => format!("{err:?}"),
+        },
+        Err(ExtractError::Cancelled) => "Cancelled".to_string(),
+        Err(ExtractError::DeadlineExceeded) => "DeadlineExceeded".to_string(),
         Err(err) => format!("{err:?}"),
     }
 }

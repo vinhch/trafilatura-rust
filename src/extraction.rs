@@ -11,7 +11,7 @@ use crate::cancel::Call;
 use crate::context::Ctx;
 use crate::deduplication::{content_fingerprint, duplicate_test, run_scoped};
 use crate::dom::{LocalName, NodeId, Ns, ParseLimits, Tree};
-use crate::error::{ExtractError, Rejection, caught};
+use crate::error::{ExtractError, Rejection, TreeLimit, caught};
 use crate::html_processing::{
     build_html_output, convert_tags, prune_unwanted_nodes, tick, tree_cleaning,
 };
@@ -465,8 +465,11 @@ fn check_tree_size(
         return Ok(());
     }
     tree.strip_tags(postbody, &["hi"]);
-    if tree.child_count(postbody) > max {
-        return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+    let children = tree.child_count(postbody);
+    if children > max {
+        return Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::MaxTreeSize { children },
+        )));
     }
     Ok(())
 }

@@ -14,7 +14,7 @@ use html5ever::{LocalName, Namespace, QualName, local_name, ns};
 
 use super::{Ns, Tree};
 use crate::cancel::Call;
-use crate::error::{ExtractError, Rejection};
+use crate::error::{ExtractError, Rejection, TreeLimit};
 use crate::settings::{DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES};
 
 /// libxml2's nesting limit (`docs/architecture.md`, Runtime contract): parsing ends at the cut.
@@ -351,7 +351,9 @@ impl Inner {
                 .max_nodes
                 .is_some_and(|max| self.compare_work > max.saturating_mul(COMPARE_WORK_PER_NODE))
         {
-            self.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
+            self.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge(
+                TreeLimit::MaxNodes,
+            )));
             self.stopped = true;
         }
     }

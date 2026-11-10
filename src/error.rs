@@ -26,9 +26,8 @@ pub enum Rejection {
     BlacklistedUrl,
     /// Required metadata is missing.
     MissingMetadata,
-    /// The tree exceeds a node limit: the parse limit, `max_tree_size` on the extracted body, or the
-    /// cell budget of table construction (D-9).
-    TreeTooLarge,
+    /// The tree exceeds a limit; the payload names which one.
+    TreeTooLarge(TreeLimit),
     /// The extracted text is shorter than the minimum.
     TooShort,
     /// The text is a duplicate of one seen before.
@@ -44,20 +43,55 @@ pub enum Rejection {
     InvalidValue,
 }
 
+/// The limit a [`Rejection::TreeTooLarge`] hit, so the caller knows which setting to change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TreeLimit {
+    /// The node budget: `ParseLimits::max_nodes`, or the budget of html5ever's clones and work on
+    /// formatting elements derived from it (D-5).
+    MaxNodes,
+    /// More than `MAX_TAG_ATTRIBUTES` attributes on one tag, or on an `html` or `body` element
+    /// merged from repeated tags (D-5). Always on.
+    TagAttributes,
+    /// More children of the extracted body than `Config::max_tree_size`, counted after the `hi`
+    /// elements are dissolved. `children` is that count.
+    MaxTreeSize {
+        /// The children of the body after the `hi` elements are dissolved.
+        children: usize,
+    },
+    /// Table construction minted more cells than its budget in one tree (D-9).
+    TableCells,
+}
+
+impl fmt::Display for TreeLimit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MaxNodes => f.write_str("max_nodes"),
+            Self::TagAttributes => f.write_str("attributes per tag"),
+            Self::MaxTreeSize { children } => write!(f, "max_tree_size ({children} children)"),
+            Self::TableCells => f.write_str("table cells"),
+        }
+    }
+}
+
 impl fmt::Display for Rejection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::EmptyTree => "empty tree",
-            Self::WrongHtmlLang => "html lang attribute does not match the target language",
-            Self::BlacklistedUrl => "URL is blacklisted",
-            Self::MissingMetadata => "required metadata is missing",
-            Self::TreeTooLarge => "tree is too large",
-            Self::TooShort => "extracted text is too short",
-            Self::Duplicate => "duplicate text",
-            Self::WrongLanguage => "detected language does not match the target language",
-            Self::InputTooLarge => "input is too large",
-            Self::InvalidValue => "a value upstream cannot parse",
-        })
+        match self {
+            Self::TreeTooLarge(limit) => write!(f, "tree is too large: {limit}"),
+            Self::EmptyTree => f.write_str("empty tree"),
+            Self::WrongHtmlLang => {
+                f.write_str("html lang attribute does not match the target language")
+            }
+            Self::BlacklistedUrl => f.write_str("URL is blacklisted"),
+            Self::MissingMetadata => f.write_str("required metadata is missing"),
+            Self::TooShort => f.write_str("extracted text is too short"),
+            Self::Duplicate => f.write_str("duplicate text"),
+            Self::WrongLanguage => {
+                f.write_str("detected language does not match the target language")
+            }
+            Self::InputTooLarge => f.write_str("input is too large"),
+            Self::InvalidValue => f.write_str("a value upstream cannot parse"),
+        }
     }
 }
 

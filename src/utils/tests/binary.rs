@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::TreeLimit;
 
 fn binary_sample(magic: &[u8]) -> Vec<u8> {
     let mut out = magic.to_vec();
@@ -93,7 +94,9 @@ fn binary_with_an_html_name_is_parsed() {
                     &no_parse(),
                     &Call::default()
                 ),
-                Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+                Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+                    TreeLimit::MaxNodes
+                )))
             ));
         }
     }
@@ -120,7 +123,9 @@ fn text_that_looks_binary_is_parsed() {
             &no_parse(),
             &call
         ),
-        Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+        Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::MaxNodes
+        )))
     ));
     // a BOM page and leading whitespace are HTML
     for page in [
@@ -129,7 +134,9 @@ fn text_that_looks_binary_is_parsed() {
     ] {
         assert!(matches!(
             load_html(HtmlInput::Bytes(page), SIZE, &no_parse(), &call),
-            Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+            Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+                TreeLimit::MaxNodes
+            )))
         ));
     }
 }

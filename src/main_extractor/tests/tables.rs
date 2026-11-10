@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::TreeLimit;
 
 /// `Tree` with a `td` root carrying `attr="value"`.
 fn cell_with(attr: &str, value: &str) -> (Tree, NodeId) {
@@ -342,7 +343,9 @@ fn table_span_amplification_is_bounded() {
     let phantoms = format!("<table><tr>{spanning}</tr>{empty_rows}</table>");
     let narrow_rows = "<tr><td>b</td></tr>".repeat(20_000);
     let padding = format!("<table><tr><td colspan=\"100\">a</td></tr>{narrow_rows}</table>");
-    let rejected = Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+    let rejected = Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+        TreeLimit::TableCells,
+    )));
     // 5_000: the first row alone overruns it; 15_000: it is the phantoms of the later rows
     assert_eq!(table_with_budget(&phantoms, 5_000), rejected);
     assert_eq!(table_with_budget(&phantoms, 15_000), rejected);
@@ -395,7 +398,9 @@ fn table_budget_is_shared_by_the_tables_of_one_tree() {
     assert!(handle_table_limited(&mut tree, first, TAG_CATALOG, &ctx, 4).is_ok());
     assert_eq!(
         handle_table_limited(&mut tree, second, TAG_CATALOG, &ctx, 4),
-        Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+        Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::TableCells
+        )))
     );
 }
 

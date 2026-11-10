@@ -6,7 +6,7 @@ mod batch;
 use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;
-use crate::error::Rejection;
+use crate::error::{Rejection, TreeLimit};
 use crate::settings::{self, DEFAULT_MAX_INPUT_BYTES, DEFAULT_MAX_NODES, today_utc};
 use crate::utils::HtmlInput;
 
@@ -238,13 +238,13 @@ fn max_nodes_option_reaches_parse() {
     let limited = Options::new().max_nodes(Some(5)).build();
     assert_eq!(
         limited.extract(&Input::text(&page), &Call::default()),
-        rejected(Rejection::TreeTooLarge)
+        rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
     );
     assert_eq!(
         limited
             .bare_extraction(&Input::text(&page), &Call::default())
             .unwrap_err(),
-        ExtractError::Rejected(Rejection::TreeTooLarge)
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
     );
     assert!(
         Options::new()
@@ -379,7 +379,9 @@ fn default_options_reject_a_page_over_the_node_limit() {
         .extract(&Input::text(&page), &Call::default());
     assert_eq!(
         result.map(|text| text.len()),
-        Err(ExtractError::Rejected(Rejection::TreeTooLarge))
+        Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::MaxNodes
+        )))
     );
 }
 

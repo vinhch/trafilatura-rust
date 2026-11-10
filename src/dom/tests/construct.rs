@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::TreeLimit;
 
 fn max_depth(tree: &Tree) -> usize {
     let mut deepest = 0;
@@ -135,7 +136,10 @@ fn max_nodes_rejects() {
         ..ParseLimits::default()
     };
     let err = parse_document(&html, &limits, &Call::default()).unwrap_err();
-    assert_eq!(err, ExtractError::Rejected(Rejection::TreeTooLarge));
+    assert_eq!(
+        err,
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
+    );
     let unlimited = ParseLimits {
         max_nodes: None,
         ..ParseLimits::default()
@@ -158,7 +162,10 @@ fn default_limits_reject_formatting_element_amplification() {
     }
     html.push_str(&"<p>x".repeat(10_000));
     let err = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap_err();
-    assert_eq!(err, ExtractError::Rejected(Rejection::TreeTooLarge));
+    assert_eq!(
+        err,
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
+    );
 }
 
 #[test]
@@ -279,5 +286,8 @@ fn max_nodes_rejects_formatting_element_amplification() {
         ..ParseLimits::default()
     };
     let err = parse_document(&html, &limits, &Call::default()).unwrap_err();
-    assert_eq!(err, ExtractError::Rejected(Rejection::TreeTooLarge));
+    assert_eq!(
+        err,
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
+    );
 }

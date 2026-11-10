@@ -81,4 +81,5 @@ fn compare_outcome(html: &str, max_nodes: usize) -> (Option<ExtractError>, usize
     (inner.abort.clone(), inner.compare_work)
 }
 
-const TOO_LARGE: ExtractError = ExtractError::Rejected(Rejection::TreeTooLarge);
+const TOO_LARGE: ExtractError =
+    ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes));

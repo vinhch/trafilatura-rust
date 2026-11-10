@@ -182,7 +182,12 @@ fn scan_agrees_with_html5ever() {
                     continue;
                 }
                 match (parse(&html, fragment), counted) {
-                    (Err(ExtractError::Rejected(Rejection::TreeTooLarge)), true) => {}
+                    (
+                        Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+                            TreeLimit::TagAttributes,
+                        ))),
+                        true,
+                    ) => {}
                     (Ok(tree), false) => {
                         let whole = whole_tree(&html, fragment);
                         if dump(&tree, DumpMode::Exact) != dump(&whole, DumpMode::Exact) {
@@ -313,8 +318,9 @@ fn scan_agrees_with_html5ever_on_random_markup() {
         let html = format!("{padding}{}", parts.concat());
         for fragment in [false, true] {
             let counted = most_tag_attributes(&html, fragment) > MAX_TAG_ATTRIBUTES;
-            let rejected = parse(&html, fragment)
-                .is_err_and(|error| error == ExtractError::Rejected(Rejection::TreeTooLarge));
+            let rejected = parse(&html, fragment).is_err_and(|error| {
+                error == ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes))
+            });
             if counted != rejected {
                 failures.push(format!(
                     "round {round} fragment {fragment}: html5ever {counted}, scan {rejected}: {:?}",
@@ -376,7 +382,7 @@ fn end_tag_attributes_are_counted() {
     let end = |count: usize| format!("</p{}>", attrs(count));
     assert_eq!(
         parse(&end(MAX_TAG_ATTRIBUTES + 1), false).unwrap_err(),
-        ExtractError::Rejected(Rejection::TreeTooLarge)
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes))
     );
     assert!(parse(&end(MAX_TAG_ATTRIBUTES), false).is_ok());
 }
@@ -386,6 +392,6 @@ fn duplicate_names_are_counted() {
     let html = format!("<x{}>", " a".repeat(MAX_TAG_ATTRIBUTES + 1));
     assert_eq!(
         parse(&html, false).unwrap_err(),
-        ExtractError::Rejected(Rejection::TreeTooLarge)
+        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes))
     );
 }

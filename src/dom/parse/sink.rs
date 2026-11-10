@@ -16,7 +16,7 @@ use html5ever::{Attribute, LocalName, ParseOpts, QualName, TokenizerResult, loca
 use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::dom::scan::{Pause, TagScanner};
 use crate::dom::{Ns, Tree};
-use crate::error::{ExtractError, Rejection};
+use crate::error::{ExtractError, Rejection, TreeLimit};
 
 use super::{
     ATTRIBUTES_PER_NODE, BOM, CHUNK_BYTES, CLONE_UNITS_PER_ATTRIBUTE, Inner, Kind,
@@ -149,7 +149,9 @@ impl TreeSink for Sink<'_> {
             if inner.max_nodes.is_some_and(|max| {
                 inner.elements > max || inner.attributes > max.saturating_mul(ATTRIBUTES_PER_NODE)
             }) {
-                inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
+                inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge(
+                    TreeLimit::MaxNodes,
+                )));
                 inner.stopped = true;
             } else if inner.elements.is_multiple_of(CHECK_INTERVAL)
                 && !inner.stopped
@@ -253,7 +255,9 @@ impl TreeSink for Sink<'_> {
             node.attrs.push((attr.name.local, Arc::from(&*attr.value)));
         }
         if exceeded {
-            inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge));
+            inner.abort = Some(ExtractError::Rejected(Rejection::TreeTooLarge(
+                TreeLimit::TagAttributes,
+            )));
             inner.stopped = true;
         }
     }
@@ -462,7 +466,9 @@ pub(super) fn drive(
     call.check()?;
     let tree = parser.finish()?;
     if limits.max_nodes.is_some_and(|max| tree.len() > max) {
-        return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+        return Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+            TreeLimit::MaxNodes,
+        )));
     }
     Ok(tree)
 }

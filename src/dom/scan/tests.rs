@@ -8,7 +8,7 @@ fn tag(count: usize) -> String {
 }
 
 fn too_large() -> ExtractError {
-    ExtractError::Rejected(Rejection::TreeTooLarge)
+    ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::TagAttributes))
 }
 
 #[test]

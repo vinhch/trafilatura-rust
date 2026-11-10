@@ -18,7 +18,7 @@
 use html5ever::{LocalName, local_name};
 
 use super::parse::MAX_TAG_ATTRIBUTES;
-use crate::error::{ExtractError, Rejection};
+use crate::error::{ExtractError, Rejection, TreeLimit};
 
 #[cfg(test)]
 mod tests;
@@ -411,7 +411,9 @@ impl TagScanner {
     fn new_attribute(&mut self) -> Result<(), ExtractError> {
         self.attrs += 1;
         if self.attrs > MAX_TAG_ATTRIBUTES {
-            return Err(ExtractError::Rejected(Rejection::TreeTooLarge));
+            return Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+                TreeLimit::TagAttributes,
+            )));
         }
         Ok(())
     }

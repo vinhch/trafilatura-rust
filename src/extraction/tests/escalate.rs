@@ -48,7 +48,11 @@ fn escalate_swallows_rejection() {
     let result = run_escalate(
         &options,
         100,
-        |_, _, _, _| Err(ExtractError::Rejected(Rejection::TreeTooLarge)),
+        |_, _, _, _| {
+            Err(ExtractError::Rejected(Rejection::TreeTooLarge(
+                TreeLimit::MaxNodes,
+            )))
+        },
         &Call::default(),
     );
     assert_eq!(result, Ok(None));
