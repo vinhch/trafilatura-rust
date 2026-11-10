@@ -3,7 +3,7 @@ name = "trafilatura-rust"
 version = "0.0.0"
 edition = "2024"
 # Kept equal to the toolchain the CI workflow pins, so the CI run doubles as the MSRV check.
-rust-version = "1.98"
+rust-version = "1.98.1"
 description = "Web page main-text and metadata extraction, a Rust port of the Python trafilatura library."
 license = "Apache-2.0"
 repository = "https://github.com/vinhch/trafilatura-rust"

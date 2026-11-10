@@ -35,15 +35,17 @@ The bet is that staying close to upstream makes each Python release cheaper to f
 
 ## Documents
 
-- `docs/architecture.md`: module map, runtime contract, public API, performance rules.
-- `docs/batch.md`: running many extractions: sharing an `Extractor`, `extract_batch`, thread counts.
-- `docs/gotchas.md`: traps found reading upstream.
-- `docs/upstream-sync.md`: how to move to a new upstream release.
-- `docs/parity-harness.md`: fixtures, mismatch classes, measurement.
-- `docs/dependencies.md`: the dependency policy and why each dependency is there.
-- `docs/deviations.md`: every departure from upstream behavior.
+- [`docs/architecture.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/architecture.md): module map, runtime contract, public API, performance rules.
+- [`docs/batch.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/batch.md): running many extractions: sharing an `Extractor`, `extract_batch`, thread counts.
+- [`docs/gotchas.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/gotchas.md): traps found reading upstream.
+- [`docs/upstream-sync.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/upstream-sync.md): how to move to a new upstream release.
+- [`docs/parity-harness.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/parity-harness.md): fixtures, mismatch classes, measurement.
+- [`docs/dependencies.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/dependencies.md): the dependency policy and why each dependency is there.
+- [`docs/deviations.md`](https://github.com/vinhch/trafilatura-rust/blob/main/docs/deviations.md): every departure from upstream behavior.
 
 ## Development
+
+The scripts, docs and workflows named in this README live in the [GitHub repository](https://github.com/vinhch/trafilatura-rust), not in the published package.
 
 The test scripts need network access: cargo reads the crates.io index for the package step.
 
