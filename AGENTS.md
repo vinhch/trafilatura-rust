@@ -17,7 +17,8 @@ not when it looks similar or scores well on a benchmark.
 | `docs/dependencies.md` | before adding, changing or removing a dependency: policy and one row per dependency |
 | `docs/deviations.md` | before departing from upstream, and when a `// deviation: D-n` comment appears |
 | `docs/phase-plan.md` | to find what ships next, the open items (OI-n) and the followups (F-n) |
-| `README.md` | for the commands (Development) |
+| `docs/development.md` | before running the scripts, changing CI or cutting a release: prerequisites, the script table, the workflows, the release steps |
+| `README.md` | for installation and usage: the public API and examples |
 
 ## Upstream reference
 
@@ -139,7 +140,7 @@ test points at one Rust test.
 
 ## Commands
 
-`README.md` (Development) lists the scripts; `scripts/test.sh` (or `.ps1`) runs every check CI runs.
+`docs/development.md` lists the scripts; `scripts/test.sh` (or `.ps1`) runs every check CI runs.
 Scripts come in `.sh` and `.ps1` pairs with the same arguments: change both together.
 
 ## Commits

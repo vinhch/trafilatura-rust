@@ -48,7 +48,7 @@ are 512 OS threads. A caller that runs batches in parallel should divide the thr
 them, or move the batches onto the pool.
 
 `threads` is capped at 256 (`MAX_WORKERS`) and falls to the iterator's upper size bound when that is
-smaller. Results wait in a channel of at most twice the thread count, and at most 1,024 slots, so
+smaller. Results wait in a channel of at most twice the thread count, and at most 512 slots, so
 memory grows with the threads and not with the batch.
 
 ## Threads, not processes
