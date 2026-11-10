@@ -77,8 +77,7 @@ struct Oversized;
 /// Decompresses `content` by magic number, or by trying brotli then zlib, capped at `max_size`;
 /// returns the input unchanged when it is not compressed, corrupt, truncated or too large. An
 /// oversized gzip or zstd input is rejected by `load_html`, not here.
-// Test-only: the library reaches the decoder through `decompress`, which keeps the oversized case.
-#[cfg(all(test, feature = "decompress"))]
+// upstream: utils.py::handle_compressed_file
 pub fn handle_compressed_file(content: &[u8], max_size: usize) -> Cow<'_, [u8]> {
     decompress(content, max_size).unwrap_or(Cow::Borrowed(content))
 }
@@ -226,13 +225,12 @@ fn is_mostly_utf8(content: &[u8]) -> bool {
 // upstream: utils.py::decode_file
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 pub fn decode_file(content: &[u8], max_size: usize) -> Cow<'_, str> {
-    decode_bytes(decompress(content, max_size).unwrap_or(Cow::Borrowed(content)))
+    decode_bytes(handle_compressed_file(content, max_size))
 }
 
 /// The decompression step of `decode_file` and `load_html`. Gzip and zstd output past `max_size`
 /// gives `Err(Oversized)`; corrupt or truncated input, and brotli or zlib output past the cap,
 /// give the bytes unchanged, as upstream does.
-// upstream: utils.py::handle_compressed_file
 fn decompress(content: &[u8], max_size: usize) -> Result<Cow<'_, [u8]>, Oversized> {
     // deviation: D-4 (without the `decompress` feature the bytes are used as they are)
     #[cfg(not(feature = "decompress"))]
