@@ -14,7 +14,7 @@ cargo add trafilatura-rust --features decompress
 
 ```toml
 [dependencies]
-trafilatura-rust = { version = "0.1", features = ["decompress"] }
+trafilatura-rust = { version = "0.2", features = ["decompress"] }
 ```
 
 The minimum supported Rust version is the `rust-version` in `Cargo.toml`.
