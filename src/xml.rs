@@ -269,24 +269,37 @@ fn collect_inline_text(
         next = tree.node(child).next_sibling();
         tick(visited, call)?;
         let tag = tree.tag(child);
-        if tag == Some("graphic") {
-            collected.push_str(&image_markup(tree, child, include_formatting));
-        } else if tag == Some("lb") {
-            collected.push('\n');
-        } else if tag.is_some_and(|name| INLINE_FORMATTABLE.contains(&name)) {
+        if matches!(tag, Some("graphic" | "lb"))
+            || !tag.is_some_and(|name| INLINE_FORMATTABLE.contains(&name))
+        {
+            push_leaf_text(&mut collected, tree, child, include_formatting);
+        } else {
             // `replace_text` calls back into this function: the depth is the tree's, bounded by
             // `MAX_DEPTH` and proven by `output_deep_nesting_fits_512k_stack`
             let piece = replace_text(tree, child, include_formatting, false, call, visited)?;
             collected.push_str(&piece);
-        } else if let Some(text) = &tree.node(child).text {
-            // fallback: a structural tag nested inside an inline one (malformed input)
-            collected.push_str(text);
         }
         if let Some(tail) = &tree.node(child).tail {
             collected.push_str(tail);
         }
     }
     Ok(collected)
+}
+
+/// The text a child adds to its parent's inline text when it does not recurse: an image, a line
+/// break, or else its own text. Kept out of `collect_inline_text`, whose frame a debug build keeps
+/// on the stack at every level of the recursion.
+fn push_leaf_text(collected: &mut String, tree: &Tree, child: NodeId, include_formatting: bool) {
+    match tree.tag(child) {
+        Some("graphic") => collected.push_str(&image_markup(tree, child, include_formatting)),
+        Some("lb") => collected.push('\n'),
+        // fallback: a structural tag nested inside an inline one (malformed input)
+        _ => {
+            if let Some(text) = &tree.node(child).text {
+                collected.push_str(text);
+            }
+        }
+    }
 }
 
 /// The text of `element` alone, converted to Markdown when `include_formatting`: the caller deals
@@ -315,11 +328,34 @@ fn replace_text(
     call: &Call<'_>,
     visited: &mut usize,
 ) -> Result<String, ExtractError> {
-    let mut text = if consumes_inline_children(tree, element) {
+    let text = if consumes_inline_children(tree, element) {
         collect_inline_text(tree, element, include_formatting, call, visited)?
     } else {
         tree.node(element).text.clone().unwrap_or_default()
     };
+    finish_text(
+        tree,
+        element,
+        text,
+        include_formatting,
+        in_cell,
+        call,
+        visited,
+    )
+}
+
+/// `replace_text` after the text is collected: the escaping, the Markdown form and the link or
+/// cell tidying of `element`. Not recursive, and kept out of `replace_text`, so that the frames of
+/// the inline recursion stay small in a debug build.
+fn finish_text(
+    tree: &mut Tree,
+    element: NodeId,
+    mut text: String,
+    include_formatting: bool,
+    in_cell: bool,
+    call: &Call<'_>,
+    visited: &mut usize,
+) -> Result<String, ExtractError> {
     // a fresh paragraph, item or quote line must not start with a marker that reads as block
     // syntax; table cells are inline-only in GFM, so this never applies there
     if include_formatting
