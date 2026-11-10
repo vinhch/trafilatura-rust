@@ -188,6 +188,13 @@ foo = "=1.2"
 EOF
 exact_case exact_after_ok_lines 8
 
+# A UTF-8 BOM before the first header: cargo reads the manifest, so the check must too.
+printf '\xef\xbb\xbf[dependencies]\nfoo = "=1.2"\n' >"$work/bom_header.toml"
+exact_case bom_header 2
+
+# An absolute manifest path.
+run_case absolute_path 1 "pin-check.sh: $repo_root/$work/exact_string.toml:5: exact requirement: " "$repo_root/$work/exact_string.toml"
+
 manifest caret_ok <<'EOF'
 [package]
 name = "x"

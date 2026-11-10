@@ -64,7 +64,9 @@ The test scripts need network access: cargo reads the crates.io index for the pa
 | `scripts/version.sh` / `scripts/version.ps1` | prints the crate version; `--check`, `--tag vX.Y.Z` |
 
 CI (`.github/workflows/`): `ci.yml` calls `_ci.yml` on pushes to `main` and pull requests targeting
-`main`, on Ubuntu and Windows with the toolchain pinned to `rust-version`. `release.yml` checks that
+`main`: the test job runs on Ubuntu and Windows with the toolchain pinned to `rust-version`, and the
+`minimal-versions` job on Ubuntu with a nightly pinned by date, testing each dependency at its lowest allowed
+version (`docs/dependencies.md`). `release.yml` checks that
 the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through
 the `crates-io` environment. `quality.yml` re-checks advisories and runs each fuzz target for 15
 minutes with AddressSanitizer and minimizes the corpus cache, and runs `cargo-mutants` on
@@ -74,7 +76,7 @@ weekly and on demand. `bench.yml` runs
 sample against the base in the job summary; it is not a required check. `upstream-watch.yml` runs weekly and
 opens an issue when upstream tags a release newer than the pin (`docs/upstream-sync.md`). Actions are pinned by commit
 SHA and Dependabot moves them, except `dtolnay/rust-toolchain`, which moves by hand with
-`rust-version` (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh --report`, so CI and a
+`rust-version` and the nightly date (OI-6 in `docs/phase-plan.md`). The CI test job calls `scripts/test.sh --report`, so CI and a
 local run execute the same checks. It publishes the nextest results with `dorny/test-reporter` and uploads
 the JUnit file as the artifact `test-report-<os>`. Which job runs the parity test: `docs/parity-harness.md`.
 

@@ -4,8 +4,9 @@
 # version and blocks the security fixes Dependabot and cargo update would bring. Reads [dependencies],
 # [dev-dependencies], [build-dependencies], their [target.<spec>.*] forms and [dependencies.<name>] sub-tables;
 # other tables (package, metadata, features) are never checked. A requirement is a bare string value, a
-# version = inside an inline table, or a version line of a sub-table. Multi-line inline tables are out of
-# scope: none exists in the repo.
+# version = inside an inline table, or a version line of a sub-table. Out of scope, as none is in the repo and
+# neither cargo nor Dependabot writes them: multi-line inline tables, multi-line strings, quoted table names
+# and keys, and spaces around the dot of a header.
 # pin-check.ps1 is the twin: same output and exit codes.
 set -euo pipefail
 
@@ -49,6 +50,7 @@ hits="$(awk -v name="$script_name" -v file="$manifest" '
   {
     line = $0
     sub(/\r$/, "", line)
+    if (NR == 1) sub(/^\357\273\277/, "", line)
     text = line
     sub(/^[ \t]+/, "", text)
     if (text ~ /^\[\[/) {

@@ -4,8 +4,9 @@
 # version and blocks the security fixes Dependabot and cargo update would bring. Reads [dependencies],
 # [dev-dependencies], [build-dependencies], their [target.<spec>.*] forms and [dependencies.<name>] sub-tables;
 # other tables (package, metadata, features) are never checked. A requirement is a bare string value, a
-# version = inside an inline table, or a version line of a sub-table. Multi-line inline tables are out of
-# scope: none exists in the repo.
+# version = inside an inline table, or a version line of a sub-table. Out of scope, as none is in the repo and
+# neither cargo nor Dependabot writes them: multi-line inline tables, multi-line strings, quoted table names
+# and keys, and spaces around the dot of a header.
 # pin-check.sh is the twin: same output and exit codes; change both together.
 
 Set-StrictMode -Version Latest
@@ -41,13 +42,14 @@ if ($args.Count -gt 0) {
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
 $Manifest = if ($args.Count -gt 0) { $args[0] } else { 'Cargo.toml' }
-if (-not [IO.File]::Exists((Join-Path (Get-Location).ProviderPath $Manifest))) { Fail "$($Manifest): no such file" }
+$Full = if ([IO.Path]::IsPathRooted($Manifest)) { $Manifest } else { Join-Path (Get-Location).ProviderPath $Manifest }
+if (-not [IO.File]::Exists($Full)) { Fail "$($Manifest): no such file" }
 
 $Quote = '["''][ \t]*='
 $Hits = 0
 $Mode = ''
 $Number = 0
-foreach ($Raw in ([IO.File]::ReadAllText((Join-Path (Get-Location).ProviderPath $Manifest)) -csplit "`n")) {
+foreach ($Raw in ([IO.File]::ReadAllText($Full) -csplit "`n")) {
     $Number++
     $Text = $Raw.TrimEnd("`r").TrimStart(' ', "`t")
     if ($Text.StartsWith('[[', [StringComparison]::Ordinal)) { $Mode = ''; continue }

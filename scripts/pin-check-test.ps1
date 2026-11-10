@@ -97,6 +97,13 @@ Test-Exact 'exact_target_dev' 5 @('[package]', 'name = "x"', '', "[target.'cfg(u
 Test-Exact 'exact_subtable' 5 @('[package]', 'name = "x"', '', '[dependencies.foo]', 'version = "=1.2"')
 Test-Exact 'exact_after_ok_lines' 8 @('[package]', 'name = "x"', '', '[dependencies]', 'bar = "1"', '# foo = "=0.1"', 'baz = { version = "2" }', 'foo = "=1.2"')
 
+# A UTF-8 BOM before the first header: cargo reads the manifest, so the check must too.
+[IO.File]::WriteAllText((Join-Path $WorkAbs 'bom_header.toml'), ([string][char]0xFEFF + "[dependencies]`nfoo = `"=1.2`"`n"))
+Invoke-Case 'bom_header' 1 "pin-check.ps1: $WorkRel/bom_header.toml:2: exact requirement: " @("$WorkRel/bom_header.toml")
+
+# An absolute manifest path.
+Invoke-Case 'absolute_path' 1 "pin-check.ps1: $WorkAbs/exact_string.toml:5: exact requirement: " @("$WorkAbs/exact_string.toml")
+
 New-Manifest 'caret_ok' @('[package]', 'name = "x"', '', '[dependencies]', 'foo = "1.2"', 'bar = { version = ">=1, <2" }',
     'baz = { version = "~1.2", optional = true }', '[dependencies.qux]', 'version = "1"', 'features = ["=x"]')
 Invoke-Case 'caret_ok' 0 '' @("$WorkRel/caret_ok.toml")
