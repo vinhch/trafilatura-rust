@@ -68,8 +68,8 @@ CI (`.github/workflows/`): `ci.yml` calls `_ci.yml` on pushes to `main` and pull
 `main`: the test job runs on Ubuntu and Windows with the toolchain pinned to `rust-version`, and the
 `minimal-versions` job on Ubuntu with a nightly pinned by date, testing each dependency at its lowest allowed
 version (`docs/dependencies.md`). `release.yml` checks that
-the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through
-the `crates-io` environment. `quality.yml` re-checks advisories and runs each fuzz target for 15
+the tag names the crate version and is on `main`, runs `_ci.yml`, and publishes to crates.io through trusted
+publishing in the `crates-io` environment (deployments only from `v*` tags, with a required reviewer). `quality.yml` re-checks advisories and runs each fuzz target for 15
 minutes with AddressSanitizer and minimizes the corpus cache, and runs `cargo-mutants` on
 the modules in `examine_globs` in 17 shards that fail on a surviving mutant not listed in `.cargo/mutants.toml`,
 weekly and on demand. `bench.yml` runs
