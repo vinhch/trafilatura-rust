@@ -296,6 +296,7 @@ let call = Call::default().max_date("2026-12-31");
 - Bounded input. Besides upstream's limits, `max_nodes`, `max_input_bytes`, a nesting depth of 256 and 1,000 attributes per tag bound each call; the [deviations](https://github.com/vinhch/trafilatura-rust/blob/main/docs/deviations.md) list every difference from upstream.
 - No I/O. The crate fetches nothing and writes nothing; it takes a page you already have.
 - Threads. Only `extract_batch` starts threads, and none outlives the call.
+- Stack. `extract`, `bare_extraction` and `html2txt` run within a 512 KiB stack, debug build included, so a default thread stack is enough. A release that needs more is a breaking change. The workers of `extract_batch` size their own stack. `__internals` is outside this contract.
 
 The [roadmap](https://github.com/vinhch/trafilatura-rust/blob/main/docs/phase-plan.md) lists what comes next.
 

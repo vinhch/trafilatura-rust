@@ -3,6 +3,7 @@ use std::thread;
 use super::*;
 
 mod batch;
+mod stack;
 use crate::baseline;
 use crate::cancel::CancelToken;
 use crate::dom::ParseLimits;

@@ -9,6 +9,11 @@
 //! id) and a [`Call`] that can cancel it or set a deadline. A page upstream rejects gives
 //! [`ExtractError::Rejected`].
 //!
+//! [`Extractor::extract`], [`Extractor::bare_extraction`] and [`html2txt`] run within a 512 KiB
+//! stack, debug build included, so a default thread stack is enough; a release that needs more is a
+//! breaking change. The workers of [`Extractor::extract_batch`] size their own stack. The
+//! `__internals` module is outside this contract.
+//!
 //! ```
 //! use trafilatura_rust::{Call, Extractor, Format, Input, Options};
 //!

@@ -16,6 +16,9 @@ readonly stack_tests=(
   xml::tests::output_deep_nesting_fits_512k_stack
   xml::tests::remove_blank_text_deep_nesting_fits_512k_stack
   options_discard::test_extract_deep_caller_supplied_tree
+  api::tests::stack::extract_deep_html_fits_512k_stack
+  api::tests::stack::bare_extraction_deep_html_fits_512k_stack
+  api::tests::stack::html2txt_deep_html_fits_512k_stack
 )
 
 usage() {

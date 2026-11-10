@@ -121,9 +121,9 @@ upstream has no equivalent.
   elements, compares and clones (`COMPARE_WORK_PER_NODE` per allowed node) are budgeted from `max_nodes` and lifted with it (D-5); the parse stops at the first token after a budget is crossed.
   Table construction is bounded by the cells
   it mints: it fails with `Rejection::TreeTooLarge` once it has minted `MAX_OUTPUT_NODES` of them in
-  one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, with a test that proves it fits a
-  512 KiB stack in a debug build (the list in `scripts/test.sh`), so a default thread stack is enough (a musl host that spawns its own
-  threads sets 512 KiB).
+  one tree (D-9). Recursion only where `MAX_DEPTH` bounds its depth, and each recursive walk has a stack
+  test in the list in `scripts/test.sh`. The stack bound those tests prove is stated in the
+  [README](../README.md#scope-and-limitations).
 - No hidden clock. Upstream sets `max_date` from `datetime.now()` (`settings.py`). Here a call sets it
   with `Call::max_date`; without one, `extract_metadata` takes today's UTC date, read once per call
   and never when the extractor is built (D-15).
