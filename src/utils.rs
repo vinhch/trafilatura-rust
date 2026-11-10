@@ -62,7 +62,7 @@ const ZSTD_MAX_WINDOW: u64 = 1 << 27;
 
 /// Why a bounded gzip or zstd decoder stopped before the end of its input.
 #[cfg(feature = "decompress")]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 enum CapError {
     /// Corrupt, truncated or with more than `MAX_MEMBERS` members: the bytes are kept as they are.
     Failed,
