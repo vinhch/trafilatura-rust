@@ -500,9 +500,15 @@ fn article_page(middle: &str) -> String {
 
 #[test]
 fn define_newelem_rejects_colon_tag() {
-    // oracle: extract(page, options=Extractor(output_format="txt", fast=True, dedup=False)) inside
-    //   html5_parsers() is None: define_newelem raises ValueError("Invalid tag name 'o:p'") (or
-    //   'http:') in the main pass, which bare_extraction catches
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from lxml import etree
+    //   import unittest
+    //   L = "The harbor market opens early and the fishermen carry baskets of fresh herring along the old stone quay while gulls circle above the nets and the cold morning light slowly warms the wet cobbles."
+    //   T = "By noon the stalls are empty, the quay falls quiet again, and the last boats drift back toward the narrow mouth of the river as the tide turns and the evening wind begins to rise."
+    //   print([core.extract("<html><head><title>t</title></head><body><article><p>" + L + "</p>" + m + "<p>" + T + "</p></article></body></html>", options=Extractor(output_format="txt", fast=True, dedup=False)) for m in ("<ul><li><o:p>x</o:p> y</li></ul>", "<ul><li>a <o:p>x</o:p> y</li><li>c</li></ul>", "<blockquote>a <o:p>x</o:p> b</blockquote>", "<blockquote>a <http://example.com/x>b</blockquote>")], [unittest.TestCase().assertRaisesRegex(ValueError, "Invalid tag name", etree.Element, n) is None for n in ("o:p", "http:")])'
+    //   prints [None, None, None, None] [True, True]: extract is None for each page, and lxml's Element raises
+    //   ValueError("Invalid tag name 'o:p'") (or 'http:'), which bare_extraction catches in the main pass
     for middle in [
         "<ul><li><o:p>x</o:p> y</li></ul>",
         "<ul><li>a <o:p>x</o:p> y</li><li>c</li></ul>",

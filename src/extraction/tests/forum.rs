@@ -83,8 +83,16 @@ fn forum_thread_page_on_loaded_pages() {
     };
     let ld = "type=\"application/ld+json\"";
     let (t, d) = ("\"@type\"", "\"DiscussionForumPosting\"");
-    // oracle: core._forum_thread_page(utils.load_html(page)) inside html5_parsers(), with
-    //   page = '<html><head><title>T</title><script ' + attr + '>' + s + '</script></head><body></body></html>'
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.utils import load_html
+    //   q = chr(34)
+    //   T = q + "@type" + q
+    //   D = q + "DiscussionForumPosting" + q
+    //   ld = "type=" + q + "application/ld+json" + q
+    //   NL = chr(10)
+    //   rows = [(ld, "{" + T + " : " + D + "}"), (ld, "{" + T + chr(160) + ":" + D + "}"), (ld, "{" + T + chr(0x2003) + ":" + D + "}"), (ld, "{" + T + chr(0x200b) + ":" + D + "}"), (ld, "{" + T + ": [" + q + "Thing" + q + ", " + D + "]}"), (ld, "{" + T + ":" + NL + "[" + q + "Thing" + q + "," + NL + D + "]}"), (ld, "{" + T + ": [" + q + "Thing" + q + "], " + q + "x" + q + ": " + D + "}"), (ld, "{" + T + ": " + q + "QAPage" + q + "}"), (ld, "{" + q + "description" + q + ": " + q + "a DiscussionForumPosting here" + q + "}"), ("type=" + q + "application/json" + q, "{" + T + ":" + D + "}"), ("TYPE=" + q + "application/ld+json" + q, "{" + T + ":" + D + "}"), (ld, "")]
+    //   print([core._forum_thread_page(load_html("<html><head><title>T</title><script " + a + ">" + s + "</script></head><body></body></html>")) for a, s in rows])'
+    //   prints one flag per row below, in order; each row's `s` is in its comment
     let rows = [
         // s = '{' + T + ' : ' + D + '}'
         (ld, format!("{{{t} : {d}}}"), true),
@@ -110,7 +118,7 @@ fn forum_thread_page_on_loaded_pages() {
         ),
         // attr = 'type="application/json"'
         ("type=\"application/json\"", format!("{{{t}:{d}}}"), false),
-        // attr = 'TYPE="application/ld+json"' (html5 lowercases attribute names)
+        // attr = 'TYPE="application/ld+json"' (libxml2 lowercases attribute names)
         ("TYPE=\"application/ld+json\"", format!("{{{t}:{d}}}"), true),
         // s = ''
         (ld, String::new(), false),

@@ -92,9 +92,28 @@ fn sequence_matches_python() {
         .to_owned();
     let with = |extra: &str, page: &str| format!("{page}{extra}");
     let cell_list = "<table><tr><td><ul><li>Cell list item alpha</li></ul></td></tr></table>";
-    // oracle: core.trafilatura_sequence(utils.load_html(html), Extractor(output_format="txt",
-    //   fast=True, precision=p, recall=r, comments=c)) inside html5_parsers(): `temp_text` and
-    //   `temp_comments` of each page, built from prose() and page() as here
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   fp = lambda b, h="": "<html><head><title>T</title>" + h + "</head><body>" + b + "</body></html>"
+    //   art = lambda n: "<article><p>" + p("Main", n) + "</p></article>"
+    //   teaser = lambda n: "<div class=\"teaser\"><p>" + p("Teaser", n) + "</p></div>"
+    //   forum = "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"DiscussionForumPosting\",\"headline\":\"T\"}</script>"
+    //   th = "<div id=\"comments\"><p>One comment here</p><br>Second line<p>third</p></div>"
+    //   ld = "<script type=\"application/ld+json\">{\"@type\": \"Article\", \"articleBody\": \"" + p("Json", 6) + "\"}</script>"
+    //   acc = "<article><p>" + p("Main", 4) + "</p>" + teaser(40) + "</article>"
+    //   rat = "<article><p>" + p("Main", 4) + "</p>" + teaser(1) + "</article><div><p>" + p("Outside", 40) + "</p></div>"
+    //   cell = "<table><tr><td><ul><li>Cell list item alpha</li></ul></td></tr></table>"
+    //   rows = [("f1", fp(art(5) + th, forum), 0, 0, 1), ("f2", fp(art(5) + th, forum), 1, 0, 1), ("f3", fp(art(5) + th), 0, 0, 1), ("f4", fp(art(5) + th, forum), 0, 0, 0), ("f5", fp(art(5) + th), 0, 0, 0), ("f6", fp(art(1) + th, forum), 0, 0, 1), ("f7", fp(art(1), ld), 0, 0, 1), ("f8", fp("<article><p>Short text only.</p></article>"), 0, 0, 1), ("f9", fp(art(5) + th), 1, 0, 1), ("e1", fp(acc), 0, 0, 1), ("e2", fp(rat), 0, 0, 1), ("e3", fp(acc + th, forum), 0, 0, 1), ("e4", fp(rat + th, forum), 0, 0, 1), ("e5", fp(acc + th), 0, 0, 1), ("e6", fp(acc + th), 0, 0, 0), ("e7", fp(rat + th), 0, 0, 1), ("e8", fp(acc), 1, 0, 0), ("r1", fp(art(1)), 0, 1, 1), ("r2", fp("<article><p>" + p("Main", 5) + "</p>" + cell + "</article>"), 0, 1, 0), ("r3", fp(art(5) + th, forum), 0, 1, 1)]
+    //   mask = lambda s: s.replace((p("Main", 4) + p("Teaser", 40)).strip(), "E").replace(p("Main", 5).strip(), "M5").replace(p("Main", 4).strip(), "M4").replace(p("Main", 1).strip(), "M1").replace(p("Json", 6).strip(), "J")
+    //   x = lambda e: mask(etree.tostring(e, encoding="unicode", with_tail=False))
+    //   res = {k: core.trafilatura_sequence(load_html(h), Extractor(output_format="txt", fast=True, precision=bool(pr), recall=bool(rc), comments=bool(c))) for k, h, pr, rc, c in rows}
+    //   [print(k, repr(mask(r[1])), repr(mask(r[3]))) for k, r in res.items()]
+    //   print(x(res["f1"][0]), x(res["f1"][2]), x(res["f3"][2]))'
+    //   prints the temp_text and temp_comments of each row below (M5, M4, M1, E, J stand for the main texts, the
+    //   escalated text and the JSON-LD text), then the body of f1, the comments body of f1 and that of f3
     // (label, html, precision, recall, comments, text, comments text)
     let rows: Vec<(&str, String, bool, bool, bool, String, &str)> = vec![
         // forum, posts missing from the body: the salvage appends them
@@ -244,10 +263,14 @@ fn sequence_matches_python() {
             main4.clone(),
             thread_text,
         ),
-        // oracle: scripts/oracle.sh over the esc_accept page, the cascade trace of
-        //   gen_extraction_cases.run_extract(page, "txt", Options(focus="precision", comments=False)) inside
-        //   html5_parsers(): forum=False captured=False first=291 baseline=None page=None retry=None
-        //   err=False final=main, so retry_ran is false; the text is the four Main sentences of the page
+        // oracle: scripts/oracle.sh 'from parity.gen_extraction_cases import Trace, run_extract
+        //   from parity.gen_main_extractor_cases import Options
+        //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+        //   t = Trace()
+        //   r = run_extract("<html><head><title>T</title></head><body><article><p>" + p("Main", 4) + "</p><div class=\"teaser\"><p>" + p("Teaser", 40) + "</p></div></article></body></html>", "txt", Options(focus="precision", comments=False), t)
+        //   print(t.line(), r[0], r[1] == p("Main", 4).strip())'
+        //   prints forum=False captured=False first=291 baseline=None page=None retry=None err=False final=main
+        //   salvage=False Ok True, so retry_ran is false; the text is the four Main sentences of the page
         // Balanced (e1) escalates to the teaser text, so this row is the one that proves the Balanced gate
         (
             "e8",

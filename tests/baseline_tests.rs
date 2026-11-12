@@ -659,8 +659,9 @@ fn test_html2txt() {
     let (mut tree, root) = lxml_fromstring(mydoc);
     assert_eq!(html2txt_of(&mut tree, root), "Here is the body text");
     assert_eq!(html2txt_str(""), "");
-    // oracle: html2txt("123") on plain lxml, which rejects the fragment (`html5_parsers` would
-    // keep it and give "123")
+    // oracle: scripts/oracle.sh 'from trafilatura.baseline import html2txt
+    //   print(repr(html2txt("123")))'
+    //   prints '': lxml rejects the fragment
     assert_eq!(html2txt_str("123"), "");
     assert_eq!(html2txt_str("<html></html>"), "");
     assert_eq!(html2txt_str("<html><body/></html>"), "");

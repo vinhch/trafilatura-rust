@@ -409,8 +409,9 @@ fn build_body_checks_call_per_text() {
 fn html2txt_and_baseline_on_empty_load() {
     let limits = ParseLimits::default();
     let call = Call::default();
-    // oracle: html2txt("") == "" and baseline("") == (Element("body"), "", 0); for "123" the plain
-    // lxml values are the same (`html5_parsers` would parse it: see the Global Constraints)
+    // oracle: scripts/oracle.sh 'from trafilatura.baseline import baseline, html2txt
+    //   print([(s, html2txt(s), baseline(s)[0].tag, len(baseline(s)[0]), baseline(s)[1:]) for s in ("", "123")])'
+    //   prints '' '' body 0 ('', 0) for both inputs: html2txt gives '' and baseline gives an empty body
     for doc in ["", "123"] {
         assert_eq!(
             html2txt(HtmlInput::Str(doc), true, &limits, &call).unwrap(),

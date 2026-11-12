@@ -4,8 +4,17 @@ use super::*;
 fn id_and_fingerprint_only_outside_txt() {
     let main = main_text();
     let page = main_page(COMMENT_DIV);
-    // oracle: d = core._internal_extraction(page, record_id="7", options=Extractor(output_format=f,
-    //   fast=True, dedup=False)) inside html5_parsers(); d.text, d.id, d.fingerprint is None
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   M = p("Main", 5).strip()
+    //   page = "<html><head><title>T</title></head><body><article><p>" + M + "</p></article><div id=\"comments\"><p>One comment here</p><p>Second reply here</p></div></body></html>"
+    //   ds = [core._internal_extraction(page, record_id="7", options=Extractor(output_format=f, fast=True, dedup=False)) for f in ("txt", "markdown", "html")]
+    //   print([(repr(d.text.replace(M, "M")), d.id, d.fingerprint is not None, d.raw_text == M) for d in ds])'
+    //   prints text (the main text as M), id, whether a fingerprint is set, and raw_text == the main text,
+    //   for txt, markdown and html
     // (format, text, id, fingerprint set)
     let rows = [
         (
@@ -49,8 +58,22 @@ fn caller_tree_untouched() {
     let before = tree.tostring(root, false, true);
     let options = bare_options(Format::Python, true);
     let from_tree = bare(Source::Tree(&tree, root), &options).unwrap();
-    // oracle: before = etree.tostring(tree); core.bare_extraction(tree, options=o) inside
-    //   html5_parsers(); etree.tostring(tree) == before is True
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   fp = lambda b, h="": "<html><head><title>T</title>" + h + "</head><body>" + b + "</body></html>"
+    //   M = p("Main", 5).strip()
+    //   art = "<article><p>" + p("Main", 5) + "</p></article>"
+    //   cm = "<div id=\"comments\"><p>One comment here</p><p>Second reply here</p></div>"
+    //   o = Extractor(output_format="python", fast=True, dedup=False)
+    //   page = fp(art + cm)
+    //   tree = load_html(page)
+    //   before = etree.tostring(tree)
+    //   d = core.bare_extraction(tree, options=o)
+    //   print(etree.tostring(tree) == before, repr(d.comments), d.text == core.bare_extraction(page, options=o).text)'
+    //   prints True, the comments text, True
     assert_eq!(tree.tostring(root, false, true), before);
     // oracle: the Document of a tree source equals that of the string source: text, comments
     let from_input = bare_page(&page, &options).unwrap();

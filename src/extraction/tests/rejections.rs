@@ -31,10 +31,17 @@ fn extract_python_format_rejects_after_extraction() {
 fn max_tree_size_rejects() {
     let hi = "<p><hi rend=\"#i\">abc</hi></p>";
     let plain = "<p>abc</p>";
-    // oracle: o = Extractor(output_format="python", fast=True, dedup=False); o.formatting = f;
-    //   o.max_tree_size = limit; core.bare_extraction(page, options=o) inside html5_parsers(), page
-    //   a body of `count` copies of the unit, as a string and as utils.load_html(page); None, or
-    //   len(d.body)
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   mk = lambda **k: (lambda o: ([setattr(o, a, b) for a, b in k.items()], o)[1])(Extractor(output_format="python", fast=True, dedup=False))
+    //   hi = "<p><hi rend=\"#i\">abc</hi></p>"
+    //   pl = "<p>abc</p>"
+    //   pg = lambda u, n: "<html><head><title>T</title></head><body>" + u * n + "</body></html>"
+    //   print([(n, f, l, [None if d is None else len(d.body) for d in (core.bare_extraction(x, options=mk(formatting=f, max_tree_size=l)) for x in (pg(u, n), load_html(pg(u, n))))]) for u, n, f, l in [(hi, 499, True, 500), (hi, 501, True, 500), (hi, 501, True, 0), (hi, 501, True, None), (pl, 50, False, 500), (pl, 500, False, 500), (pl, 501, False, 500)]])'
+    //   prints per row the children of the body, None when rejected, for the string and the loaded tree
     // (unit, count, formatting, limit, children of the body, None when rejected)
     let rows = [
         (hi, 499, true, Some(500), Some(499)),
@@ -91,9 +98,15 @@ fn node(
 #[test]
 fn max_tree_size_strips_hi_before_counting() {
     // (limit, children as built, `Ok` or the error's count after the strip, the body afterwards)
-    // oracle: core.bare_extraction(page, options=o) inside html5_parsers(), o.max_tree_size = limit,
-    //   core.trafilatura_sequence stubbed to return (body, "some text", Element("body"), ""):
-    //   d is not None, and etree.tostring(body, with_tail=False)
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   mk = lambda **k: (lambda o: ([setattr(o, a, b) for a, b in k.items()], o)[1])(Extractor(output_format="python", fast=True, dedup=False))
+    //   run = lambda xml, lim: (lambda body: (setattr(core, "trafilatura_sequence", lambda tree, o, url=None: (body, "some text", etree.Element("body"), "")), (core.bare_extraction("<html><body><p>x</p></body></html>", options=mk(max_tree_size=lim)) is not None, etree.tostring(body, encoding="unicode", with_tail=False)))[1])(etree.fromstring(xml))
+    //   print([(lim, run(xml, lim)) for xml, lim in [("<body><hi>a</hi><hi>b</hi><hi>c</hi></body>", 2), ("<body><hi>a</hi><hi>b</hi><hi>c</hi></body>", 3), ("<body><p>x</p><hi>a<hi>b</hi></hi><p>y</p></body>", 2), ("<body><p>1</p><p>2</p><p>3</p><hi><p>a</p><p>b</p></hi></body>", 3), ("<body><p>1</p><p>2</p><p>3</p><hi><p>a</p><p>b</p></hi></body>", 4), ("<body><p>1</p><p>2</p><p>3</p><hi><p>a</p><p>b</p></hi></body>", 0), ("<body><p>x</p><hi>a</hi>tail<p>y</p></body>", 2)]])'
+    //   trafilatura_sequence is stubbed to return the body, per row `(limit, (d is not None, tostring(body)))`
     type Build = fn(&mut Tree) -> NodeId;
     let flat: Build = |tree| {
         let hi = ["a", "b", "c"].map(|text| element(tree, "hi", Some(text), None));
@@ -159,8 +172,17 @@ fn max_tree_size_strips_hi_before_counting() {
 fn too_short_rejected() {
     let tiny = "<article><p>Short text only.</p></article>";
     let reply = "<div id=\"comments\"><p>One comment here</p></div>";
-    // oracle: o = Extractor(output_format="python", fast=True, dedup=False) with the two minimum
-    //   sizes set; core.bare_extraction(page, options=o) inside html5_parsers(): None or a Document
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   mk = lambda **k: (lambda o: ([setattr(o, a, b) for a, b in k.items()], o)[1])(Extractor(output_format="python", fast=True, dedup=False))
+    //   fp = lambda b, h="": "<html><head><title>T</title>" + h + "</head><body>" + b + "</body></html>"
+    //   tiny = "<article><p>Short text only.</p></article>"
+    //   reply = "<div id=\"comments\"><p>One comment here</p></div>"
+    //   print([(mo, mc, (lambda d: None if d is None else d.text)(core.bare_extraction(fp(b), options=mk(min_output_size=mo, min_output_comm_size=mc)))) for b, mo, mc in [("", 1, 1), (tiny, 1, 1), (tiny, 200, 1), (tiny + reply, 200, 1), (tiny + reply, 200, 100), (tiny, 16, 1), (tiny, 17, 1)]])'
+    //   prints (min_output_size, min_output_comm_size, text kept or None) per row below
     // (page, min_output_size, min_output_comm_size, the text kept, None when rejected)
     let rows = [
         // an empty body under the default minimums of 1
@@ -239,9 +261,19 @@ fn wrong_html_lang_rejected() {
         prose("Main", 5)
     );
     let de = meta("content-language", "de");
-    // oracle: core.bare_extraction(page, options=Extractor(output_format="python", fast=True,
-    //   dedup=False, lang=target)) inside html5_parsers(): None, or a Document; check_html_lang is
-    //   called with strict=False
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   ml = lambda n, c: "<meta " + ("property" if n == "og:locale" else "http-equiv") + "=\"" + n + "\" content=\"" + c + "\">"
+    //   body = "<article><p>" + p("Main", 5) + "</p></article>"
+    //   fp = lambda h: "<html><head><title>T</title>" + h + "</head><body>" + body + "</body></html>"
+    //   de = ml("content-language", "de")
+    //   html_lang = "<html lang=\"de\"><head><title>T</title></head><body>" + body + "</body></html>"
+    //   rows = [(fp(de), "en"), (fp(de), "de"), (fp(ml("content-language", "en-US")), "en"), (fp(""), "en"), (html_lang, "en"), (fp(ml("og:locale", "fr_FR")), "en"), (fp(ml("content-language", "en") + ml("og:locale", "de_DE")), "en"), (fp(de), None)]
+    //   print([core.bare_extraction(h, options=Extractor(output_format="python", fast=True, dedup=False, lang=t)) is not None for h, t in rows])'
+    //   prints whether a Document came back, per row below; check_html_lang is called with strict=False
     // (page, target language, accepted)
     let rows = [
         (page(&de), Some("en"), false),

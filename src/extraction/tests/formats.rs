@@ -187,10 +187,20 @@ fn comments_xml(doc: &Document) -> String {
 #[test]
 fn python_format_document() {
     let main = main_text();
-    // oracle: d = core.bare_extraction(page, options=Extractor(output_format="python", fast=True,
-    //   dedup=False, comments=c)) inside html5_parsers(), page = an article of prose("Main", 5) with
-    //   or without '<div id="comments"><p>One comment here</p><p>Second reply here</p></div>';
-    //   d.text, d.comments, d.raw_text, etree.tostring(d.body), etree.tostring(d.commentsbody)
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   fp = lambda b, h="": "<html><head><title>T</title>" + h + "</head><body>" + b + "</body></html>"
+    //   M = p("Main", 5).strip()
+    //   art = "<article><p>" + p("Main", 5) + "</p></article>"
+    //   cm = "<div id=\"comments\"><p>One comment here</p><p>Second reply here</p></div>"
+    //   x = lambda e: etree.tostring(e, encoding="unicode").replace(M, "M")
+    //   ds = [core.bare_extraction(fp(pg), options=Extractor(output_format="python", fast=True, dedup=False, comments=c)) for pg, c in ((art + cm, True), (art + cm, False), (art, True))]
+    //   print([(d.text == M, d.raw_text == d.text, repr(d.comments), x(d.body), x(d.commentsbody)) for d in ds])'
+    //   prints text == main, raw_text == text, comments, body and comments body for the three rows (page, comments on)
+    //   below; etree.tostring writes an empty element as <body/>
     // (page, comments on, comments, comments body)
     let rows = [
         (
@@ -222,9 +232,19 @@ fn python_format_document() {
 #[test]
 fn txt_format_document() {
     let main = main_text();
-    // oracle: d = core.bare_extraction(page, options=Extractor(output_format="txt", fast=True,
-    //   dedup=False, comments=c)) inside html5_parsers(), pages as in python_format_document;
-    //   d.text, d.comments, d.raw_text, etree.tostring(d.body), etree.tostring(d.commentsbody)
+    // oracle: scripts/oracle.sh 'from trafilatura import core
+    //   from trafilatura.settings import Extractor
+    //   from trafilatura.utils import load_html
+    //   from lxml import etree
+    //   p = lambda t, n: "".join("%s sentence number %d says something quite different about its subject. " % (t, i) for i in range(n))
+    //   fp = lambda b, h="": "<html><head><title>T</title>" + h + "</head><body>" + b + "</body></html>"
+    //   M = p("Main", 5).strip()
+    //   art = "<article><p>" + p("Main", 5) + "</p></article>"
+    //   cm = "<div id=\"comments\"><p>One comment here</p><p>Second reply here</p></div>"
+    //   x = lambda e: etree.tostring(e, encoding="unicode").replace(M, "M")
+    //   ds = [core.bare_extraction(fp(pg), options=Extractor(output_format="txt", fast=True, dedup=False, comments=c)) for pg, c in ((art + cm, True), (art + cm, False), (art, True))]
+    //   print([(d.text, d.comments, d.raw_text == M, x(d.body), x(d.commentsbody)) for d in ds])'
+    //   prints text, comments, raw_text == main, body and comments body for the three rows below
     for (page, comments, comments_body) in [
         (main_page(COMMENT_DIV), true, COMMENT_BODY),
         (main_page(COMMENT_DIV), false, "<body/>"),
