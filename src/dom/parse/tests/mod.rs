@@ -1,5 +1,6 @@
 mod attack;
 mod budget;
+mod emitter;
 mod formatting;
 mod scanner;
 mod tables;

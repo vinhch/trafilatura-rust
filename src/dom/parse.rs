@@ -587,6 +587,8 @@ pub fn parse_fragment(
     )
 }
 
+#[allow(dead_code)]
+mod emitter;
 mod sink;
 // Some items are read only by tests until the tree builder reads them.
 #[allow(dead_code)]

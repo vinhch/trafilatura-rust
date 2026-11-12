@@ -32,6 +32,7 @@ is NCSA), moved by its own Dependabot entry, and never shipped to users.
 | Crate | Kind | Replaces upstream | Why this crate |
 | --- | --- | --- | --- |
 | `html5ever` | always | `lxml.html` parsing | Servo's WHATWG parser, widely used; feeds the crate's own tree through `TreeSink` (D-2) |
+| `html5gum` | always | `lxml.html` parsing (libxml2's HTML tokenizer) | WHATWG tokenizer with a byte-level emitter and no tree builder; `src/dom/parse/emitter.rs` applies libxml2's name, attribute and raw-text rules on top. Default features off |
 | `encoding_rs` | always | Python codecs | The WHATWG encodings, maintained by Firefox's encoding owner |
 | `chardetng` | always | `charset_normalizer` | Firefox's detector, same maintainer as `encoding_rs` (D-3) |
 | `regex` | always | `re` | rust-lang regex; lookaround and backreferences are written by hand (`gotchas.md`) |
