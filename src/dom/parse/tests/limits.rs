@@ -116,8 +116,9 @@ fn huge_tag_is_rejected_within_a_second() {
     }
 }
 
+// 2 s: the full suite runs tests in parallel and these pages take about 0.6 s alone; a quadratic blow-up takes far longer.
 #[test]
-fn formatting_attack_pages_finish_in_under_a_second() {
+fn formatting_attack_pages_finish_in_under_two_seconds() {
     let cap = DEFAULT_MAX_INPUT_BYTES;
     let limits = ParseLimits::default();
     let check = |label: &str, html: &str| {
@@ -130,7 +131,7 @@ fn formatting_attack_pages_finish_in_under_a_second() {
             "{label}: {result:?}"
         );
         assert!(
-            elapsed < std::time::Duration::from_secs(1),
+            elapsed < std::time::Duration::from_secs(2),
             "{label} ({} bytes): {elapsed:?}",
             html.len()
         );
