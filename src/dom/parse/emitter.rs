@@ -204,15 +204,20 @@ fn decode(bytes: &[u8]) -> String {
 // libxml2: HTMLparser.c::htmlParseHTMLName
 fn local_name(bytes: &[u8]) -> LocalName {
     let text = String::from_utf8_lossy(bytes);
-    if text.len() <= NAME_BYTES {
+    if text.len() <= NAME_BYTES && !text.contains('\0') {
         return LocalName::from(text.as_ref());
     }
-    let cut = text
-        .char_indices()
-        .take_while(|&(index, ch)| index + ch.len_utf8() <= NAME_BYTES)
-        .last()
-        .map_or(0, |(index, ch)| index + ch.len_utf8());
-    LocalName::from(text.get(..cut).unwrap_or_default())
+    // A character that does not fit is skipped, and later ones that fit are still kept.
+    let mut kept = String::with_capacity(text.len().min(NAME_BYTES));
+    let mut count = 0usize;
+    for ch in text.chars() {
+        let ch = if ch == '\0' { '\u{fffd}' } else { ch };
+        if count + ch.len_utf8() <= NAME_BYTES {
+            count += ch.len_utf8();
+            kept.push(ch);
+        }
+    }
+    LocalName::from(kept.as_str())
 }
 
 /// The state a start tag of this data mode switches the tokenizer to.

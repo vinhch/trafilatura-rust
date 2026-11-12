@@ -160,6 +160,39 @@ fn name_cut_keeps_whole_characters() {
 }
 
 #[test]
+fn name_cut_skips_characters_that_do_not_fit() {
+    // The `é` does not fit after 99 bytes; the `b` after it does.
+    let name = format!("{}éb", "a".repeat(99));
+    assert_eq!(
+        toks(&format!("<{name}>")),
+        vec![start(&format!("{}b", "a".repeat(99)))]
+    );
+}
+
+#[test]
+fn name_nul_is_kept_as_replacement_and_costs_three_bytes() {
+    // Tag names reach the emitter with NUL already mapped by html5gum; this pins the rule for a raw NUL.
+    let mut emitter = Emitter::new(&ParseLimits::default(), false);
+    let mut sink = &mut emitter;
+    sink.init_start_tag();
+    sink.push_tag_name(b"a\0b");
+    let _ = sink.emit_current_tag();
+    assert_eq!(sink.pop_token(), Some(start("a\u{fffd}b")));
+
+    // 99 bytes of `a` leave one byte: the three-byte replacement is skipped, the `c` after it fits.
+    let mut emitter = Emitter::new(&ParseLimits::default(), false);
+    let mut sink = &mut emitter;
+    sink.init_start_tag();
+    sink.push_tag_name("a".repeat(99).as_bytes());
+    sink.push_tag_name(b"\0c");
+    let _ = sink.emit_current_tag();
+    assert_eq!(
+        sink.pop_token(),
+        Some(start(&format!("{}c", "a".repeat(99))))
+    );
+}
+
+#[test]
 fn attribute_budget_rejects() {
     let limits = ParseLimits {
         max_nodes: Some(1),
