@@ -2,6 +2,7 @@ mod attack;
 mod budget;
 mod formatting;
 mod scanner;
+mod tables;
 
 use std::cell::RefCell;
 

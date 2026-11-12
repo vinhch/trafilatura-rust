@@ -7,6 +7,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use super::parse::tables::BOOLEAN_ATTRIBUTES;
 use super::{Node, NodeId, Ns, Tree};
 
 /// libxml2 stops indenting after this many levels (two spaces each).
@@ -16,12 +17,6 @@ const MAX_INDENT_LEVEL: usize = 30;
 const VOID_ELEMENTS: &[&str] = &[
     "area", "base", "basefont", "br", "col", "frame", "hr", "img", "input", "isindex", "link",
     "meta", "param",
-];
-
-/// Attributes written bare, on any element (libxml2 `htmlIsBooleanAttr`).
-const BOOLEAN_ATTRIBUTES: &[&str] = &[
-    "checked", "compact", "declare", "defer", "disabled", "ismap", "multiple", "nohref",
-    "noresize", "noshade", "nowrap", "readonly", "selected",
 ];
 
 const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
