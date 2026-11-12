@@ -61,7 +61,8 @@ function.
 - The parser is libxml2's. Upstream parses with `lxml.html.HTMLParser` (libxml2), configured in `utils.py`
   (`HTML_PARSER`: comments and processing instructions removed). The crate tokenizes with html5gum and applies
   libxml2 2.14.6's rules (`dom/parse/`): no implied `tbody`, no adoption agency, misnested and stray tags handled
-  as libxml2 handles them. Its tree matches lxml 6.1.3's on the pinned corpus (`docs/parity-harness.md`).
+  as libxml2 handles them. Its tree matches lxml 6.1.3's on every valid-UTF-8 page of the pinned corpus
+  (`docs/parity-harness.md`).
   lxml wheels bundle libxml2, and the Windows wheels bundle an older one than the Linux and macOS wheels, so
   upstream itself differs by platform: fixtures come from Linux. The generated headers name the libxml2 version
   each run used. Upstream may switch parsers (OI-5, checked in `upstream-sync.md`).
@@ -79,7 +80,8 @@ function.
 - A valueless attribute takes its own name as value when libxml2's `htmlBooleanAttrs` lists it (`<script defer>`
   reads `defer="defer"`), and the empty string otherwise. The HTML method writes a valueless attribute bare, and
   `a=""` keeps its quotes.
-- Void elements: `img` only. `source` and `track` are not void in libxml2 2.14.6; 2.15 makes them void (OI-5).
+- Void elements are the 13 whose `empty` column is set in libxml2's `html40ElementTable` (`dom/parse/tables.rs`).
+  `source`, `track`, `embed` and `wbr` are not void in libxml2 2.14.6; 2.15 makes `source` and `track` void (OI-5).
 - Decode strictly. Upstream tries each guessed codec and falls back to UTF-8 with replacement only
   when all fail; `encoding_rs`'s `Encoding::decode` sniffs a BOM and replaces silently, which skips
   that fallback. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
@@ -91,7 +93,7 @@ function.
   Port each call as its own character map.
 - Names and namespaces. On the libxml2 tree SVG and MathML elements have no namespace, so a plain tag name in
   XPath matches them too. Renaming an element drops its namespace.
-- MathML and SVG survive cleaning. On the libxml2 tree `math` and `svg` are plain HTML elements, so `recover_math`
+- MathML and SVG are cleaned. On the libxml2 tree `math` and `svg` are plain HTML elements, so `recover_math`
   and the `MANUALLY_CLEANED` loop see them, and `math` is recovered to its LaTeX as upstream's tree does. The port
   reads a tag by name (`tree.tag(id) == Some(..)`), so a comparison with `elem.tag == "graphic"` or
   `elem.tag in (...)` works for them too, and it never returns early on `None`: `handle_textnode` and
@@ -265,8 +267,9 @@ function.
   does on the libxml2 tree, which writes no `ns0:` prefix.
 - htmldate searches `lxml.html.tostring` output, which differs from `etree.tostring`: the HTML method
   writes void elements and an empty `li` with no end tag, `script` and `style` text raw, `href`,
-  `action` and `src` (and `name` on `a`) percent-escaped, boolean attributes bare, foreign elements
-  under `ns0:` with `xmlns:ns0` on the outermost one, and drops every `<meta http-equiv="Content-Type">`.
+  `action` and `src` (and `name` on `a`) percent-escaped, boolean attributes bare, elements of a foreign namespace
+  under `ns0:` with `xmlns:ns0` on the outermost one (only a hand-built tree has them, F-85), and drops every
+  `<meta http-equiv="Content-Type">`.
   `Tree::tostring_html` follows these rules; its rows are in `src/dom/html_cases.rs`.
 - A dict built by inversion keeps the last key. `HTML_TAG_MAPPING` inverts `REND_TAG_MAPPING`, so
   `#i` gives `i` (not `em`), `#b` gives `strong` and `#t` gives `var`.

@@ -183,6 +183,7 @@ impl Builder {
     /// Character data. Blank text directly in `html` or `head` (or outside any element) is kept as
     /// text there (outside any element it is dropped); the rest opens the implied elements first.
     // libxml2: HTMLparser.c::htmlCharDataSAXCallback
+    // deviation: D-30
     fn characters(&mut self, text: &str) -> Result<(), ExtractError> {
         if self.stopped {
             return Ok(());
