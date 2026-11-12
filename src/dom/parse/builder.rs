@@ -312,6 +312,16 @@ fn attributes(
     attrs
 }
 
+/// What one build did, for the limit tests.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(super) struct BuildStats {
+    /// Tokens the loop took from the emitter, the abort included.
+    pub(super) tokens: usize,
+    /// Tokens the emitter still held when the loop stopped on an abort. It queues none after its first
+    /// limit, so this is 0.
+    pub(super) tokens_after_abort: usize,
+}
+
 /// The tree of `html` as libxml2 2.14.6 builds it: the root is the first `html`, and the other
 /// document-level elements are listed in `Tree::document_roots`. Fails with `EmptyTree` when no element
 /// is built. Cancellation is checked every `CHECK_INTERVAL` tokens.
@@ -320,13 +330,35 @@ pub(super) fn build_document(
     limits: &ParseLimits,
     call: &Call<'_>,
 ) -> Result<Tree, ExtractError> {
+    build_with(html, limits, call).0
+}
+
+/// `build_document` with the counts of the run, which the error path keeps too.
+pub(super) fn build_with(
+    html: &str,
+    limits: &ParseLimits,
+    call: &Call<'_>,
+) -> (Result<Tree, ExtractError>, BuildStats) {
+    let mut stats = BuildStats::default();
+    let result = run(html, limits, call, &mut stats);
+    (result, stats)
+}
+
+fn run(
+    html: &str,
+    limits: &ParseLimits,
+    call: &Call<'_>,
+    stats: &mut BuildStats,
+) -> Result<Tree, ExtractError> {
     call.check()?;
     let mut emitter = Emitter::new(limits, limits.drop_script_text);
     let mut builder = Builder::new(limits);
-    for (index, token) in tokens(html, &mut emitter).enumerate() {
-        if index.is_multiple_of(CHECK_INTERVAL) {
+    let mut abort = None;
+    for token in tokens(html, &mut emitter) {
+        if stats.tokens.is_multiple_of(CHECK_INTERVAL) {
             call.check()?;
         }
+        stats.tokens += 1;
         match token {
             Token::Start(tag) => {
                 let attrs = attributes(tag.attrs, &tag.valueless);
@@ -340,11 +372,18 @@ pub(super) fn build_document(
             }
             Token::Text(text) => builder.characters(&text)?,
             Token::Skipped => {}
-            Token::Abort(error) => return Err(error),
+            Token::Abort(error) => {
+                abort = Some(error);
+                break;
+            }
         }
         if builder.stopped {
             break;
         }
+    }
+    if let Some(error) = abort {
+        stats.tokens_after_abort = emitter.queued();
+        return Err(error);
     }
     let dropped = emitter.dropped_text();
     let Some(mut tree) = builder.tree else {

@@ -119,6 +119,11 @@ impl Emitter {
         self.dropped_any
     }
 
+    /// Tokens queued and not yet taken.
+    pub(super) fn queued(&self) -> usize {
+        self.queue.len()
+    }
+
     /// Queues the text run in progress, or a `Skipped` when only dropped text was pending.
     fn flush_text(&mut self) {
         if self.done {

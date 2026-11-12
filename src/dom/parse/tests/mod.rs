@@ -2,6 +2,7 @@ mod attack;
 mod budget;
 mod emitter;
 mod formatting;
+mod limits;
 mod rules;
 mod scanner;
 mod tables;
