@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use html5gum::Emitter as _;
@@ -43,7 +44,7 @@ fn self_closing(name: &str) -> Token {
     Token::Start(StartTag {
         name: LocalName::from(name),
         attrs: Vec::new(),
-        valueless: Vec::new(),
+        valueless: HashSet::new(),
         self_closing: true,
     })
 }
@@ -118,6 +119,19 @@ fn attribute_cap_rejects() {
     assert_eq!(toks(&over), vec![too_large(TreeLimit::TagAttributes)]);
 
     let at = format!("<x{}>{page}", attr_list(MAX_TAG_ATTRIBUTES));
+    let tokens = toks(&at);
+    assert_eq!(tokens.len(), 1 + CAP_PAGE_TAGS);
+    assert!(!tokens.iter().any(|token| matches!(token, Token::Abort(_))));
+}
+
+#[test]
+fn duplicate_attributes_count_toward_the_cap() {
+    let page = "<p>".repeat(CAP_PAGE_TAGS);
+    let repeated = |count: usize| " a".repeat(count);
+    let over = format!("<x{}>{page}", repeated(MAX_TAG_ATTRIBUTES + 1));
+    assert_eq!(toks(&over), vec![too_large(TreeLimit::TagAttributes)]);
+
+    let at = format!("<x{}>{page}", repeated(MAX_TAG_ATTRIBUTES));
     let tokens = toks(&at);
     assert_eq!(tokens.len(), 1 + CAP_PAGE_TAGS);
     assert!(!tokens.iter().any(|token| matches!(token, Token::Abort(_))));

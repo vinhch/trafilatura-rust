@@ -23,8 +23,8 @@ fn tag(count: usize) -> String {
     format!("<x{}>", attrs(count))
 }
 
-/// `<{name} a0 .. a998 u{unique}>`: 1,000 attributes, so Noah's Ark keeps entries of one name apart
-/// when `unique` differs.
+/// `<{name} a0 .. a998 u{unique}>`: 1,000 attributes, the last one distinct per `unique`, so no two
+/// tags of one name carry the same attributes.
 fn heavy_tag(name: &str, unique: usize) -> String {
     format!("<{name}{} u{unique}>", attrs(MAX_TAG_ATTRIBUTES - 1))
 }

@@ -5,6 +5,7 @@
 //! misplaced `html`, `head` and `body` tags that are discarded, and a `/>` that closes whatever is open.
 //! lxml keeps blank text (`keepBlanks`), so libxml2's `areBlanks` never decides anything and is not ported.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use web_atoms::{LocalName, local_name};
@@ -300,9 +301,10 @@ fn is_html_space(ch: char) -> bool {
 /// The attributes a kept start tag carries. A valueless attribute is its own name when `htmlBooleanAttrs`
 /// lists it, else the shared valueless value (`valueless`), which the HTML method writes bare.
 // libxml2: HTMLtree.c::htmlIsBooleanAttr
+// libxml2: SAX2.c::xmlSAX2HtmlAttribute
 fn attributes(
     mut attrs: Vec<(LocalName, Arc<str>)>,
-    valueless_names: &[LocalName],
+    valueless_names: &HashSet<LocalName>,
 ) -> Vec<(LocalName, Arc<str>)> {
     for (name, value) in &mut attrs {
         if !valueless_names.contains(name) {

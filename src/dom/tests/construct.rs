@@ -143,8 +143,8 @@ fn table_root_gets_no_implied_tbody_or_head() {
 fn depth_limit_cuts_and_drops_rest() {
     let html = format!("{}<p>after</p>", "<div>".repeat(300));
     let tree = parse(&html);
-    // oracle: fromstring returns the body as the root, so the cut at 256 elements of the document
-    // (html and body included) leaves 254 below the root
+    // oracle: the body has one child, so fromstring returns the first div as the root; the cut at
+    // 256 elements of the document (html and body included) leaves 254 divs
     assert_eq!(max_depth(&tree), 254);
     let text = dump(&tree);
     assert!(!text.contains("after"), "{text}");

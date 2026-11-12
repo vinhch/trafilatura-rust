@@ -919,7 +919,8 @@ fn url_base_comes_from_meta_elements_only() {
 #[test]
 fn title_after_closing_html() {
     // oracle: scripts/oracle.sh 'extract_metadata(load_html(page)).title' gives 'Big Title' (lxml 6.1.3,
-    // libxml2 2.14.6): the h1 after the closing html is still in the body
+    // libxml2 2.14.6): the h1 after the closing html sits in a second document-level html, which the
+    // title xpaths reach
     let html =
         r#"<html><head></head><body><p>x</p></body></html><h1 class="post-title">Big Title</h1>"#;
     let mut tree = crate::utils::load_html(

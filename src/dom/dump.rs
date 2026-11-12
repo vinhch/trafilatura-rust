@@ -20,14 +20,10 @@ pub(crate) fn is_name_char(c: char) -> bool {
         || matches!(c, '-' | '.' | '0'..='9' | '\u{B7}' | '\u{300}'..='\u{36F}' | '\u{203F}'..='\u{2040}')
 }
 
-/// Element names may contain `:` (libxml2 keeps `o:p`); attribute names may not.
-pub(crate) fn is_valid_name(name: &str, allow_colon: bool) -> bool {
-    let colon_ok = |c: char| allow_colon && c == ':';
+/// Whether `name` is an XML Name without `:`.
+pub(crate) fn is_valid_name(name: &str) -> bool {
     let mut chars = name.chars();
-    chars
-        .next()
-        .is_some_and(|c| is_name_start(c) || colon_ok(c))
-        && chars.all(|c| is_name_char(c) || colon_ok(c))
+    chars.next().is_some_and(is_name_start) && chars.all(is_name_char)
 }
 
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]

@@ -143,9 +143,10 @@ fn ptest_empty_text_node_counts_as_a_node() {
 }
 
 #[test]
-fn frame_with_foreign_element_is_not_single_run() {
-    // oracle: _extract(...) with min_extracted_size = 0 and formatting=True; an svg is in `.//*`,
-    // so `tags <= INLINE_FORMATTABLE | {"lb"}` fails and the frame is walked element by element
+fn frame_with_svg_is_one_run_after_cleaning() {
+    // oracle: _extract(...) with min_extracted_size = 0 and formatting=True; tree_cleaning deletes
+    // the svg (MANUALLY_CLEANED) and keeps its tail, so only inline elements remain and the frame
+    // is one run
     let tight = options_with(|options| {
         options.min_extracted_size = 0;
         options.formatting = true;
@@ -156,16 +157,16 @@ fn frame_with_foreign_element_is_not_single_run() {
         "<body><p>Lead text <hi rend=\"#b\">bold</hi> text <hi rend=\"#i\">it</hi> more</p></body>"
     );
     let foreign = "<html><body><div class=\"post\">Lead text <b>bold</b> text <svg><title>t</title></svg> <i>it</i> more</div></body></html>";
-    // oracle: scripts/oracle.sh, _extract(tree_cleaned, Extractor(min size 0, formatting)) on the foreign page:
-    // the svg is an unknown element on the libxml2 tree, so the paragraph is one run with a double space
+    // oracle: scripts/oracle.sh, _extract(tree_cleaned, Extractor(min size 0, formatting)) on the svg page:
+    // tree_cleaning deletes the svg and keeps its tail, so the paragraph is one run with a double space
     assert_eq!(
         body_of(foreign, &tight).0,
         "<body><p>Lead text <hi rend=\"#b\">bold</hi> text  <hi rend=\"#i\">it</hi> more</p></body>"
     );
     // oracle: scripts/oracle.sh 'from lxml.html import fromstring, tostring; from trafilatura.utils import HTML_PARSER; from trafilatura.settings import Extractor; from trafilatura.htmlprocessing import tree_cleaning, convert_tags; from trafilatura.main_extractor import _extract; o = Extractor(fast=True, comments=False); h = "<html><body><p>" + "This outside paragraph is deliberately long enough to pass the size gate. " * 12 + "</p><div class=\"post\">text one<br>text two<svg><title>t</title></svg></div></body></html>"; t = convert_tags(tree_cleaning(fromstring(h, parser=HTML_PARSER), o), o); r = _extract(t, o); print(tostring(r[0], encoding="unicode")); print(repr(r[0].text))'
     // prints `<body></body>` and `None`: the body has no text, so lxml writes it empty and the crate shows `<body/>`.
-    // The frame of line breaks without the svg gives the same empty body, so both asserts expect `<body/>`. The
-    // svg frame is not a separate run on the libxml2 tree, where svg is an unknown element.
+    // The frame of line breaks without the svg gives the same empty body, so both asserts expect `<body/>`.
+    // tree_cleaning deletes the svg, so the svg frame is the same frame of line breaks.
     let outside = OUTSIDE_PARAGRAPH.repeat(12);
     let options = options();
     assert_eq!(
@@ -525,8 +526,8 @@ fn define_newelem_rejects_colon_tag() {
 
 #[test]
 fn define_newelem_drops_svg_title_text() {
-    // oracle: scripts/oracle.sh, extract(page, output_format="txt", fast=True, zero min size): the svg
-    // title is an unknown element on the libxml2 tree, so its text goes and the rest of the item stays
+    // oracle: scripts/oracle.sh, extract(page, output_format="txt", fast=True, zero min size): tree_cleaning
+    // deletes the svg with its title (MANUALLY_CLEANED) and keeps its tail, so the rest of the item stays
     let want = format!("{LEAD}\n- a b\n- c\n{TRAIL}");
     assert_eq!(
         extract_txt(&article_page(&format!(

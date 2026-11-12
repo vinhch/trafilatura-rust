@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use super::ParseLimits;
 use super::builder::build_document;
-use crate::cancel::Call;
+use crate::cancel::{CHECK_INTERVAL, Call};
 use crate::dom::{NodeId, Ns, Tree};
 use crate::error::{ExtractError, Rejection};
 
@@ -111,18 +111,42 @@ fn drop_tree(tree: &mut Tree, id: NodeId) {
     tree.remove(id);
 }
 
-/// Moves every child of `from` to the end of `to`, tails included (`to.extend(from)`).
-fn move_children(tree: &mut Tree, from: NodeId, to: NodeId) {
+/// Moves every child of `from` to the end of `to`, tails included (`to.extend(from)`). Checks `call`
+/// about every `CHECK_INTERVAL` children.
+fn move_children(
+    tree: &mut Tree,
+    from: NodeId,
+    to: NodeId,
+    call: &Call<'_>,
+) -> Result<(), ExtractError> {
+    let mut moved = 0usize;
     while let Some(child) = tree.first_child(from) {
+        if moved.is_multiple_of(CHECK_INTERVAL) {
+            call.check()?;
+        }
         tree.append(to, child);
+        moved += 1;
     }
+    Ok(())
 }
 
 /// `_contains_block_level_tag`: whether `root` or a descendant has a block tag name, in any namespace.
+/// Checks `call` about every `CHECK_INTERVAL` nodes.
 // upstream: lxml/html/__init__.py::_contains_block_level_tag
-fn contains_block_level_tag(tree: &Tree, root: NodeId) -> bool {
-    tree.iter(root, &[])
-        .any(|id| BLOCK_TAGS.contains(&&*tree.node(id).name))
+fn contains_block_level_tag(
+    tree: &Tree,
+    root: NodeId,
+    call: &Call<'_>,
+) -> Result<bool, ExtractError> {
+    for (index, id) in tree.iter(root, &[]).enumerate() {
+        if index.is_multiple_of(CHECK_INTERVAL) {
+            call.check()?;
+        }
+        if BLOCK_TAGS.contains(&&*tree.node(id).name) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 // upstream: lxml/html/__init__.py::fromstring
@@ -138,8 +162,8 @@ pub(super) fn fromstring(
     }
     let document = tree.root();
     let bodies = children_named(&tree, document, "body");
-    let body = bodies.split_first().map(|(&first, others)| {
-        // Several bodies are smashed into the first one, with the text of each before its children.
+    // Several bodies are smashed into the first one, with the text of each before its children.
+    if let Some((&first, others)) = bodies.split_first() {
         for &other in others {
             let text = tree.node_mut(other).text.take();
             if let Some(text) = text.filter(|text| !text.is_empty()) {
@@ -148,21 +172,20 @@ pub(super) fn fromstring(
                     None => append_text(&mut tree.node_mut(first).text, &text),
                 }
             }
-            move_children(&mut tree, other, first);
+            move_children(&mut tree, other, first, call)?;
             drop_tree(&mut tree, other);
         }
-        first
-    });
+    }
     let heads = children_named(&tree, document, "head");
     if let Some((&head, others)) = heads.split_first() {
         // A document with a head is kept whole.
         for &other in others {
-            move_children(&mut tree, other, head);
+            move_children(&mut tree, other, head, call)?;
             drop_tree(&mut tree, other);
         }
         return Ok(tree);
     }
-    let Some(body) = body else {
+    let Some(&body) = bodies.first() else {
         return Ok(tree);
     };
     let only_child = if tree.child_count(body) == 1 {
@@ -179,7 +202,7 @@ pub(super) fn fromstring(
         return Ok(tree);
     }
     // A run of content with no single element: the body stands for it, renamed to a container.
-    let container = if contains_block_level_tag(&tree, body) {
+    let container = if contains_block_level_tag(&tree, body, call)? {
         "div"
     } else {
         "span"
@@ -216,7 +239,7 @@ pub(super) fn fragment_fromstring_div(
         .filter(|text| !text.trim_matches(is_py_space).is_empty());
     let div = tree.new_element("div");
     tree.node_mut(div).text = leading;
-    move_children(&mut tree, body, div);
+    move_children(&mut tree, body, div, call)?;
     tree.set_root(div);
     Ok(tree)
 }

@@ -418,6 +418,20 @@ fn check_html_lang_matches_python() {
             false,
         ),
         (og("\u{130}de"), "de", false, true),
+        // oracle: scripts/oracle.sh, `//html[@lang]` finds the second document-level html:
+        // check_html_lang(fromstring(page, parser=HTML_PARSER), target, True) gives True for "de", False for "en"
+        (
+            r#"<p>a</p></html><html lang="de"><p>b</p>"#.to_owned(),
+            "de",
+            true,
+            true,
+        ),
+        (
+            r#"<p>a</p></html><html lang="de"><p>b</p>"#.to_owned(),
+            "en",
+            true,
+            false,
+        ),
     ];
     for (html, target, strict, expected) in table {
         let tree = tree(&html);

@@ -307,10 +307,16 @@ pub fn check_html_lang(tree: &Tree, root: NodeId, target_language: &str, strict:
     }
     // HTML lang attribute: sometimes a wrong indication
     if strict {
-        // `//html[@lang]` starts at the document root
+        // `//html[@lang]` starts at the document root: every document-level element under the first one
         let top = tree.iterancestors(root, &[]).last().unwrap_or(root);
-        let langs: Vec<&str> = tree
-            .iter(top, &["html"])
+        let starts = if tree.document_roots.first() == Some(&top) {
+            tree.document_roots.as_slice()
+        } else {
+            std::slice::from_ref(&top)
+        };
+        let langs: Vec<&str> = starts
+            .iter()
+            .flat_map(|&start| tree.iter(start, &["html"]))
             .filter_map(|html| tree.get(html, "lang"))
             .collect();
         if !langs.is_empty() {

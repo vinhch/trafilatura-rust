@@ -123,8 +123,8 @@ pub struct Tree {
     /// A dropped-text element survived `tree_cleaning`, so the readers after it would see its
     /// missing text and the extraction must run again on a full parse.
     pub(crate) needs_script_text: bool,
-    /// libxml2's document-level elements in order: the first `html`, the root, then each `html` opened
-    /// after the first one closed (implied or written). None of them has a parent.
+    /// libxml2's document-level elements in order: the first `html` (the root as parsed), then each
+    /// `html` opened after it closed (implied or written). None of them has a parent.
     pub(crate) document_roots: Vec<NodeId>,
 }
 

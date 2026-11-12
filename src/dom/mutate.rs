@@ -25,7 +25,7 @@ impl Tree {
     /// when the local name of `id` is not an XML Name or holds `:` (`ValueError: Invalid tag name`).
     // upstream: lxml `_tagValidOrRaise`, reached by `Element(tag)` and `SubElement` under such a parent
     pub fn try_new_element_like(&mut self, id: NodeId) -> Result<NodeId, ExtractError> {
-        if !is_valid_name(&self.node(id).name, false) {
+        if !is_valid_name(&self.node(id).name) {
             return Err(ExtractError::Rejected(Rejection::InvalidValue));
         }
         Ok(self.new_element_like(id))

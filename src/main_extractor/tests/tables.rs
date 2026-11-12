@@ -278,7 +278,7 @@ fn table_cell_foreign_element() {
     // oracle: p = parse_document('<html><body><table><tr><td>a <svg><title>t</title></svg> b</td>
     // </tr></table></body></html>') after tree_cleaning and convert_tags;
     // r = handle_table(p.find('.//table'), TAG_CATALOG, Extractor()); dump_tree(r) and dump_tree(p).
-    // The svg title is an unknown element here: its text goes and its tail stays
+    // tree_cleaning deletes the svg with its title (MANUALLY_CLEANED): its text goes and its tail stays
     let (mut tree, table) = converted(
         "<html><body><table><tr><td>a <svg><title>t</title></svg> b</td></tr></table></body></html>",
         "table",

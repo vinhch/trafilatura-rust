@@ -44,7 +44,7 @@ fn filled(prefix: &str, unit: &str, bytes: usize) -> String {
 }
 
 /// `<name n0 .. n{count-2} unique>` with the names `{prefix}{i}` in a pseudo-random order and
-/// `value` on each (none when empty): the order that makes the duplicate compare do its full work.
+/// `value` on each (none when empty): names that reach the emitter's duplicate set out of order.
 fn shuffled_tag(
     name: &str,
     count: usize,
@@ -81,7 +81,7 @@ fn depth_cut_keeps_partial_tree() {
     assert_eq!(deepest(&tree, tree.root(), 1), MAX_DEPTH);
     let mut names = Vec::new();
     element_names(&tree, tree.root(), &mut names);
-    // `html` and the 255 divs that open below the limit; the 256th div and the `p` after it are cut.
+    // `html`, the implied `body` and 254 divs; the 255th div, the first one cut, and the `p` after it are gone.
     assert_eq!(names.len(), MAX_DEPTH);
     assert!(!names.iter().any(|name| name == "p"));
 }
@@ -200,7 +200,7 @@ fn formatting_attack_pages_finish_in_under_two_seconds() {
         check(label, &html);
     }
 
-    // Shuffled names: the sorts of a duplicate compare do their full work on each probe.
+    // Shuffled names with a long common prefix: the duplicate set hashes each name in full.
     let long_prefix = "averyveryverylongcommonprefixofnamesxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
     let kilobyte_prefix = "q".repeat(1_000);
     for (prefix, entries, probes) in [

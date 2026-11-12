@@ -37,8 +37,8 @@ pub(super) struct StartTag {
     pub(super) name: LocalName,
     /// Kept attributes in source order: the first of each name, values decoded.
     pub(super) attrs: Vec<(LocalName, Arc<str>)>,
-    /// Names written with no value at all, in the order kept.
-    pub(super) valueless: Vec<LocalName>,
+    /// Names written with no value at all.
+    pub(super) valueless: HashSet<LocalName>,
     pub(super) self_closing: bool,
 }
 
@@ -69,7 +69,7 @@ pub(super) struct Emitter {
     /// Name of the last start tag, cut as its tag was kept.
     last_start: Option<LocalName>,
     attrs: Vec<(LocalName, Arc<str>)>,
-    valueless: Vec<LocalName>,
+    valueless: HashSet<LocalName>,
     /// Names kept on the current tag, for the first-wins check.
     seen: HashSet<LocalName>,
     /// Attributes of the current tag, duplicates included, against `MAX_TAG_ATTRIBUTES`.
@@ -99,7 +99,7 @@ impl Emitter {
             self_closing: false,
             last_start: None,
             attrs: Vec::new(),
-            valueless: Vec::new(),
+            valueless: HashSet::new(),
             seen: HashSet::new(),
             tag_attributes: 0,
             kept_attributes: 0,
@@ -189,7 +189,7 @@ impl Emitter {
         let value: Arc<str> = if self.attr_has_value {
             Arc::from(decode(&self.attr_value))
         } else {
-            self.valueless.push(name.clone());
+            self.valueless.insert(name.clone());
             Arc::from("")
         };
         self.attrs.push((name, value));

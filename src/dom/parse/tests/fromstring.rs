@@ -2,9 +2,10 @@
 //! and the root they leave for the selectors and the serializer.
 
 use super::super::ParseLimits;
+use super::super::builder::build_document;
 use super::super::fromstring::{fragment_fromstring_div, fromstring};
 use super::super::tree_cases::{TREE_CASES, TreeCase};
-use crate::cancel::Call;
+use crate::cancel::{Call, CheckTrip};
 use crate::dom::{NodeId, Tree, dump};
 use crate::error::{ExtractError, Rejection};
 use crate::xpaths::TITLE_XPATHS;
@@ -115,6 +116,56 @@ fn fragment_without_body_is_empty_tree() {
         result.err(),
         Some(ExtractError::Rejected(Rejection::EmptyTree))
     );
+}
+
+/// Checks a run makes in `parse` over `html`, uncancelled, then asserts that a trip at the last
+/// check, which falls after the build, stops it with `Cancelled`.
+fn assert_last_check_stops(
+    html: &str,
+    parse: impl Fn(&str, &ParseLimits, &Call<'_>) -> Result<Tree, ExtractError>,
+) {
+    let limits = ParseLimits::default();
+    let counting = CheckTrip::counting();
+    parse(html, &limits, &Call::default().trip(&counting)).unwrap();
+    let total = counting.checks();
+    let built = CheckTrip::counting();
+    build_document(html, &limits, &Call::default().trip(&built)).unwrap();
+    assert!(
+        total > built.checks(),
+        "no check after the build: {total} in all, {} in the build",
+        built.checks()
+    );
+    let trip = CheckTrip::at(total);
+    let stopped = parse(html, &limits, &Call::default().trip(&trip));
+    assert_eq!(stopped.err(), Some(ExtractError::Cancelled));
+    assert_eq!(trip.checks(), total);
+}
+
+#[test]
+fn block_tag_walk_stops_when_cancelled() {
+    // No block tag, so the walk over the body visits all 400,000 children.
+    assert_last_check_stops(&"<i>x</i>".repeat(400_000), fromstring);
+}
+
+#[test]
+fn body_merge_stops_when_cancelled() {
+    // The children of the second body move into the first.
+    let html = format!("<p>a</p></body><body>{}", "<i>x</i>".repeat(400_000));
+    assert_last_check_stops(&html, fromstring);
+}
+
+#[test]
+fn head_merge_stops_when_cancelled() {
+    let html = format!(
+        "<title>t</title></head><head>{}",
+        "<meta name=a>".repeat(400_000)
+    );
+    assert_last_check_stops(&html, fromstring);
+}
+
+#[test]
+fn fragment_move_stops_when_cancelled() {
+    assert_last_check_stops(&"<i>x</i>".repeat(400_000), fragment_fromstring_div);
 }
 
 #[test]
