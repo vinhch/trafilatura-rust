@@ -185,20 +185,18 @@ fn doc_metadata(doc: &Document) -> Value {
     })
 }
 
-/// Runs one fixture page with one extraction and compares its metadata with the fixture of each
-/// variant: the `html5` page and the `lxml` page.
+/// Runs one fixture page with one extraction and compares its metadata with the lxml fixture.
 pub(crate) fn run_metadata_page(
     upstream: &Path,
     fixtures: &Path,
     entry: &Value,
     max_date: &str,
-) -> (MetaPage, MetaPage) {
+) -> MetaPage {
     let id = entry["id"].as_str().unwrap();
     let source = entry["source"].as_str().unwrap();
     let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
     let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
-    let has_error = |variant: Variant| fixture[variant.key()]["errors"]["metadata"].is_string();
-    let actual = if has_error(Variant::Html5) && has_error(Variant::Lxml) {
+    let actual = if fixture["lxml"]["errors"]["metadata"].is_string() {
         Value::Null
     } else {
         let bytes = std::fs::read(upstream.join(source)).unwrap();
@@ -213,23 +211,21 @@ pub(crate) fn run_metadata_page(
             Err(other) => panic!("{id}: unexpected error {other:?}"),
         }
     };
-    let page = |variant| metadata_page(id, source, valid_utf8, variant, &fixture, &actual);
-    (page(Variant::Html5), page(Variant::Lxml))
+    metadata_page(id, source, valid_utf8, &fixture, &actual)
 }
 
-/// Compares the crate metadata `actual` with the fixture of `variant`. The first class that applies
-/// decides the page: `upstream-error`, `match` (equal, `null` on both sides included),
-/// `decompress`, else per field `known` when `METADATA_KNOWN` lists it with this crate value and
-/// `port-bug` when not (see `compare_fields`). A `null` on one side only is a whole-page `port-bug`.
+/// Compares the crate metadata `actual` with the lxml fixture. The first class that applies decides
+/// the page: `upstream-error`, `match` (equal, `null` on both sides included), `decompress`, else per
+/// field `known` when `METADATA_KNOWN` lists it with this crate value and `port-bug` when not (see
+/// `compare_fields`). A `null` on one side only is a whole-page `port-bug`.
 fn metadata_page(
     id: &str,
     source: &str,
     valid_utf8: bool,
-    variant: Variant,
     fixture: &Value,
     actual: &Value,
 ) -> MetaPage {
-    let fixture = &fixture[variant.key()];
+    let fixture = &fixture["lxml"];
     let expected = &fixture["metadata"];
     let unchecked = |classes: Vec<&'static str>, whole: Option<(Value, Value)>| MetaPage {
         id: id.to_string(),
@@ -350,20 +346,11 @@ pub(crate) fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str, &str)]
         .collect()
 }
 
-pub(crate) fn write_metadata_report(
-    pages: &[MetaPage],
-    stale: &[String],
-    variant: Variant,
-) -> PathBuf {
-    let mut out = format!(
-        "# Parity report: metadata against the {} fixtures\n\n",
-        variant.key()
-    );
-    if variant == Variant::Lxml {
-        let port_bugs = pages.iter().filter(|p| p.classes.contains(&"port-bug"));
-        out.push_str(&gate_count_line("", port_bugs.map(|p| p.valid_utf8)));
-        out.push('\n');
-    }
+pub(crate) fn write_metadata_report(pages: &[MetaPage], stale: &[String]) -> PathBuf {
+    let mut out = "# Parity report: metadata against the lxml fixtures\n\n".to_string();
+    let port_bugs = pages.iter().filter(|p| p.classes.contains(&"port-bug"));
+    out.push_str(&gate_count_line("", port_bugs.map(|p| p.valid_utf8)));
+    out.push('\n');
     let _ = writeln!(out, "Pages: {}\n", pages.len());
     out.push_str("## Classes\n\n");
     for class in METADATA_CLASSES {
@@ -427,7 +414,7 @@ pub(crate) fn write_metadata_report(
     }
     let dir = common::report_dir();
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(variant.report_name("metadata-report.md"));
+    let path = dir.join("metadata-report.md");
     std::fs::write(&path, out).unwrap();
     path
 }

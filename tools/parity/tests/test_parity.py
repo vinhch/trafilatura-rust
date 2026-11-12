@@ -27,8 +27,7 @@ from parity import import_path  # noqa: E402
 import_path(UPSTREAM)
 
 from lxml.html import HtmlElement, fromstring  # noqa: E402
-from parity import generate, html5tree, measure, treedump  # noqa: E402
-from trafilatura import bare_extraction  # noqa: E402
+from parity import generate, measure, treedump  # noqa: E402
 from trafilatura.utils import HTML_PARSER  # noqa: E402
 
 
@@ -48,36 +47,6 @@ def test_dump_tree_format():
     )
 
 
-def test_html5_copy_drops_invalid_names():
-    root = html5tree.parse_document('<div @click="x" :href="y" id="z">a&#1;b</div>')
-    assert isinstance(root, HtmlElement)
-    div = root.find(".//div")
-    assert dict(div.attrib) == {"id": "z"}
-    assert div.text == "ab"
-    assert html5tree.last_parse_normalized() is True
-
-
-def test_html5_parse_drops_leading_bom():
-    root = html5tree.parse_document("\ufeff<!DOCTYPE html><html><head><title>t</title></head><body><p>x</p></body></html>")
-    assert [child.tag for child in root] == ["head", "body"]
-    assert root.find("body").text is None
-
-
-def test_html5_tree_accepted_by_bare_extraction():
-    sentence = "The quick brown fox jumps over the lazy dog while the committee reviews the long report. "
-    html = (
-        "<html><head><title>T</title></head><body><article>"
-        f"<table><tr><td>{sentence * 3}</td></tr></table>"
-        f"<p>{sentence * 4}<b>bold <i>both</b> italic</i> {sentence * 3}</p>"
-        f"<p>{sentence * 4}</p>"
-        "</article></body></html>"
-    )
-    with generate.html5_parsers():
-        doc = bare_extraction(html, fast=True)
-    assert doc is not None and doc.text.strip()
-    assert html5tree.last_parse_normalized() is False
-
-
 def test_run_extract_reports_a_raise_below_the_checks():
     from parity.gen_extraction_cases import Options, run_extract
 
@@ -87,16 +56,15 @@ def test_run_extract_reports_a_raise_below_the_checks():
         "iota quilt jacket magnet zipper hammer meadow lagoon kennel meadow needle jungle meadow oyster magnet "
         "drawer gamma kappa teapot thimble.</p></body></html>"
     )
-    with generate.html5_parsers():
-        assert run_extract(discourse, "txt", Options()) == ("Err", "TypeError")
-        assert run_extract("<html><body></body></html>", "txt", Options()) == ("Ok", None)
+    assert run_extract(discourse, "txt", Options()) == ("Err", "TypeError")
+    assert run_extract("<html><body></body></html>", "txt", Options()) == ("Ok", None)
 
 
 def test_run_extract_refuses_disabled_logging(clean_logging):
     from parity.gen_extraction_cases import Options, run_extract
 
     logging.disable(logging.CRITICAL)
-    with generate.html5_parsers(), pytest.raises(AssertionError, match="warnings are disabled"):
+    with pytest.raises(AssertionError, match="warnings are disabled"):
         run_extract("<html><body></body></html>", "txt", Options())
 
 
@@ -105,18 +73,6 @@ def test_refuses_wrong_commit():
         generate.check_pin(UPSTREAM, expected="0" * 40)
     assert "0" * 40 in str(exc.value)
     assert generate.head_commit(UPSTREAM) in str(exc.value)
-
-
-def test_html5_copy_keeps_root_attributes():
-    root = html5tree.parse_document('<html lang="en" class="a"><body><p>x</p></body></html>')
-    assert dict(root.attrib) == {"lang": "en", "class": "a"}
-
-
-def test_html5_copy_keeps_first_on_attribute_collision():
-    root = html5tree.parse_document('<svg><use href="a" xlink:href="b"/></svg>')
-    use = next(el for el in root.iter() if el.tag.endswith("use"))
-    assert dict(use.attrib) == {"href": "a"}
-    assert html5tree.last_parse_normalized() is True
 
 
 def test_dump_tree_skips_comments_between_text():

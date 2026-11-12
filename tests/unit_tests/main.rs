@@ -39,7 +39,7 @@
 use std::collections::HashSet;
 
 use trafilatura_rust::__internals::{
-    BODY_XPATH, Config, DEDUPE_SCAN_CAP, DumpMode, Extractor, Focus, Format, HtmlInput, LiveIter,
+    BODY_XPATH, Config, DEDUPE_SCAN_CAP, Extractor, Focus, Format, HtmlInput, LiveIter,
     MANUALLY_CLEANED, MANUALLY_STRIPPED, MAX_FILE_SIZE, MIN_DUPLICATE_LENGTH, NodeId,
     OVERALL_DISCARD_XPATH, PRECISION_DISCARD_XPATH, ParseLimits, Selector, Source, TAG_CATALOG,
     Tree, alt, baseline, baseline_tree, convert_tags, convert_to_html, delete_by_link_density,

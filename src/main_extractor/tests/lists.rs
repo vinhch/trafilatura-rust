@@ -83,11 +83,11 @@ fn list_item_svg_title_text_is_dropped() {
     //   o = Extractor(); t = convert_tags(tree_cleaning(fromstring(<page>, parser=HTML_PARSER), o), o);
     //   print(dump_tree(handle_lists(t.find(".//list"), o))); print(dump_tree(t))'
     assert_eq!(
-        dump_from(&tree, processed, DumpMode::Exact).0,
+        dump_from(&tree, processed),
         "list rend=\"ul\"\n  item\n    #text \"a b\"\n"
     );
     assert_eq!(
-        dump(&tree, DumpMode::Exact).0,
+        dump(&tree),
         "html\n  body\n    done rend=\"ul\"\n      done\n        #text \"a b\"\n"
     );
 }
@@ -110,12 +110,9 @@ fn quote_svg_title_text_is_dropped() {
     //   from trafilatura.htmlprocessing import tree_cleaning, convert_tags; from trafilatura.main_extractor import handle_quotes;
     //   o = Extractor(); t = convert_tags(tree_cleaning(fromstring(<page>, parser=HTML_PARSER), o), o);
     //   print(dump_tree(handle_quotes(t.find(".//quote"), o))); print(dump_tree(t))'
+    assert_eq!(dump_from(&tree, processed), "quote\n  #text \"a  b\"\n");
     assert_eq!(
-        dump_from(&tree, processed, DumpMode::Exact).0,
-        "quote\n  #text \"a  b\"\n"
-    );
-    assert_eq!(
-        dump(&tree, DumpMode::Exact).0,
+        dump(&tree),
         "html\n  body\n    quote\n      #text \"a  b\"\n"
     );
 }

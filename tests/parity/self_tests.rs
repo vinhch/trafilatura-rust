@@ -13,25 +13,6 @@ fn gate_skips_only_when_fixtures_are_not_required() {
 }
 
 #[test]
-fn strip_lxml_namespaces_removes_only_ns_prefixes() {
-    assert_eq!(
-        strip_lxml_namespaces(
-            r#"<p><ns0:svg xmlns:ns0="http://www.w3.org/2000/svg"><ns0:path/></ns0:svg></p>"#
-        ),
-        "<p><svg><path/></svg></p>"
-    );
-    assert_eq!(
-        strip_lxml_namespaces("<ns12:g xmlns:ns12=\"u\"></ns12:g>"),
-        "<g></g>"
-    );
-    assert_eq!(
-        strip_lxml_namespaces("<svg:g>x</svg:g>"),
-        "<svg:g>x</svg:g>"
-    );
-    assert_eq!(strip_lxml_namespaces("<p>ns0:x</p>"), "<p>ns0:x</p>");
-}
-
-#[test]
 fn accepted_page_counts_against_the_cap() {
     let ids: Vec<String> = (0..11).map(|i| format!("page{i}")).collect();
     let accepted: Vec<(&str, &str, &str)> =

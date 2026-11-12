@@ -5,17 +5,7 @@ use std::sync::Arc;
 
 use super::{LocalName, Node, NodeId, Ns, Tree};
 
-/// Which tree the dump describes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-pub enum DumpMode {
-    /// The tree as parsed.
-    Exact,
-    /// The tree after the parity harness copy rule: invalid names and characters dropped.
-    Normalized,
-}
-
-// The XML 1.0 name productions, as in tools/parity/parity/html5tree.py.
+// The XML 1.0 name productions.
 pub(crate) fn is_name_start(c: char) -> bool {
     matches!(c,
         'A'..='Z' | 'a'..='z' | '_'
@@ -38,83 +28,6 @@ pub(crate) fn is_valid_name(name: &str, allow_colon: bool) -> bool {
         .next()
         .is_some_and(|c| is_name_start(c) || colon_ok(c))
         && chars.all(|c| is_name_char(c) || colon_ok(c))
-}
-
-/// What lxml refuses in text and attribute values (upstream `utils.INVALID_XML_CHARS`).
-#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-fn is_invalid_char(c: char) -> bool {
-    matches!(c, '\u{0}'..='\u{8}' | '\u{B}' | '\u{C}' | '\u{E}'..='\u{1F}' | '\u{FFFE}' | '\u{FFFF}')
-}
-
-/// `text` without invalid characters; sets `changed` when any was removed.
-#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-fn strip_invalid(text: &str, changed: &mut bool) -> String {
-    let cleaned: String = text.chars().filter(|&c| !is_invalid_char(c)).collect();
-    *changed |= cleaned.len() != text.len();
-    cleaned
-}
-
-#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-fn copy_attrs(node: &Node, changed: &mut bool) -> Vec<(LocalName, Arc<str>)> {
-    let mut attrs: Vec<(LocalName, Arc<str>)> = Vec::new();
-    for (name, value) in &node.attrs {
-        // An invalid name, or `href` next to `xlink:href` once namespaces are reduced: first wins.
-        if !is_valid_name(name, false) || attrs.iter().any(|(kept, _)| kept == name) {
-            *changed = true;
-        } else {
-            attrs.push((name.clone(), Arc::from(strip_invalid(value, changed))));
-        }
-    }
-    attrs
-}
-
-/// Copies `source` as the parity harness copies html5lib trees into lxml: attributes with invalid
-/// names are dropped, an element with an invalid name is replaced by its content, invalid
-/// characters are stripped. Returns the copy of the subtree at `start` and whether anything changed.
-#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-fn normalize(source: &Tree, start: NodeId) -> (Tree, bool) {
-    let mut changed = false;
-    let root = source.node(start);
-    let mut out = Tree::new(root.name.clone(), root.ns, copy_attrs(root, &mut changed));
-    let out_root = out.root();
-    if let Some(text) = &root.text {
-        out.add_text(out_root, &strip_invalid(text, &mut changed));
-    }
-    // (source element, output element receiving its children, next source child)
-    let mut stack = vec![(start, out_root, root.first_child)];
-    while let Some(frame) = stack.last_mut() {
-        let (src_id, _, next) = *frame;
-        let Some(child_id) = next else {
-            stack.pop();
-            // The tail follows the finished element in the enclosing output element.
-            if let (Some(&(_, enclosing, _)), Some(tail)) =
-                (stack.last(), &source.node(src_id).tail)
-            {
-                out.add_text(enclosing, &strip_invalid(tail, &mut changed));
-            }
-            continue;
-        };
-        let parent_out = frame.1;
-        let child = source.node(child_id);
-        frame.2 = child.next;
-        let child_out = if is_valid_name(&child.name, true) {
-            out.add_child(
-                parent_out,
-                child.name.clone(),
-                child.ns,
-                copy_attrs(child, &mut changed),
-            )
-        } else {
-            // Not representable as an lxml tag: its content replaces it.
-            changed = true;
-            parent_out
-        };
-        if let Some(text) = &child.text {
-            out.add_text(child_out, &strip_invalid(text, &mut changed));
-        }
-        stack.push((child_id, child_out, child.first_child));
-    }
-    (out, changed)
 }
 
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
@@ -216,29 +129,16 @@ fn attribute_local_name(name: &str) -> &str {
 /// Element: `name[@svg|@math] key="value" ...` with attributes sorted by name and values as JSON
 /// strings; the tag follows `treedump.py` (namespace, or `svg`/`math` ancestor-or-self when no
 /// element has a namespace). Text and tail: `#text "..."` at the child depth (text) or the element's own depth
-/// (tail); whitespace-only text is kept, empty text is omitted. The flag is true when the copy rule
-/// of `DumpMode::Normalized` changed the tree; it is always false for `Exact`.
+/// (tail); whitespace-only text is kept, empty text is omitted.
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-pub fn dump(tree: &Tree, mode: DumpMode) -> (String, bool) {
-    dump_from(tree, tree.root(), mode)
+pub fn dump(tree: &Tree) -> String {
+    dump_from(tree, tree.root())
 }
 
-/// `dump` of the subtree at `id`, which may be detached from the root (a copy that `copy` returned).
-/// The element at `id` is the root of the dump, so its tail is left out.
+/// `dump` of the subtree at `start`, which may be detached from the root (a copy that `copy` returned).
+/// The element at `start` is the root of the dump, so its tail is left out.
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-pub fn dump_from(tree: &Tree, id: NodeId, mode: DumpMode) -> (String, bool) {
-    let (copy, changed) = match mode {
-        DumpMode::Exact => (None, false),
-        DumpMode::Normalized => {
-            let (copy, changed) = normalize(tree, id);
-            (Some(copy), changed)
-        }
-    };
-    // a normalized copy is its own tree with the subtree as root
-    let (tree, start) = match &copy {
-        Some(copy) => (copy, copy.root()),
-        None => (tree, id),
-    };
+pub fn dump_from(tree: &Tree, start: NodeId) -> String {
     let plain = is_plain(tree, start);
     let root = tree.node(start);
     let root_tag = foreign_tag(root, plain, None);
@@ -270,5 +170,5 @@ pub fn dump_from(tree: &Tree, id: NodeId, mode: DumpMode) -> (String, bool) {
             child_tag,
         ));
     }
-    (out, changed)
+    out
 }

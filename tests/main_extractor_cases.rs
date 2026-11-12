@@ -16,8 +16,8 @@ mod cases;
 
 use cases::{HTML_CASES, HtmlCase, XML_CASES, XmlCase};
 use trafilatura_rust::__internals::{
-    DumpMode, NodeId, ParseLimits, dump, dump_from, handle_formatting, handle_lists,
-    handle_paragraphs, handle_quotes, handle_table, handle_textelem, handle_titles, parse_document,
+    NodeId, ParseLimits, dump, dump_from, handle_formatting, handle_lists, handle_paragraphs,
+    handle_quotes, handle_table, handle_textelem, handle_titles, parse_document,
 };
 use trafilatura_rust::Call;
 use trees::{ctx_for, describe, extractor, run_pipeline, xml_tree};
@@ -45,8 +45,8 @@ fn run_xml(case: &XmlCase) -> (Option<String>, String) {
         "handle_textelem" => handle_textelem(&mut tree, element, tags, &ctx).unwrap(),
         other => panic!("unknown handler {other}"),
     };
-    let result = result.map(|node| dump_from(&tree, node, DumpMode::Normalized).0);
-    (result, dump_from(&tree, root, DumpMode::Normalized).0)
+    let result = result.map(|node| dump_from(&tree, node));
+    (result, dump_from(&tree, root))
 }
 
 /// What the pipeline of `case` leaves: the comments body (dump, text) and the content body.
@@ -59,9 +59,8 @@ struct HtmlOutcome {
 fn run_html(case: &HtmlCase) -> HtmlOutcome {
     let (tree, comments, body, text) = run_pipeline(case.html, case.op, &case.options);
     HtmlOutcome {
-        comments: comments
-            .map(|(body, text)| (dump_from(&tree, body, DumpMode::Normalized).0, text)),
-        body: (dump_from(&tree, body, DumpMode::Normalized).0, text),
+        comments: comments.map(|(body, text)| (dump_from(&tree, body), text)),
+        body: (dump_from(&tree, body), text),
     }
 }
 
@@ -101,8 +100,8 @@ fn html_cases_match_upstream() {
     let mut mismatches = Vec::new();
     for (index, case) in HTML_CASES.iter().enumerate() {
         let tree = parse_document(case.html, &ParseLimits::default(), &Call::default()).unwrap();
-        let (parsed, normalized) = dump(&tree, DumpMode::Normalized);
-        if normalized || parsed != case.dump_in {
+        let parsed = dump(&tree);
+        if parsed != case.dump_in {
             parser_differences.push(format!(
                 "case {index} {}\n{}\nrust:\n{parsed}\nupstream:\n{}",
                 case.op, case.html, case.dump_in

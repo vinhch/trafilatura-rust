@@ -6,7 +6,7 @@ use crate::cancel::Call;
 use crate::dom::parse::ParseLimits;
 use crate::dom::parse::builder::build_document;
 use crate::dom::parse::tree_cases::{TREE_CASES, TreeCase};
-use crate::dom::{DumpMode, Tree, dump, dump_from};
+use crate::dom::{Tree, dump, dump_from};
 use crate::error::{ExtractError, Rejection};
 
 /// What differs between lxml's tree of `case` and the one the builder makes, `None` when they match.
@@ -17,7 +17,7 @@ fn mismatch(case: &TreeCase) -> Option<String> {
             Err(ExtractError::Rejected(Rejection::EmptyTree)) => None,
             Ok(tree) => Some(format!(
                 "expected: lxml raises \"Document is empty\"\nactual:\n{}",
-                dump(&tree, DumpMode::Exact).0
+                dump(&tree)
             )),
             Err(error) => Some(format!("expected: EmptyTree\nactual error: {error:?}")),
         };
@@ -26,7 +26,7 @@ fn mismatch(case: &TreeCase) -> Option<String> {
         Ok(tree) => tree,
         Err(error) => return Some(format!("expected a tree\nactual error: {error:?}")),
     };
-    let actual_root = dump(&tree, DumpMode::Exact).0;
+    let actual_root = dump(&tree);
     let actual_others: Vec<String> = document_others(&tree);
     if actual_root == case.document && actual_others == case.others {
         return None;
@@ -54,7 +54,7 @@ fn document_others(tree: &Tree) -> Vec<String> {
     tree.document_roots
         .iter()
         .skip(1)
-        .map(|&id| dump_from(tree, id, DumpMode::Exact).0)
+        .map(|&id| dump_from(tree, id))
         .collect()
 }
 

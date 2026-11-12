@@ -7,7 +7,7 @@ use regex::Regex;
 use super::cases::{CASES, SELECTOR_NAMES};
 use super::discard::{OVERALL_CLASS, OVERALL_CONSENT, OVERALL_ID};
 use super::*;
-use crate::dom::{DumpMode, ParseLimits, dump, parse_document};
+use crate::dom::{ParseLimits, dump, parse_document};
 use crate::settings::{BASIC_CLEAN_XPATH, COOKIE_CONSENT};
 use crate::{Call, CancelToken, ExtractError};
 
@@ -212,12 +212,7 @@ fn snippet(html: &str) -> String {
 fn case_trees_match_lxml() {
     for case in CASES {
         let tree = parse(case.html);
-        let (dumped, changed) = dump(&tree, DumpMode::Normalized);
-        assert!(
-            !changed,
-            "the normalized dump changed the tree of {}",
-            snippet(case.html)
-        );
+        let dumped = dump(&tree);
         assert_eq!(
             dumped,
             case.dump,

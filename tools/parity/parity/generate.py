@@ -3,8 +3,7 @@
     python -m parity.generate --upstream PATH --out DIR [--only SUBSTRING]
 
 Output: DIR/<version>/index.json, DIR/<version>/pages/<id>.json, DIR/<version>/f1.json, where <version>
-is the upstream release pinned in Cargo.toml. Each page is extracted
-twice: `lxml` (upstream as is) and `html5` (document and fragment parsers swapped for html5lib).
+is the upstream release pinned in Cargo.toml. Each page is extracted as upstream is (`lxml`).
 """
 
 import argparse
@@ -82,42 +81,6 @@ def check_libxml2() -> None:
 
     if lxml.etree.LIBXML_VERSION != LIBXML2_VERSION:
         raise SystemExit(f"libxml2 {lxml.etree.LIBXML_VERSION}, expected {LIBXML2_VERSION}")
-
-
-@contextlib.contextmanager
-def html5_parsers(normalized: list[bool] | None = None):
-    "Swap upstream's two parse sites for html5lib parses; `normalized` collects whether the copy rule fired."
-    from . import html5tree
-
-    # `trafilatura.baseline` the attribute is a function; the module is in sys.modules
-    import trafilatura  # noqa: F401  (ensures the package is imported)
-
-    baseline_module = sys.modules["trafilatura.baseline"]
-    utils_module = sys.modules["trafilatura.utils"]
-
-    def note() -> None:
-        if normalized is not None:
-            normalized.append(html5tree.last_parse_normalized())
-
-    def fromstring(text, parser=None, **_):
-        if isinstance(text, bytes):
-            text = text.decode("utf-8", "replace")
-        tree = html5tree.parse_document(text)
-        note()
-        return tree
-
-    def fragment_fromstring(text, create_parent=None, **_):
-        tree = html5tree.parse_fragment(text, create_parent or "div")
-        note()
-        return tree
-
-    saved = (utils_module.fromstring, baseline_module.fragment_fromstring)
-    utils_module.fromstring = fromstring
-    baseline_module.fragment_fromstring = fragment_fromstring
-    try:
-        yield
-    finally:
-        utils_module.fromstring, baseline_module.fragment_fromstring = saved
 
 
 @contextlib.contextmanager
@@ -313,11 +276,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             print(source, file=sys.stderr)
             data = path.read_bytes()
-            lxml_result = run_variant(data, extensive)
-            normalized: list[bool] = []
-            with html5_parsers(normalized):
-                html5_result = run_variant(data, extensive)
-            page = {"source": source, "normalized": any(normalized), "lxml": lxml_result, "html5": html5_result}
+            page = {"source": source, "lxml": run_variant(data, extensive)}
             results.append(({"id": page_id(source), "source": source, "valid_utf8": valid_utf8(data)}, page))
 
         full = not args.only

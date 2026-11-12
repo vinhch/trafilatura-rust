@@ -156,7 +156,7 @@ fn prepare_tree_copies_backup_only_when_asked() {
         let mut tree = load(PAGE);
         let root = tree.root();
         let (cleaned, backup) = prepare_tree(&mut tree, root, &ctx, None, keep_backup).unwrap();
-        let dump = crate::dom::dump_from(&tree, cleaned, crate::dom::DumpMode::Exact).0;
+        let dump = crate::dom::dump_from(&tree, cleaned);
         (tree.len(), backup.is_some(), dump)
     };
     let (kept_len, kept, kept_dump) = prepare(true);

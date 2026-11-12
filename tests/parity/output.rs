@@ -1,23 +1,8 @@
 use super::*;
 use std::ops::Range;
 
-static NS_DECLARATION: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#" xmlns:ns\d+="[^"]*""#).unwrap());
-static NS_TAG_PREFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<(/?)ns\d+:").unwrap());
-
-/// Removes the `nsN:` prefixes lxml writes for foreign elements of the oracle's html5 tree, as
-/// `rewrite_namespaces` in `tools/parity/parity/gen_xml_output_cases.py` does (D-2): the crate writes
-/// such an element by its local name.
-pub(crate) fn strip_lxml_namespaces(expected: &str) -> String {
-    let without_declarations = NS_DECLARATION.replace_all(expected, "");
-    NS_TAG_PREFIX
-        .replace_all(&without_declarations, "<$1")
-        .into_owned()
-}
-
 /// One page and format of the output check.
 pub(crate) struct OutputCase<'a> {
-    pub(crate) id: &'a str,
     pub(crate) source: &'a str,
     pub(crate) valid_utf8: bool,
     pub(crate) expected: Option<&'a str>,
@@ -46,15 +31,11 @@ pub(crate) fn known_values(id: &str, metadata: &Value) -> Vec<String> {
 }
 
 /// Classes of one output and its classified hunks, first match wins: `match`, `decompress`,
-/// `upstream-error`, `normalized` (a page in `normalized_rejects` only, whole output), then, when both
-/// sides have text, per hunk `encoding` (page not valid UTF-8), `known-metadata`, or `port-bug`. A
-/// fingerprint hunk is `encoding` when the page is not valid UTF-8, the output has an `encoding` hunk,
-/// and every hunk is `encoding` or a fingerprint; else `port-bug`. Text on one side only is a
-/// whole-output `port-bug`.
-pub(crate) fn classify_output(
-    case: &OutputCase,
-    normalized_rejects: &[(&str, &str)],
-) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
+/// `upstream-error`, then, when both sides have text, per hunk `encoding` (page not valid UTF-8),
+/// `known-metadata`, or `port-bug`. A fingerprint hunk is `encoding` when the page is not valid UTF-8,
+/// the output has an `encoding` hunk, and every hunk is `encoding` or a fingerprint; else `port-bug`.
+/// Text on one side only is a whole-output `port-bug`.
+pub(crate) fn classify_output(case: &OutputCase) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
     let whole = |class: &'static str| (vec![class], vec![]);
     let rejected = |rejection: Option<Rejection>| match case.actual {
         Err(ExtractError::Rejected(found)) => rejection.is_none_or(|want| want == *found),
@@ -74,10 +55,6 @@ pub(crate) fn classify_output(
         } else {
             "port-bug"
         });
-    }
-    let listed = normalized_rejects.iter().any(|(id, _)| *id == case.id);
-    if listed && case.expected.is_some() && rejected(Some(Rejection::InvalidValue)) {
-        return whole("normalized");
     }
     let (Some(expected), Ok(actual)) = (case.expected, case.actual) else {
         return whole("port-bug");
@@ -244,36 +221,21 @@ pub(crate) struct OutputResult {
     actual: Option<String>,
 }
 
-/// The expected text of format `name` in the fixture of `variant`. The html5 oracle writes `nsN:`
-/// prefixes for foreign elements, which are removed; libxml2 writes none, so the lxml text is
-/// kept as it is.
-pub(crate) fn expected_output(
-    variant: Variant,
-    id: &str,
-    name: &str,
-    fixture: &Value,
-) -> Option<String> {
-    let text = fixture[variant.key()]["formats"][name].as_str()?;
-    if variant == Variant::Lxml || !matches!(name, "html" | "xml" | "xmltei") {
-        return Some(text.to_string());
-    }
-    // deviation: D-2 (the oracle writes `nsN:` prefixes for foreign elements)
-    let stripped = strip_lxml_namespaces(text);
-    assert!(
-        !stripped.contains(" xmlns:ns") && !NS_TAG_PREFIX.is_match(&stripped),
-        "{id}: namespace prefixes left in the expected {name}"
-    );
-    Some(stripped)
+/// The expected text of format `name` in the lxml fixture of a page. libxml2 writes no `nsN:` prefix
+/// for a foreign element, so the text is used as it is.
+pub(crate) fn expected_output(name: &str, fixture: &Value) -> Option<String> {
+    fixture["lxml"]["formats"][name]
+        .as_str()
+        .map(str::to_string)
 }
 
-/// Runs one fixture page: per format, one extraction classified against the `html5` and the `lxml`
-/// fixtures.
+/// Runs one fixture page: per format, one extraction classified against the lxml fixture.
 pub(crate) fn run_output_page(
     upstream: &Path,
     fixtures: &Path,
     entry: &Value,
     max_date: &str,
-) -> Vec<(OutputResult, OutputResult)> {
+) -> Vec<OutputResult> {
     let id = entry["id"].as_str().unwrap();
     let source = entry["source"].as_str().unwrap();
     let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
@@ -288,71 +250,51 @@ pub(crate) fn run_output_page(
                 .format(format)
                 .build()
                 .extract(&Input::bytes(&bytes), &call);
-            let result = |variant: Variant| {
-                let expected = expected_output(variant, id, name, &fixture);
-                let known = known_values(id, &fixture[variant.key()]["metadata"]);
-                let rejects = match variant {
-                    Variant::Html5 => NORMALIZED_REJECTS,
-                    Variant::Lxml => &[],
-                };
-                let (classes, hunks) = classify_output(
-                    &OutputCase {
-                        id,
-                        source,
-                        valid_utf8,
-                        expected: expected.as_deref(),
-                        upstream_error: fixture[variant.key()]["errors"][name].is_string(),
-                        actual: &actual,
-                        known_values: &known,
-                    },
-                    rejects,
-                );
-                OutputResult {
-                    id: id.to_string(),
-                    format: name,
-                    classes,
-                    valid_utf8,
-                    hunks,
-                    expected,
-                    actual: actual.as_ref().ok().cloned(),
-                }
-            };
-            (result(Variant::Html5), result(Variant::Lxml))
+            let expected = expected_output(name, &fixture);
+            let known = known_values(id, &fixture["lxml"]["metadata"]);
+            let (classes, hunks) = classify_output(&OutputCase {
+                source,
+                valid_utf8,
+                expected: expected.as_deref(),
+                upstream_error: fixture["lxml"]["errors"][name].is_string(),
+                actual: &actual,
+                known_values: &known,
+            });
+            OutputResult {
+                id: id.to_string(),
+                format: name,
+                classes,
+                valid_utf8,
+                hunks,
+                expected,
+                actual: actual.as_ref().ok().cloned(),
+            }
         })
         .collect()
 }
 
-/// Indices of the outputs worth a diff: rows holding `port-bug` or `normalized` first, then the other
-/// rows that differ (not `["match"]` or `["upstream-error"]`), each group in page order.
+/// Indices of the outputs worth a diff: rows holding `port-bug` first, then the other rows that differ
+/// (not `["match"]` or `["upstream-error"]`), each group in page order.
 pub(crate) fn diff_order(rows: &[&[&'static str]]) -> Vec<usize> {
     let (urgent, rest): (Vec<_>, Vec<_>) = rows
         .iter()
         .enumerate()
         .filter(|(_, row)| **row != ["match"] && **row != ["upstream-error"])
-        .partition(|(_, row)| row.iter().any(|c| matches!(*c, "port-bug" | "normalized")));
+        .partition(|(_, row)| row.contains(&"port-bug"));
     urgent.into_iter().chain(rest).map(|(i, _)| i).collect()
 }
 
-pub(crate) fn write_output_report(
-    results: &[OutputResult],
-    pages: usize,
-    variant: Variant,
-) -> PathBuf {
-    let classes = output_classes(variant);
-    let mut out = format!(
-        "# Parity report: output against the {} fixtures\n\n",
-        variant.key()
-    );
-    if variant == Variant::Lxml {
-        for (name, _) in OUTPUT_FORMATS {
-            let port_bugs = results
-                .iter()
-                .filter(|r| r.format == name && r.classes.contains(&"port-bug"));
-            let scope = format!(", {name}");
-            out.push_str(&gate_count_line(&scope, port_bugs.map(|r| r.valid_utf8)));
-        }
-        out.push('\n');
+pub(crate) fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
+    let classes = &OUTPUT_CLASSES;
+    let mut out = "# Parity report: output against the lxml fixtures\n\n".to_string();
+    for (name, _) in OUTPUT_FORMATS {
+        let port_bugs = results
+            .iter()
+            .filter(|r| r.format == name && r.classes.contains(&"port-bug"));
+        let scope = format!(", {name}");
+        out.push_str(&gate_count_line(&scope, port_bugs.map(|r| r.valid_utf8)));
     }
+    out.push('\n');
     let _ = writeln!(out, "Pages: {pages}\n");
     out.push_str("## Classes\n\n");
     for (name, _) in OUTPUT_FORMATS {
@@ -379,11 +321,7 @@ pub(crate) fn write_output_report(
         }
         let _ = writeln!(out, "\n## Pages: {class}\n");
         for row in rows {
-            let reason = NORMALIZED_REJECTS
-                .iter()
-                .find(|(id, _)| *id == row.id && *class == "normalized")
-                .map_or(String::new(), |(_, reason)| format!(": {reason}"));
-            let _ = writeln!(out, "{} {}{reason}", row.id, row.format);
+            let _ = writeln!(out, "{} {}", row.id, row.format);
         }
     }
     out.push_str("\n## Diffs (outputs with a port-bug hunk first, then the others)\n\n");
@@ -404,7 +342,7 @@ pub(crate) fn write_output_report(
     }
     let dir = common::report_dir();
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join(variant.report_name("output-report.md"));
+    let path = dir.join("output-report.md");
     std::fs::write(&path, out).unwrap();
     path
 }

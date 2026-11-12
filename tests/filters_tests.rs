@@ -7,7 +7,7 @@
 //! Ports of upstream `tests/filters_tests.py`, case by case with the upstream names: the `extract`
 //! lines of `test_filters`.
 //!
-//! The criterion of each assertion is the upstream result with `fast=True` forced on the html5
+//! The criterion of each assertion is the upstream result with `fast=True` forced on the libxml2
 //! parse; `fast=False` calls carry a `deviation: D-1` comment. Upstream's tests build their pages
 //! with `html.fromstring`, so they run through the tree entry point (`extract_tree`).
 //!

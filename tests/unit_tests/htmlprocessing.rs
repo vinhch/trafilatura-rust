@@ -89,9 +89,9 @@ fn test_htmlprocessing() {
     // delete_element on an element without a parent leaves it unchanged
     let mut tree = xml_tree("<test/>");
     let root = tree.root();
-    let before = dump(&tree, DumpMode::Exact);
+    let before = dump(&tree);
     delete_element(&mut tree, root, true);
-    assert_eq!(dump(&tree, DumpMode::Exact), before);
+    assert_eq!(dump(&tree), before);
 
     // merge with parent function
     let mut element = xml_tree("<test/>");

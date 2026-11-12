@@ -5,7 +5,7 @@ use super::super::ParseLimits;
 use super::super::fromstring::{fragment_fromstring_div, fromstring};
 use super::super::tree_cases::{TREE_CASES, TreeCase};
 use crate::cancel::Call;
-use crate::dom::{DumpMode, NodeId, Tree, dump};
+use crate::dom::{NodeId, Tree, dump};
 use crate::error::{ExtractError, Rejection};
 use crate::xpaths::TITLE_XPATHS;
 
@@ -20,16 +20,13 @@ fn compare(expected: &str, result: Result<Tree, ExtractError>) -> Option<String>
     if expected == "!empty" || expected == "!error" {
         return match result {
             Err(ExtractError::Rejected(Rejection::EmptyTree)) => None,
-            Ok(tree) => Some(format!(
-                "expected: lxml raises\nactual:\n{}",
-                dump(&tree, DumpMode::Exact).0
-            )),
+            Ok(tree) => Some(format!("expected: lxml raises\nactual:\n{}", dump(&tree))),
             Err(error) => Some(format!("expected: EmptyTree\nactual error: {error:?}")),
         };
     }
     match result {
         Ok(tree) => {
-            let actual = dump(&tree, DumpMode::Exact).0;
+            let actual = dump(&tree);
             (actual != expected).then(|| format!("expected:\n{expected}actual:\n{actual}"))
         }
         Err(error) => Some(format!("expected a tree\nactual error: {error:?}")),

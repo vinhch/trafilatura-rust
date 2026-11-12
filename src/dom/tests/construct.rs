@@ -27,10 +27,7 @@ fn dump_matches_python_format() {
         "    svg@svg\n",
         "      path@svg d=\"M0\"\n",
     );
-    assert_eq!(
-        dump(&parse(html), DumpMode::Exact),
-        (python.to_string(), false)
-    );
+    assert_eq!(dump(&parse(html)), python);
 
     // The same tree built by hand, without the implied head, gives the Python string verbatim.
     let name = |n: &str| LocalName::from(n);
@@ -49,7 +46,7 @@ fn dump_matches_python_format() {
     tree.add_text(div, "tail");
     let svg = tree.add_child(body, name("svg"), Ns::Svg, vec![]);
     tree.add_child(svg, name("path"), Ns::Svg, vec![attr("d", "M0")]);
-    assert_eq!(dump(&tree, DumpMode::Exact), (python.to_string(), false));
+    assert_eq!(dump(&tree), python);
 }
 
 #[test]
@@ -71,9 +68,9 @@ fn dump_tags_plain_svg_by_ancestor() {
         "    math@math\n      mi@math\n",
         "    svg@svg\n      math@svg\n        mn@svg\n",
     );
-    assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
+    assert_eq!(dump(&tree), expected);
     // The dump root starts with no inherited tag; ancestors above it are not looked at.
-    assert_eq!(dump_from(&tree, path, DumpMode::Exact).0, "path\n");
+    assert_eq!(dump_from(&tree, path), "path\n");
 }
 
 #[test]
@@ -138,7 +135,7 @@ fn add_text_owned_drops_spare_capacity() {
 fn table_root_gets_no_implied_tbody_or_head() {
     // oracle: fromstring("<table><tr><td>x</td></tr></table>") is the table itself, with no tbody or head
     let tree = parse("<table><tr><td>x</td></tr></table>");
-    let (text, _) = dump(&tree, DumpMode::Exact);
+    let text = dump(&tree);
     assert_eq!(text, "table\n  tr\n    td\n      #text \"x\"\n");
 }
 
@@ -149,7 +146,7 @@ fn depth_limit_cuts_and_drops_rest() {
     // oracle: fromstring returns the body as the root, so the cut at 256 elements of the document
     // (html and body included) leaves 254 below the root
     assert_eq!(max_depth(&tree), 254);
-    let (text, _) = dump(&tree, DumpMode::Exact);
+    let text = dump(&tree);
     assert!(!text.contains("after"), "{text}");
 }
 
@@ -220,20 +217,14 @@ fn fragment_root_is_the_div_context() {
 }
 
 #[test]
-fn dump_normalized_drops_invalid_names() {
+fn dump_keeps_invalid_names_and_characters() {
     let tree = parse("<div @click=\"x\" :href=\"y\" id=\"z\">a\u{1}b</div>");
-    let (exact, flag) = dump(&tree, DumpMode::Exact);
-    assert!(!flag);
+    let exact = dump(&tree);
     assert!(
         exact.contains("div :href=\"y\" @click=\"x\" id=\"z\"\n"),
         "{exact}"
     );
     assert!(exact.contains("#text \"a\\u0001b\""), "{exact}");
-
-    let (normalized, flag) = dump(&tree, DumpMode::Normalized);
-    assert!(flag);
-    assert!(normalized.contains("div id=\"z\"\n"), "{normalized}");
-    assert!(normalized.contains("#text \"ab\""), "{normalized}");
 }
 
 #[test]
@@ -241,18 +232,11 @@ fn dump_writes_clark_attribute_name_by_local_part() {
     // libxml2 keeps `{count}` as a name; lxml reads it as namespace `count` with no local name, and
     // treedump.py writes that empty local name. Attributes still sort by their full name.
     let tree = parse("<a href=\"h\" {count}=\"\" class=\"c\">x</a>");
-    let (exact, _) = dump(&tree, DumpMode::Exact);
+    let exact = dump(&tree);
     assert!(
         exact.contains("a class=\"c\" href=\"h\" =\"\"\n"),
         "{exact}"
     );
-}
-
-#[test]
-fn dump_normalized_unchanged_tree_is_not_flagged() {
-    let tree = parse("<p class=\"a\">x<b>y</b>z</p>");
-    let (exact, _) = dump(&tree, DumpMode::Exact);
-    assert_eq!(dump(&tree, DumpMode::Normalized), (exact, false));
 }
 
 #[test]
@@ -276,31 +260,10 @@ fn dump_from_detached_copy() {
         "  i\n",
         "    #text \"i\"\n",
     );
-    for mode in [DumpMode::Exact, DumpMode::Normalized] {
-        assert_eq!(dump_from(&tree, copy, mode), (expected.to_string(), false));
-        assert_eq!(dump_from(&tree, div, mode), (expected.to_string(), false));
-    }
+    assert_eq!(dump_from(&tree, copy), expected);
+    assert_eq!(dump_from(&tree, div), expected);
     // the root as `id` is `dump`
-    assert_eq!(
-        dump_from(&tree, tree.root(), DumpMode::Exact),
-        dump(&tree, DumpMode::Exact)
-    );
-    // the copy rule runs on the subtree only: the invalid name outside it is not counted
-    let mut tree = parse("<p @a=\"1\">x</p><div id=\"y\">z</div>");
-    // the body is the root here, so the div #y is its last child
-    let div = tree.last_child(tree.root()).unwrap();
-    let copy = tree.copy(div, &Call::default()).unwrap();
-    assert!(dump(&tree, DumpMode::Normalized).1);
-    assert_eq!(
-        dump_from(&tree, copy, DumpMode::Normalized),
-        (
-            "div id=\"y\"
-  #text \"z\"
-"
-            .to_string(),
-            false
-        )
-    );
+    assert_eq!(dump_from(&tree, tree.root()), dump(&tree));
 }
 
 #[test]

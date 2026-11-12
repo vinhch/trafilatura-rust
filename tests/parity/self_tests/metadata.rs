@@ -89,10 +89,9 @@ fn known_metadata_header_only() {
     const KNOWN_PAGE: &str = "tests__eval__football.ua.podolski.html";
     let known = known_values(KNOWN_PAGE, &json!({"date": "2016-08-15", "author": null}));
     assert_eq!(known, ["2016-08-15"]);
-    let check = |id: &str, known: &[String], expected: &str, actual: &str| {
+    let check = |known: &[String], expected: &str, actual: &str| {
         let result: Result<String, ExtractError> = Ok(actual.to_string());
         let case = OutputCase {
-            id,
             source: "page.html",
             valid_utf8: true,
             expected: Some(expected),
@@ -100,31 +99,24 @@ fn known_metadata_header_only() {
             actual: &result,
             known_values: known,
         };
-        classify_output(&case, &[])
+        classify_output(&case)
     };
     let fixture_header = tei_date("2016-08-15", "Body");
     // Synthetic classifier input, not an upstream value: no oracle command backs this date.
     let crate_header = tei_date("2007-12-16", "Body");
-    let (classes, hunks) = check(KNOWN_PAGE, &known, &fixture_header, &crate_header);
+    let (classes, hunks) = check(&known, &fixture_header, &crate_header);
     assert_eq!(classes, ["known-metadata"]);
     assert_eq!(hunks.len(), 1);
     // The same difference on a page METADATA_KNOWN does not list.
-    assert_eq!(
-        check("page.html", &[], &fixture_header, &crate_header).0,
-        ["port-bug"]
-    );
+    assert_eq!(check(&[], &fixture_header, &crate_header).0, ["port-bug"]);
     // A header field the page does not list.
     let author = |name: &str| {
         format!("<TEI>\n  <teiHeader>\n    <author>{name}</author>\n  </teiHeader>\n</TEI>\n")
     };
-    assert_eq!(
-        check(KNOWN_PAGE, &known, &author("A"), &author("B")).0,
-        ["port-bug"]
-    );
+    assert_eq!(check(&known, &author("A"), &author("B")).0, ["port-bug"]);
     // A text difference on the same page is not confined to the header.
     assert_eq!(
         check(
-            KNOWN_PAGE,
             &known,
             &tei_date("2016-08-15", "Body"),
             &tei_date("2016-08-15", "Bodx")
@@ -133,13 +125,7 @@ fn known_metadata_header_only() {
         ["port-bug"]
     );
     assert_eq!(
-        check(
-            KNOWN_PAGE,
-            &known,
-            &fixture_header,
-            &tei_date("2007-12-16", "Bodx")
-        )
-        .0,
+        check(&known, &fixture_header, &tei_date("2007-12-16", "Bodx")).0,
         ["known-metadata", "port-bug"]
     );
 }
@@ -155,7 +141,6 @@ fn known_metadata_ignores_a_value_inside_other_text() {
     let expected = note("Tomorrow");
     let actual: Result<String, ExtractError> = Ok(note("Today"));
     let case = OutputCase {
-        id: "page.html",
         source: "page.html",
         valid_utf8: true,
         expected: Some(&expected),
@@ -163,7 +148,7 @@ fn known_metadata_ignores_a_value_inside_other_text() {
         actual: &actual,
         known_values: &known,
     };
-    assert_eq!(classify_output(&case, &[]).0, ["port-bug"]);
+    assert_eq!(classify_output(&case).0, ["port-bug"]);
 }
 
 #[test]
@@ -193,7 +178,6 @@ fn known_metadata_ignores_a_short_value_that_fills_a_segment() {
     let expected = note("T");
     let actual: Result<String, ExtractError> = Ok(note("U"));
     let case = OutputCase {
-        id: "page.html",
         source: "page.html",
         valid_utf8: true,
         expected: Some(&expected),
@@ -201,5 +185,5 @@ fn known_metadata_ignores_a_short_value_that_fills_a_segment() {
         actual: &actual,
         known_values: &known,
     };
-    assert_eq!(classify_output(&case, &[]).0, ["port-bug"]);
+    assert_eq!(classify_output(&case).0, ["port-bug"]);
 }

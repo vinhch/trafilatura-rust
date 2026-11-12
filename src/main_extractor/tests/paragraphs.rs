@@ -55,12 +55,9 @@ fn paragraph_strips_foreign_descendants() {
     let processed = handle_paragraphs(&mut tree, p, TAG_CATALOG, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
-    assert_eq!(
-        dump_from(&tree, processed, DumpMode::Exact).0,
-        "p\n  #text \"a t b\"\n"
-    );
+    assert_eq!(dump_from(&tree, processed), "p\n  #text \"a t b\"\n");
     // oracle: scripts/oracle.sh handle_paragraphs(fromstring(html).root, TAG_CATALOG, Extractor())
-    assert_eq!(dump(&tree, DumpMode::Exact).0, "done\n  #text \"a t b\"\n");
+    assert_eq!(dump(&tree), "done\n  #text \"a t b\"\n");
 }
 
 #[test]

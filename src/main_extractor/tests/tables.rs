@@ -294,11 +294,11 @@ fn table_cell_foreign_element() {
     //   o = Extractor(); t = convert_tags(tree_cleaning(fromstring(<page>, parser=HTML_PARSER), o), o);
     //   print(dump_tree(handle_table(t.find(".//table"), TAG_CATALOG, o))); print(dump_tree(t))'
     assert_eq!(
-        dump_from(&tree, processed, DumpMode::Exact).0,
+        dump_from(&tree, processed),
         "table\n  row\n    cell\n      #text \"a b\"\n"
     );
     assert_eq!(
-        dump(&tree, DumpMode::Exact).0,
+        dump(&tree),
         "html\n  body\n    table\n      done\n        done\n          #text \"a b\"\n"
     );
 }

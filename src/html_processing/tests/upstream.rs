@@ -91,8 +91,8 @@ fn cases_match_upstream() {
     for (index, case) in CASES.iter().enumerate() {
         let mut tree =
             parse_document(case.html, &ParseLimits::default(), &Call::default()).unwrap();
-        let (parsed, normalized) = dump(&tree, DumpMode::Normalized);
-        if normalized || parsed != case.dump_in {
+        let parsed = dump(&tree);
+        if parsed != case.dump_in {
             parser_differences.push(format!(
                 "case {index} {}\n{}\nrust:\n{parsed}\nupstream:\n{}",
                 case.op, case.html, case.dump_in
@@ -100,7 +100,7 @@ fn cases_match_upstream() {
             continue;
         }
         let returned = run_case(case, &mut tree);
-        let (actual, _) = dump_from(&tree, returned, DumpMode::Normalized);
+        let actual = dump_from(&tree, returned);
         if actual != case.dump_out {
             let options = &case.options;
             mismatches.push(format!(

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use super::*;
 use crate::cancel::CancelToken;
-use crate::dom::{DumpMode, ParseLimits, dump, dump_from, parse_document};
+use crate::dom::{ParseLimits, dump, dump_from, parse_document};
 use crate::html_processing::{convert_tags, tree_cleaning};
 use crate::main_extractor::content::{extract_body, prune_unwanted_sections, recover_wild_text};
 use crate::main_extractor::tables::{handle_table_limited, span};

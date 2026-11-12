@@ -591,7 +591,7 @@ fn test_math_recovery() {
     let clean = |html: &str| {
         let (mut tree, root) = lxml_fromstring(html);
         tree_cleaning(&mut tree, root, &ctx_for(&options, &call)).unwrap();
-        dump(&tree, DumpMode::Exact).0
+        dump(&tree)
     };
 
     assert_eq!(

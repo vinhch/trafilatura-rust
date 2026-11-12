@@ -4,7 +4,7 @@ use super::control::remove_blank_text;
 use super::tei::{check_tei, div_line_breaks, move_element_one_level_up, text_bodies, union_below};
 use super::*;
 use crate::cancel::{CHECK_INTERVAL, Call, CancelToken, assert_every_check_stops};
-use crate::dom::{DumpMode, LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
+use crate::dom::{LocalName, MAX_DEPTH, NodeId, Ns, Tree, dump};
 use crate::error::{ExtractError, Rejection};
 use crate::html_processing::build_html_output;
 
@@ -677,12 +677,12 @@ fn xml_to_text_markdown_leaves_input_untouched() {
     let source = "<body><p>formula \\(x\\) <hi rend=#b><hi rend=#i>y</hi></hi><code>a<lb/>b</code> *z*</p></body>";
     let mut tree = xml(source);
     let root = tree.root();
-    let before = dump(&tree, DumpMode::Exact);
+    let before = dump(&tree);
     let text = xml_to_text(&mut tree, Some(root), true, &Call::default()).unwrap();
     assert!(text.contains("$x$") && text.contains("***y***") && text.contains("\\*z\\*"));
-    assert_eq!(dump(&tree, DumpMode::Exact), before);
+    assert_eq!(dump(&tree), before);
     xml_to_text(&mut tree, Some(root), false, &Call::default()).unwrap();
-    assert_eq!(dump(&tree, DumpMode::Exact), before);
+    assert_eq!(dump(&tree), before);
 }
 
 type Level = (

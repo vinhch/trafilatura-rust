@@ -82,8 +82,8 @@ pub mod __internals {
         HashInput, Simhash, content_fingerprint, duplicate_test, generate_bow_hash, sample_tokens,
     };
     pub use crate::dom::{
-        DumpMode, LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from,
-        parse_document, parse_fragment,
+        LiveIter, LocalName, Node, NodeId, Ns, ParseLimits, Tree, dump, dump_from, parse_document,
+        parse_fragment,
     };
     pub use crate::extraction::{
         Source, bare_extraction, determine_returnstring, internal_extraction, yaml_scalar,

@@ -19,7 +19,7 @@ pub use walk::LiveIter;
 pub use web_atoms::LocalName;
 
 #[cfg(any(feature = "__internals", test))]
-pub use dump::{DumpMode, dump, dump_from};
+pub use dump::{dump, dump_from};
 // The depth test of the output walks builds trees past it.
 #[cfg(test)]
 pub use parse::MAX_DEPTH;
