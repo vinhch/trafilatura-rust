@@ -1051,6 +1051,8 @@ pub struct BaselineCase {
 
 
 def main() -> None:
+    from parity.generate import check_libxml2
+    check_libxml2()
     targeted_pages()
     baseline_pages()
     snippets = snippet_pages()

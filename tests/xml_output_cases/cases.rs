@@ -19,7 +19,7 @@ pub struct HtmlOutCase {
     /// `xmltotxt(body, True)`.
     pub body_md: Output,
     /// `convert_to_html` on a copy, `tostring(pretty_print=True)` stripped; lxml's `ns0:` prefixes and
-    /// `xmlns:ns0` declarations removed (foreign elements are written under their local name, D-2).
+    /// `xmlns:ns0` declarations removed if any; the libxml2 tree writes none, so the outputs are unchanged.
     pub body_html: Output,
     /// The same three outputs of the comments body; `None` for `extract_content`.
     pub comments: Option<(Output, Output, Output)>,

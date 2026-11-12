@@ -73,6 +73,17 @@ def check_pin(upstream_root: Path, expected: str | None = None) -> str:
     return expected
 
 
+LIBXML2_VERSION = (2, 14, 6)
+
+
+def check_libxml2() -> None:
+    "Exit unless lxml is built on the libxml2 the parity target names (Global Constraints)."
+    import lxml.etree
+
+    if lxml.etree.LIBXML_VERSION != LIBXML2_VERSION:
+        raise SystemExit(f"libxml2 {lxml.etree.LIBXML_VERSION}, expected {LIBXML2_VERSION}")
+
+
 @contextlib.contextmanager
 def html5_parsers(normalized: list[bool] | None = None):
     "Swap upstream's two parse sites for html5lib parses; `normalized` collects whether the copy rule fired."

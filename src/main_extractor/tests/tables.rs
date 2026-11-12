@@ -288,7 +288,11 @@ fn table_cell_foreign_element() {
     let processed = handle_table(&mut tree, table, TAG_CATALOG, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
-    // oracle: upstream handle_table on the converted tree gives these dumps
+    // oracle: scripts/oracle.sh 'from lxml.html import fromstring; from parity.treedump import dump_tree;
+    //   from trafilatura.utils import HTML_PARSER; from trafilatura.settings import Extractor;
+    //   from trafilatura.htmlprocessing import tree_cleaning, convert_tags; from trafilatura.main_extractor import handle_table, TAG_CATALOG;
+    //   o = Extractor(); t = convert_tags(tree_cleaning(fromstring(<page>, parser=HTML_PARSER), o), o);
+    //   print(dump_tree(handle_table(t.find(".//table"), TAG_CATALOG, o))); print(dump_tree(t))'
     assert_eq!(
         dump_from(&tree, processed, DumpMode::Exact).0,
         "table\n  row\n    cell\n      #text \"a b\"\n"

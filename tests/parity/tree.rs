@@ -257,7 +257,7 @@ pub(crate) fn write_report(pages: &[Page], parser_count: usize, variant: Variant
     if variant == Variant::Html5 {
         let _ = writeln!(
             out,
-            "\nparser (D-2, lxml tree differs from html5 tree): {parser_count}"
+            "\nparser (lxml and html5 fixtures differ): {parser_count}"
         );
     }
     out.push('\n');

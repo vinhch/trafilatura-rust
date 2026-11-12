@@ -7,11 +7,11 @@
 //! Ports of upstream `tests/unit_tests.py`, case by case with the upstream names.
 //!
 //! `extract` runs through the public API (`Kw` holds the keyword arguments); a test that passes an
-//! `html.fromstring` tree uses the tree entry point (`extract_tree`) over the html5 tree. The
-//! criterion of every assertion is the upstream result with `fast=True` forced, on the html5 parse:
+//! `html.fromstring` tree uses the tree entry point (`extract_tree`) over the libxml2 tree. The
+//! criterion of every assertion is the upstream result with `fast=True` forced, on the libxml2 tree:
 //! an assertion that holds is ported as it is, one that does not asserts that result with a
-//! `deviation: D-1` comment (the slow path of `fast=False` is not ported), or `D-2` where the html5
-//! and libxml2 trees differ. Every explicit `fast=False` call has a D-1 comment, even when the
+//! `deviation: D-1` comment (the slow path of `fast=False` is not ported).
+//! Every explicit `fast=False` call has a D-1 comment, even when the
 //! value is the same. Assertions that need the XML or JSON output are in separate tests, named for
 //! the upstream test they split; the whole tests of the XML, XML-TEI, JSON and CSV output are in
 //! `xml_output.rs`.

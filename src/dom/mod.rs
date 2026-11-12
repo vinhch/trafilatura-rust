@@ -153,6 +153,7 @@ impl Tree {
 
     /// Whether attribute `name` of `id` holds the valueless sentinel (`valueless`) rather than a value
     /// that equals it.
+    // Only the parse tests read it, to tell the sentinel from an equal value.
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn is_valueless(&self, id: NodeId, name: &str) -> bool {
         self.node(id)

@@ -900,6 +900,8 @@ def rust_str(text: str) -> str:
 
 
 def main() -> None:
+    from parity.generate import check_libxml2
+    check_libxml2()
     from lxml.html import fromstring
 
     from parity import treedump

@@ -38,7 +38,7 @@ fn row(tag: &str, attrs: &[(&str, &str)], text: Option<&str>, tail: Option<&str>
 }
 
 /// Every element of `html` after `sanitize_tree`, as (tag, attributes, text, tail). The
-/// empty `head` html5ever adds is left out: libxml2 (the oracle) does not make one (D-2).
+/// libxml2 (the oracle) makes no empty `head` for this markup, so none is left out.
 fn sanitized(html: &str) -> Vec<Row> {
     let mut tree = tree(&format!("<html><body>{html}</body></html>"));
     let root = tree.root();

@@ -162,8 +162,10 @@ fn frame_with_foreign_element_is_not_single_run() {
         body_of(foreign, &tight).0,
         "<body><p>Lead text <hi rend=\"#b\">bold</hi> text  <hi rend=\"#i\">it</hi> more</p></body>"
     );
-    // oracle: the first form, `tags == {"lb"}`, with a long outside paragraph so `div` is not
-    // added: a frame of line breaks is one run (nothing handles it), with an svg it is not
+    // oracle: scripts/oracle.sh 'from trafilatura.main_extractor import _extract; ...' on the cleaned, converted
+    // tree with Extractor(fast=True, comments=False): the body is empty both for a frame of line breaks and
+    // for the same frame with an svg after the second text, so both asserts expect `<body/>`. The frame
+    // with the svg is no longer a separate run on the libxml2 tree, where svg is an unknown element.
     let outside = OUTSIDE_PARAGRAPH.repeat(12);
     let options = options();
     assert_eq!(

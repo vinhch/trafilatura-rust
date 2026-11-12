@@ -330,6 +330,8 @@ def render(blanks: list[BlankCase], docs: list[DocCase], kept: bool) -> str:
 
 
 def main() -> None:
+    from parity.generate import check_libxml2
+    check_libxml2()
     blanks = blank_cases()
     reports = buffer_probe()
     for line in reports:

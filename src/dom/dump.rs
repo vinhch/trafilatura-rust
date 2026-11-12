@@ -203,7 +203,7 @@ fn push_element_line(out: &mut String, depth: usize, node: &Node, foreign: Optio
 
 /// The attribute name `treedump.py` writes: the local part of a Clark name `{ns}local`, empty when no
 /// `}` closes it. A plain name is kept.
-// upstream: tools/parity/parity/treedump.py::_split
+// Mirrors tools/parity/parity/treedump.py::_split, the harness rule.
 fn attribute_local_name(name: &str) -> &str {
     match name.strip_prefix('{') {
         Some(rest) => rest.split_once('}').map_or("", |(_, local)| local),

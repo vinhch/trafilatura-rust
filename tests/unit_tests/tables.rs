@@ -187,10 +187,13 @@ fn test_handle_table() {
 }
 
 #[test]
-fn test_handle_table_malformed_html5() {
+fn handle_table_of_malformed_rows_matches_upstream() {
     // Malformed tables: libxml2 builds the tree as it is written, and upstream's handle_table reads
     // that tree. Each expectation is upstream's value on the lxml tree.
-    // oracle: scripts/oracle.sh 'handle_table(fromstring(s, parser=HTML_PARSER), TAG_CATALOG, Extractor())'
+    // oracle: scripts/oracle.sh 'from lxml.html import fromstring, tostring; from trafilatura.utils import HTML_PARSER;
+    //   from trafilatura.settings import Extractor; from trafilatura.main_extractor import handle_table, TAG_CATALOG;
+    //   o = Extractor(); [print(repr(tostring(handle_table(fromstring(s, parser=HTML_PARSER), TAG_CATALOG, o),
+    //   encoding="unicode"))) for s in [<the three tables below>]]'
     let cases = [
         // a td directly in the table after a tr gets a row of its own
         (

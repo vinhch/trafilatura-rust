@@ -130,6 +130,8 @@ def rust_key(key) -> str:
 
 
 def main() -> None:
+    from parity.generate import check_libxml2
+    check_libxml2()
     module = load_upstream()
     plain_tests(module)
     empty, duplicates = product_sets(module)

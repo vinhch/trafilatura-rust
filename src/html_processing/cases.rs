@@ -15,7 +15,7 @@ pub(super) struct CaseOptions {
 /// One snippet, one operation and the tree upstream leaves.
 pub(super) struct Case {
     pub html: &'static str,
-    /// `treedump.dump_tree` of the html5lib tree.
+    /// `treedump.dump_tree` of the lxml tree.
     pub dump_in: &'static str,
     /// Tag of the first element the operation runs on; empty for the document root.
     pub scope: &'static str,

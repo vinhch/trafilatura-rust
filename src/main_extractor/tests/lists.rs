@@ -64,7 +64,7 @@ fn nested_list_first_item_not_repeated() {
 }
 
 #[test]
-fn list_item_foreign_title_kept_with_namespace() {
+fn list_item_svg_title_text_is_dropped() {
     // oracle: p = parse_document('<html><body><ul><li>a <svg><title>t</title></svg> b</li></ul></body></html>')
     // after tree_cleaning and convert_tags; r = handle_lists(p.find('.//list'), Extractor());
     // dump_tree(r) and dump_tree(p)
@@ -77,7 +77,11 @@ fn list_item_foreign_title_kept_with_namespace() {
     let processed = handle_lists(&mut tree, list, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
-    // oracle: scripts/oracle.sh: convert the page as the helper does, then handle_lists(list, Extractor())
+    // oracle: scripts/oracle.sh 'from lxml.html import fromstring; from parity.treedump import dump_tree;
+    //   from trafilatura.utils import HTML_PARSER; from trafilatura.settings import Extractor;
+    //   from trafilatura.htmlprocessing import tree_cleaning, convert_tags; from trafilatura.main_extractor import handle_lists;
+    //   o = Extractor(); t = convert_tags(tree_cleaning(fromstring(<page>, parser=HTML_PARSER), o), o);
+    //   print(dump_tree(handle_lists(t.find(".//list"), o))); print(dump_tree(t))'
     assert_eq!(
         dump_from(&tree, processed, DumpMode::Exact).0,
         "list rend=\"ul\"\n  item\n    #text \"a b\"\n"
@@ -89,7 +93,7 @@ fn list_item_foreign_title_kept_with_namespace() {
 }
 
 #[test]
-fn quote_foreign_title_kept_with_namespace() {
+fn quote_svg_title_text_is_dropped() {
     // oracle: the same with '<blockquote>a <svg><title>t</title></svg> b</blockquote>' and
     // handle_quotes(p.find('.//quote'), Extractor())
     let (mut tree, quote) = converted(
@@ -101,7 +105,11 @@ fn quote_foreign_title_kept_with_namespace() {
     let processed = handle_quotes(&mut tree, quote, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
-    // oracle: the upstream dumps for the same call are below
+    // oracle: scripts/oracle.sh 'from lxml.html import fromstring; from parity.treedump import dump_tree;
+    //   from trafilatura.utils import HTML_PARSER; from trafilatura.settings import Extractor;
+    //   from trafilatura.htmlprocessing import tree_cleaning, convert_tags; from trafilatura.main_extractor import handle_quotes;
+    //   o = Extractor(); t = convert_tags(tree_cleaning(fromstring(<page>, parser=HTML_PARSER), o), o);
+    //   print(dump_tree(handle_quotes(t.find(".//quote"), o))); print(dump_tree(t))'
     assert_eq!(
         dump_from(&tree, processed, DumpMode::Exact).0,
         "quote\n  #text \"a  b\"\n"

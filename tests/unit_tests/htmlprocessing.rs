@@ -42,7 +42,7 @@ fn test_htmlprocessing() {
     convert_options.formatting = true;
     convert_options.images = true;
     convert_options.links = true;
-    // html5 foster-parents the `a` out of the table (D-2); the assertions hold on either tree
+    // libxml2 keeps the `a` in the table, as lxml does; the assertions hold on that tree
     let (mut mydoc, mydoc_root) = lxml_fromstring(
         r#"<html><body><table><a href="">Link</a></table><img src="test.jpg"/><u>Underlined</u><tt>True Type</tt><sub>Text</sub><sup>Text</sup></body></html>"#,
     );

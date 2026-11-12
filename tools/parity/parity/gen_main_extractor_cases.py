@@ -1233,7 +1233,7 @@ pub struct XmlCase {
 /// An HTML snippet through `tree_cleaning` and `convert_tags`, then `op`.
 pub struct HtmlCase {
     pub html: &'static str,
-    /// `treedump.dump_tree` of the html5lib tree.
+    /// `treedump.dump_tree` of the lxml tree.
     pub dump_in: &'static str,
     /// `extract_content`, or `comments_then_content`: `extract_comments`, then `extract_content` on the tree it
     /// leaves.
@@ -1250,6 +1250,8 @@ pub struct HtmlCase {
 
 
 def main() -> None:
+    from parity.generate import check_libxml2
+    check_libxml2()
     build()
     results = run_all()
     xml_results, html_results = results[: len(XML_CASES)], results[len(XML_CASES):]

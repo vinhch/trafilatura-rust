@@ -590,6 +590,8 @@ def rust_bool(value: bool) -> str:
 
 
 def main() -> None:
+    from parity.generate import check_libxml2
+    check_libxml2()
     for build in (cleaning_cases, prune_html_cases, pruning_cases, density_cases, conversion_cases):
         build()
     out = [
@@ -610,7 +612,7 @@ def main() -> None:
         "/// One snippet, one operation and the tree upstream leaves.",
         "pub(super) struct Case {",
         "    pub html: &'static str,",
-        "    /// `treedump.dump_tree` of the html5lib tree.",
+        "    /// `treedump.dump_tree` of the lxml tree.",
         "    pub dump_in: &'static str,",
         "    /// Tag of the first element the operation runs on; empty for the document root.",
         "    pub scope: &'static str,",
