@@ -147,6 +147,25 @@ checked.
 report is `.temp/parity/metadata-report.md`: the classes, the known differences by deviation id, the
 `port-bug` pages with expected and actual values, and the stale entries.
 
+## lxml reports
+
+Each of the three corpus tests classifies the one result it computes per page against both fixture
+variants. Only the `html5` classification asserts; the `lxml` one writes `lxml-report.md`,
+`lxml-output-report.md` and `lxml-metadata-report.md` beside the `html5` reports in `.temp/parity/`
+and prints their paths. The `html5` report names do not change.
+
+- The lxml tree comparison dumps the crate tree with `DumpMode::Exact`; the `html5` one keeps
+  `DumpMode::Normalized`.
+- The lxml classes are `match`, `decompress`, `encoding` (D-3), `port-bug`, `upstream-error`, and
+  `known-metadata` for outputs and `known` for metadata. `python-parser`, `html5lib-cell-space` and
+  `normalized` are `html5` differences and never apply. The expected lxml output is used as it is, with no
+  `strip_lxml_namespaces`.
+- A page whose lxml fixture records an error is `upstream-error`, read from `fixture["lxml"]["errors"]`.
+- Each lxml report starts, after its title, with `Gate count (port-bug pages): valid-UTF-8 N, all M`:
+  `N` counts valid-UTF-8 pages with a `port-bug` class (the Phase 10b gate), `M` counts every page with
+  one (the Phase 10c gate). The output report has one such line per format. `known-metadata`,
+  `known`, `upstream-error` and `decompress` pages are reported apart.
+
 ## Test and measurement
 
 - The parity test needs the `__internals` feature, which `cargo test --all-features` enables. It

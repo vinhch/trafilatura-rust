@@ -225,17 +225,42 @@ pub(crate) struct OutputResult {
     pub(crate) id: String,
     pub(crate) format: &'static str,
     pub(crate) classes: Vec<&'static str>,
+    valid_utf8: bool,
     hunks: Vec<(Hunk, &'static str)>,
     expected: Option<String>,
     actual: Option<String>,
 }
 
+/// The expected text of format `name` in the fixture of `variant`. The html5 oracle writes `nsN:`
+/// prefixes for foreign elements, which are removed; libxml2 writes none, so the lxml text is
+/// kept as it is.
+pub(crate) fn expected_output(
+    variant: Variant,
+    id: &str,
+    name: &str,
+    fixture: &Value,
+) -> Option<String> {
+    let text = fixture[variant.key()]["formats"][name].as_str()?;
+    if variant == Variant::Lxml || !matches!(name, "html" | "xml" | "xmltei") {
+        return Some(text.to_string());
+    }
+    // deviation: D-2 (the oracle writes `nsN:` prefixes for foreign elements)
+    let stripped = strip_lxml_namespaces(text);
+    assert!(
+        !stripped.contains(" xmlns:ns") && !NS_TAG_PREFIX.is_match(&stripped),
+        "{id}: namespace prefixes left in the expected {name}"
+    );
+    Some(stripped)
+}
+
+/// Runs one fixture page: per format, one extraction classified against the `html5` and the `lxml`
+/// fixtures.
 pub(crate) fn run_output_page(
     upstream: &Path,
     fixtures: &Path,
     entry: &Value,
     max_date: &str,
-) -> Vec<OutputResult> {
+) -> Vec<(OutputResult, OutputResult)> {
     let id = entry["id"].as_str().unwrap();
     let source = entry["source"].as_str().unwrap();
     let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
@@ -243,48 +268,43 @@ pub(crate) fn run_output_page(
     let bytes = std::fs::read(upstream.join(source)).unwrap();
     // The TEI header writes `filedate` from `max_date`, so every format runs with the index's one.
     let call = Call::default().max_date(max_date);
-    let known = known_values(id, &fixture["html5"]["metadata"]);
     OUTPUT_FORMATS
         .iter()
         .map(|&(name, format)| {
-            let expected = fixture["html5"]["formats"][name]
-                .as_str()
-                .map(|text| match name {
-                    // deviation: D-2 (the oracle writes `nsN:` prefixes for foreign elements)
-                    "html" | "xml" | "xmltei" => {
-                        let stripped = strip_lxml_namespaces(text);
-                        assert!(
-                            !stripped.contains(" xmlns:ns") && !NS_TAG_PREFIX.is_match(&stripped),
-                            "{id}: namespace prefixes left in the expected {name}"
-                        );
-                        stripped
-                    }
-                    _ => text.to_string(),
-                });
             let actual = Options::new()
                 .format(format)
                 .build()
                 .extract(&Input::bytes(&bytes), &call);
-            let (classes, hunks) = classify_output(
-                &OutputCase {
-                    id,
-                    source,
+            let result = |variant: Variant| {
+                let expected = expected_output(variant, id, name, &fixture);
+                let known = known_values(id, &fixture[variant.key()]["metadata"]);
+                let rejects = match variant {
+                    Variant::Html5 => NORMALIZED_REJECTS,
+                    Variant::Lxml => &[],
+                };
+                let (classes, hunks) = classify_output(
+                    &OutputCase {
+                        id,
+                        source,
+                        valid_utf8,
+                        expected: expected.as_deref(),
+                        upstream_error: fixture[variant.key()]["errors"][name].is_string(),
+                        actual: &actual,
+                        known_values: &known,
+                    },
+                    rejects,
+                );
+                OutputResult {
+                    id: id.to_string(),
+                    format: name,
+                    classes,
                     valid_utf8,
-                    expected: expected.as_deref(),
-                    upstream_error: fixture["html5"]["errors"][name].is_string(),
-                    actual: &actual,
-                    known_values: &known,
-                },
-                NORMALIZED_REJECTS,
-            );
-            OutputResult {
-                id: id.to_string(),
-                format: name,
-                classes,
-                hunks,
-                expected,
-                actual: actual.ok(),
-            }
+                    hunks,
+                    expected,
+                    actual: actual.as_ref().ok().cloned(),
+                }
+            };
+            (result(Variant::Html5), result(Variant::Lxml))
         })
         .collect()
 }
@@ -300,12 +320,30 @@ pub(crate) fn diff_order(rows: &[&[&'static str]]) -> Vec<usize> {
     urgent.into_iter().chain(rest).map(|(i, _)| i).collect()
 }
 
-pub(crate) fn write_output_report(results: &[OutputResult], pages: usize) -> PathBuf {
-    let mut out = String::from("# Parity report: output against the html5 fixtures\n\n");
+pub(crate) fn write_output_report(
+    results: &[OutputResult],
+    pages: usize,
+    variant: Variant,
+) -> PathBuf {
+    let classes = output_classes(variant);
+    let mut out = format!(
+        "# Parity report: output against the {} fixtures\n\n",
+        variant.key()
+    );
+    if variant == Variant::Lxml {
+        for (name, _) in OUTPUT_FORMATS {
+            let port_bugs = results
+                .iter()
+                .filter(|r| r.format == name && r.classes.contains(&"port-bug"));
+            let scope = format!(", {name}");
+            out.push_str(&gate_count_line(&scope, port_bugs.map(|r| r.valid_utf8)));
+        }
+        out.push('\n');
+    }
     let _ = writeln!(out, "Pages: {pages}\n");
     out.push_str("## Classes\n\n");
     for (name, _) in OUTPUT_FORMATS {
-        let counts: Vec<String> = OUTPUT_CLASSES
+        let counts: Vec<String> = classes
             .iter()
             .map(|class| {
                 let mine = || results.iter().filter(|r| r.format == name);
@@ -318,7 +356,7 @@ pub(crate) fn write_output_report(results: &[OutputResult], pages: usize) -> Pat
             .collect();
         let _ = writeln!(out, "- {name}: {}", counts.join(", "));
     }
-    for class in OUTPUT_CLASSES.iter().filter(|c| **c != "match") {
+    for class in classes.iter().filter(|c| **c != "match") {
         let mut rows = results
             .iter()
             .filter(|r| r.classes.contains(class))
@@ -353,7 +391,7 @@ pub(crate) fn write_output_report(results: &[OutputResult], pages: usize) -> Pat
     }
     let dir = common::report_dir();
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("output-report.md");
+    let path = dir.join(variant.report_name("output-report.md"));
     std::fs::write(&path, out).unwrap();
     path
 }

@@ -3,6 +3,7 @@ use super::*;
 pub(crate) struct Page {
     pub(crate) id: String,
     pub(crate) classes: Vec<&'static str>,
+    valid_utf8: bool,
     hunks: Vec<(Hunk, &'static str)>,
     expected: Option<String>,
     actual: Option<String>,
@@ -17,16 +18,19 @@ fn tree_of(variant: &Value) -> Option<String> {
     variant["tree"].as_str().map(str::to_string)
 }
 
-/// Class of one hunk of the tree dump, first match wins: `encoding` (page not valid UTF-8),
-/// `python-parser`, `html5lib-cell-space`, else `port-bug`.
+/// Class of one hunk of the tree dump, first match wins: `encoding` (page not valid UTF-8), then
+/// for `Html5` only `python-parser` and `html5lib-cell-space`, else `port-bug`.
 fn classify_hunk(
     expected: &[&str],
     actual: &[&str],
     valid_utf8: bool,
+    variant: Variant,
     hunk: &Hunk,
 ) -> &'static str {
     if !valid_utf8 && is_encoding_hunk(expected, actual, hunk) {
         "encoding"
+    } else if variant == Variant::Lxml {
+        "port-bug"
     } else if is_python_parser_hunk(expected, actual, hunk) {
         "python-parser"
     } else if is_html5lib_cell_space_hunk(expected, actual, hunk) {
@@ -41,6 +45,7 @@ fn classify_hunk(
 pub(crate) fn classify_page(
     source: &str,
     valid_utf8: bool,
+    variant: Variant,
     expected: &Option<String>,
     actual: &Option<String>,
 ) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
@@ -58,7 +63,7 @@ pub(crate) fn classify_page(
     let classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
         .into_iter()
         .map(|hunk| {
-            let class = classify_hunk(&left, &right, valid_utf8, &hunk);
+            let class = classify_hunk(&left, &right, valid_utf8, variant, &hunk);
             (hunk, class)
         })
         .collect();
@@ -107,23 +112,52 @@ pub(crate) fn hunk_diff(
     out
 }
 
-/// Runs one fixture page; the flag is whether the lxml tree differs from the html5 tree.
-pub(crate) fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, bool) {
-    let id = entry["id"].as_str().unwrap().to_string();
-    let source = entry["source"].as_str().unwrap();
-    let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
-    let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
-    let html5 = &fixture["html5"];
-    let parser_differs = tree_of(&fixture["lxml"]) != tree_of(html5);
-    if html5["errors"]["tree"].is_string() {
-        let page = Page {
+/// The classified page of one variant: `upstream-error` when the variant's fixture records an error
+/// for the tree, else `actual` (the crate's dump, `None` for an empty tree) against its dump.
+pub(crate) fn tree_page(
+    id: String,
+    source: &str,
+    valid_utf8: bool,
+    variant: Variant,
+    fixture: &Value,
+    actual: &Option<String>,
+) -> Page {
+    let fixture = &fixture[variant.key()];
+    if fixture["errors"]["tree"].is_string() {
+        return Page {
             id,
             classes: vec!["upstream-error"],
+            valid_utf8,
             hunks: vec![],
             expected: None,
             actual: None,
         };
-        return (page, parser_differs);
+    }
+    let expected = tree_of(fixture);
+    let (classes, hunks) = classify_page(source, valid_utf8, variant, &expected, actual);
+    Page {
+        id,
+        classes,
+        valid_utf8,
+        hunks,
+        expected,
+        actual: actual.clone(),
+    }
+}
+
+/// Runs one fixture page with one parse: the pages of the `html5` and `lxml` variants (the html5 one
+/// dumped as `Normalized`, the lxml one as `Exact`), and whether the lxml tree differs from the
+/// html5 tree.
+pub(crate) fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page, Page, bool) {
+    let id = entry["id"].as_str().unwrap().to_string();
+    let source = entry["source"].as_str().unwrap();
+    let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
+    let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
+    let parser_differs = tree_of(&fixture["lxml"]) != tree_of(&fixture["html5"]);
+    let has_error = |variant: Variant| fixture[variant.key()]["errors"]["tree"].is_string();
+    if has_error(Variant::Html5) && has_error(Variant::Lxml) {
+        let page = |variant| tree_page(id.clone(), source, valid_utf8, variant, &fixture, &None);
+        return (page(Variant::Html5), page(Variant::Lxml), parser_differs);
     }
     let bytes = std::fs::read(upstream.join(source)).unwrap();
     let loaded = load_html(
@@ -132,21 +166,28 @@ pub(crate) fn run_page(upstream: &Path, fixtures: &Path, entry: &Value) -> (Page
         &ParseLimits::default(),
         &Call::default(),
     );
-    let actual = match loaded {
-        Ok(tree) => Some(dump(&tree, DumpMode::Normalized).0),
+    let dumped = |mode| match &loaded {
+        Ok(tree) => Some(dump(tree, mode).0),
         Err(ExtractError::Rejected(Rejection::EmptyTree)) => None,
         Err(other) => panic!("{id}: unexpected error {other:?}"),
     };
-    let expected = tree_of(html5);
-    let (classes, hunks) = classify_page(source, valid_utf8, &expected, &actual);
-    let page = Page {
-        id,
-        classes,
-        hunks,
-        expected,
-        actual,
-    };
-    (page, parser_differs)
+    let html5 = tree_page(
+        id.clone(),
+        source,
+        valid_utf8,
+        Variant::Html5,
+        &fixture,
+        &dumped(DumpMode::Normalized),
+    );
+    let lxml = tree_page(
+        id.clone(),
+        source,
+        valid_utf8,
+        Variant::Lxml,
+        &fixture,
+        &dumped(DumpMode::Exact),
+    );
+    (html5, lxml, parser_differs)
 }
 
 /// The hunks to print for a page or output that differs: its classified hunks, or for one classified
@@ -192,11 +233,20 @@ fn final_newline_only(expected: &Option<String>, actual: &Option<String>) -> boo
     }
 }
 
-pub(crate) fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
-    let mut out = String::from("# Parity report: tree dump against the html5 fixtures\n\n");
+pub(crate) fn write_report(pages: &[Page], parser_count: usize, variant: Variant) -> PathBuf {
+    let classes = tree_classes(variant);
+    let mut out = format!(
+        "# Parity report: tree dump against the {} fixtures\n\n",
+        variant.key()
+    );
+    if variant == Variant::Lxml {
+        let port_bugs = pages.iter().filter(|p| p.classes.contains(&"port-bug"));
+        out.push_str(&gate_count_line("", port_bugs.map(|p| p.valid_utf8)));
+        out.push('\n');
+    }
     let _ = writeln!(out, "Pages: {}\n", pages.len());
     out.push_str("## Classes\n\n");
-    for class in CLASSES {
+    for &class in classes {
         let count = pages.iter().filter(|p| p.classes.contains(&class)).count();
         let hunk_count: usize = pages
             .iter()
@@ -204,11 +254,14 @@ pub(crate) fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
             .sum();
         let _ = writeln!(out, "- {class}: {count} pages, {hunk_count} hunks");
     }
-    let _ = writeln!(
-        out,
-        "\nparser (D-2, lxml tree differs from html5 tree): {parser_count}\n"
-    );
-    for class in CLASSES.iter().filter(|c| **c != "match") {
+    if variant == Variant::Html5 {
+        let _ = writeln!(
+            out,
+            "\nparser (D-2, lxml tree differs from html5 tree): {parser_count}"
+        );
+    }
+    out.push('\n');
+    for class in classes.iter().filter(|c| **c != "match") {
         let mut ids = pages
             .iter()
             .filter(|p| p.classes.contains(class))
@@ -238,7 +291,7 @@ pub(crate) fn write_report(pages: &[Page], parser_count: usize) -> PathBuf {
     }
     let dir = common::report_dir();
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("report.md");
+    let path = dir.join(variant.report_name("report.md"));
     std::fs::write(&path, out).unwrap();
     path
 }

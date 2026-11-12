@@ -38,25 +38,88 @@ use metadata::*;
 use output::*;
 use tree::*;
 
-const CLASSES: [&str; 7] = [
-    "match",
-    "decompress",
-    "encoding",
-    "python-parser",
-    "html5lib-cell-space",
-    "port-bug",
-    "upstream-error",
-];
+/// The fixture variant a result is compared with. `Html5` gates the tests; `Lxml` is upstream as it
+/// runs and only reports until Phase 10b.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Variant {
+    Html5,
+    Lxml,
+}
 
-const OUTPUT_CLASSES: [&str; 7] = [
-    "match",
-    "decompress",
-    "encoding",
-    "known-metadata",
-    "normalized",
-    "port-bug",
-    "upstream-error",
-];
+impl Variant {
+    /// The key of the variant in a fixture page.
+    fn key(self) -> &'static str {
+        match self {
+            Self::Html5 => "html5",
+            Self::Lxml => "lxml",
+        }
+    }
+
+    /// The file name of a report: `base` for `Html5`, `lxml-` before it for `Lxml`.
+    fn report_name(self, base: &str) -> String {
+        match self {
+            Self::Html5 => base.to_string(),
+            Self::Lxml => format!("lxml-{base}"),
+        }
+    }
+}
+
+/// Classes of a tree report; `python-parser` and `html5lib-cell-space` exist only against html5.
+fn tree_classes(variant: Variant) -> &'static [&'static str] {
+    match variant {
+        Variant::Html5 => &[
+            "match",
+            "decompress",
+            "encoding",
+            "python-parser",
+            "html5lib-cell-space",
+            "port-bug",
+            "upstream-error",
+        ],
+        Variant::Lxml => &[
+            "match",
+            "decompress",
+            "encoding",
+            "port-bug",
+            "upstream-error",
+        ],
+    }
+}
+
+/// Classes of an output report. `normalized` is an html5 difference only.
+fn output_classes(variant: Variant) -> &'static [&'static str] {
+    match variant {
+        Variant::Html5 => &[
+            "match",
+            "decompress",
+            "encoding",
+            "known-metadata",
+            "normalized",
+            "port-bug",
+            "upstream-error",
+        ],
+        Variant::Lxml => &[
+            "match",
+            "decompress",
+            "encoding",
+            "known-metadata",
+            "port-bug",
+            "upstream-error",
+        ],
+    }
+}
+
+/// The line of an lxml report that gives the Phase 10 gate counts: `rows` holds one `valid_utf8`
+/// flag per page (or output) with a `port-bug` class. `scope` names a format, or is empty.
+fn gate_count_line(scope: &str, rows: impl Iterator<Item = bool>) -> String {
+    let (valid, all) = rows.fold((0, 0), |(valid, all), valid_utf8| {
+        (valid + usize::from(valid_utf8), all + 1)
+    });
+    format!(
+        "Gate count (port-bug pages){scope}: valid-UTF-8 {valid}, all {all}
+"
+    )
+}
 
 const OUTPUT_FORMATS: [(&str, Format); 6] = [
     ("txt", Format::Txt),
@@ -122,13 +185,17 @@ fn tree_dump_matches_html5_fixture() {
         return;
     };
     let mut pages = Vec::new();
+    let mut lxml_pages = Vec::new();
     let mut parser_count = 0;
     for entry in index["pages"].as_array().unwrap() {
-        let (page, parser_differs) = run_page(&upstream, &fixtures, entry);
+        let (page, lxml_page, parser_differs) = run_page(&upstream, &fixtures, entry);
         parser_count += usize::from(parser_differs);
         pages.push(page);
+        lxml_pages.push(lxml_page);
     }
-    let path = write_report(&pages, parser_count);
+    let path = write_report(&pages, parser_count, Variant::Html5);
+    let lxml_path = write_report(&lxml_pages, parser_count, Variant::Lxml);
+    eprintln!("parity: lxml report at {}", lxml_path.display());
     let port_bugs: Vec<&str> = pages
         .iter()
         .filter(|p| p.classes.contains(&"port-bug"))
@@ -150,11 +217,13 @@ fn outputs_match_html5_fixture() {
     };
     let entries = index["pages"].as_array().unwrap();
     let max_date = index["max_date"].as_str().unwrap();
-    let results: Vec<OutputResult> = entries
+    let (results, lxml_results): (Vec<OutputResult>, Vec<OutputResult>) = entries
         .iter()
         .flat_map(|entry| run_output_page(&upstream, &fixtures, entry, max_date))
-        .collect();
-    let path = write_output_report(&results, entries.len());
+        .unzip();
+    let path = write_output_report(&results, entries.len(), Variant::Html5);
+    let lxml_path = write_output_report(&lxml_results, entries.len(), Variant::Lxml);
+    eprintln!("parity: lxml output report at {}", lxml_path.display());
     let port_bugs: Vec<String> = results
         .iter()
         .filter(|r| r.classes.contains(&"port-bug"))
@@ -175,14 +244,17 @@ fn metadata_matches_html5_fixture() {
         return;
     };
     let max_date = index["max_date"].as_str().unwrap();
-    let pages: Vec<MetaPage> = index["pages"]
+    let (pages, lxml_pages): (Vec<MetaPage>, Vec<MetaPage>) = index["pages"]
         .as_array()
         .unwrap()
         .iter()
         .map(|entry| run_metadata_page(&upstream, &fixtures, entry, max_date))
-        .collect();
+        .unzip();
     let stale = stale_known(&pages, METADATA_KNOWN);
-    let path = write_metadata_report(&pages, &stale);
+    let path = write_metadata_report(&pages, &stale, Variant::Html5);
+    let lxml_stale = stale_known(&lxml_pages, METADATA_KNOWN);
+    let lxml_path = write_metadata_report(&lxml_pages, &lxml_stale, Variant::Lxml);
+    eprintln!("parity: lxml metadata report at {}", lxml_path.display());
     let port_bugs: Vec<&str> = pages
         .iter()
         .filter(|p| p.classes.contains(&"port-bug"))

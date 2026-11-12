@@ -153,6 +153,7 @@ pub(crate) struct MetaField {
 pub(crate) struct MetaPage {
     pub(crate) id: String,
     pub(crate) classes: Vec<&'static str>,
+    pub(crate) valid_utf8: bool,
     /// Whether the fields were compared. False for `upstream-error`, `decompress` and a whole-page
     /// mismatch.
     pub(crate) checked: bool,
@@ -184,45 +185,68 @@ fn doc_metadata(doc: &Document) -> Value {
     })
 }
 
-/// Compares one page's metadata with its fixture. The first class that applies decides the page:
-/// `upstream-error`, `match` (equal, `null` on both sides included), `decompress`, else per field
-/// `known` when `METADATA_KNOWN` lists it with this crate value and `port-bug` when not (see
-/// `compare_fields`). A `null` on one side only is a whole-page `port-bug`.
+/// Runs one fixture page with one extraction and compares its metadata with the fixture of each
+/// variant: the `html5` page and the `lxml` page.
 pub(crate) fn run_metadata_page(
     upstream: &Path,
     fixtures: &Path,
     entry: &Value,
     max_date: &str,
-) -> MetaPage {
-    let id = entry["id"].as_str().unwrap().to_string();
+) -> (MetaPage, MetaPage) {
+    let id = entry["id"].as_str().unwrap();
     let source = entry["source"].as_str().unwrap();
+    let valid_utf8 = entry["valid_utf8"].as_bool().unwrap();
     let fixture = read_json(&fixtures.join("pages").join(format!("{id}.json")));
-    let expected = &fixture["html5"]["metadata"];
+    let has_error = |variant: Variant| fixture[variant.key()]["errors"]["metadata"].is_string();
+    let actual = if has_error(Variant::Html5) && has_error(Variant::Lxml) {
+        Value::Null
+    } else {
+        let bytes = std::fs::read(upstream.join(source)).unwrap();
+        let call = Call::default().max_date(max_date);
+        let extracted = Options::new()
+            .with_metadata(true)
+            .build()
+            .bare_extraction(&Input::bytes(&bytes), &call);
+        match extracted {
+            Ok(doc) => doc_metadata(&doc),
+            Err(ExtractError::Rejected(_)) => Value::Null,
+            Err(other) => panic!("{id}: unexpected error {other:?}"),
+        }
+    };
+    let page = |variant| metadata_page(id, source, valid_utf8, variant, &fixture, &actual);
+    (page(Variant::Html5), page(Variant::Lxml))
+}
+
+/// Compares the crate metadata `actual` with the fixture of `variant`. The first class that applies
+/// decides the page: `upstream-error`, `match` (equal, `null` on both sides included),
+/// `decompress`, else per field `known` when `METADATA_KNOWN` lists it with this crate value and
+/// `port-bug` when not (see `compare_fields`). A `null` on one side only is a whole-page `port-bug`.
+fn metadata_page(
+    id: &str,
+    source: &str,
+    valid_utf8: bool,
+    variant: Variant,
+    fixture: &Value,
+    actual: &Value,
+) -> MetaPage {
+    let fixture = &fixture[variant.key()];
+    let expected = &fixture["metadata"];
     let unchecked = |classes: Vec<&'static str>, whole: Option<(Value, Value)>| MetaPage {
-        id: id.clone(),
+        id: id.to_string(),
         classes,
+        valid_utf8,
         checked: false,
         fields: vec![],
         whole,
     };
-    if fixture["html5"]["errors"]["metadata"].is_string() {
+    if fixture["errors"]["metadata"].is_string() {
         return unchecked(vec!["upstream-error"], None);
     }
-    let bytes = std::fs::read(upstream.join(source)).unwrap();
-    let call = Call::default().max_date(max_date);
-    let extracted = Options::new()
-        .with_metadata(true)
-        .build()
-        .bare_extraction(&Input::bytes(&bytes), &call);
-    let actual = match extracted {
-        Ok(doc) => doc_metadata(&doc),
-        Err(ExtractError::Rejected(_)) => Value::Null,
-        Err(other) => panic!("{id}: unexpected error {other:?}"),
-    };
-    if *expected == actual {
+    if expected == actual {
         return MetaPage {
-            id,
+            id: id.to_string(),
             classes: vec!["match"],
+            valid_utf8,
             checked: true,
             fields: vec![],
             whole: None,
@@ -231,10 +255,10 @@ pub(crate) fn run_metadata_page(
     if source.ends_with(".gz") && cfg!(not(feature = "decompress")) {
         return unchecked(vec!["decompress"], None);
     }
-    let Some((want, got)) = field_maps(expected, &actual) else {
-        return unchecked(vec!["port-bug"], Some((expected.clone(), actual)));
+    let Some((want, got)) = field_maps(expected, actual) else {
+        return unchecked(vec!["port-bug"], Some((expected.clone(), actual.clone())));
     };
-    let fields = compare_fields(&id, want, got, METADATA_KNOWN);
+    let fields = compare_fields(id, want, got, METADATA_KNOWN);
     let mut classes: Vec<&'static str> = fields.iter().map(|f| f.class).collect();
     classes.sort_unstable();
     classes.dedup();
@@ -242,8 +266,9 @@ pub(crate) fn run_metadata_page(
         classes.push("match");
     }
     MetaPage {
-        id,
+        id: id.to_string(),
         classes,
+        valid_utf8,
         checked: true,
         fields,
         whole: None,
@@ -325,8 +350,20 @@ pub(crate) fn stale_known(pages: &[MetaPage], known: &[(&str, &str, &str, &str)]
         .collect()
 }
 
-pub(crate) fn write_metadata_report(pages: &[MetaPage], stale: &[String]) -> PathBuf {
-    let mut out = String::from("# Parity report: metadata against the html5 fixtures\n\n");
+pub(crate) fn write_metadata_report(
+    pages: &[MetaPage],
+    stale: &[String],
+    variant: Variant,
+) -> PathBuf {
+    let mut out = format!(
+        "# Parity report: metadata against the {} fixtures\n\n",
+        variant.key()
+    );
+    if variant == Variant::Lxml {
+        let port_bugs = pages.iter().filter(|p| p.classes.contains(&"port-bug"));
+        out.push_str(&gate_count_line("", port_bugs.map(|p| p.valid_utf8)));
+        out.push('\n');
+    }
     let _ = writeln!(out, "Pages: {}\n", pages.len());
     out.push_str("## Classes\n\n");
     for class in METADATA_CLASSES {
@@ -390,7 +427,7 @@ pub(crate) fn write_metadata_report(pages: &[MetaPage], stale: &[String]) -> Pat
     }
     let dir = common::report_dir();
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("metadata-report.md");
+    let path = dir.join(variant.report_name("metadata-report.md"));
     std::fs::write(&path, out).unwrap();
     path
 }

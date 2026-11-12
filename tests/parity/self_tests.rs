@@ -114,7 +114,9 @@ fn classify_output_names_each_class() {
 #[test]
 fn classify_page_none_side_is_port_bug() {
     let dump = Some("html\n".to_string());
-    let page = |e: &Option<String>, a: &Option<String>| classify_page("p.html", true, e, a);
+    let page = |e: &Option<String>, a: &Option<String>| {
+        classify_page("p.html", true, Variant::Html5, e, a)
+    };
     assert_eq!(page(&dump, &None), (vec!["port-bug"], vec![]));
     assert_eq!(page(&None, &dump), (vec!["port-bug"], vec![]));
     assert_eq!(page(&None, &None), (vec!["match"], vec![]));
@@ -130,7 +132,7 @@ fn classify_page_mixes_classes() {
         "html\n  p\n    #text \"bli¿ej\"\n  q\n  select\n    option\n      #text \"1 \"\n      span\n        #text \"Person\"\n"
             .to_string(),
     );
-    let (classes, hunks) = classify_page("p.html", false, &expected, &actual);
+    let (classes, hunks) = classify_page("p.html", false, Variant::Html5, &expected, &actual);
     assert_eq!(classes, ["encoding", "python-parser"]);
     assert_eq!(hunks.len(), 2);
 }
@@ -140,16 +142,74 @@ fn classify_page_names_cell_space_hunk() {
     let expected = Some("html\n  td\n    p\n      #text \" was\"\n".to_string());
     let actual =
         Some("html\n  td\n    p\n      a\n        #text \" \"\n      #text \"was\"\n".to_string());
-    let (classes, hunks) = classify_page("p.html", true, &expected, &actual);
+    let (classes, hunks) = classify_page("p.html", true, Variant::Html5, &expected, &actual);
     assert_eq!(classes, ["html5lib-cell-space"]);
     assert_eq!(hunks.len(), 1);
+}
+
+#[test]
+fn classify_page_lxml_has_no_html5_classes() {
+    let expected = Some(
+        "html\n  p\n    #text \"bliżej\"\n  q\n  select\n    option\n      #text \"1 Person\"\n"
+            .to_string(),
+    );
+    let actual = Some(
+        "html\n  p\n    #text \"bli¿ej\"\n  q\n  select\n    option\n      #text \"1 \"\n      span\n        #text \"Person\"\n"
+            .to_string(),
+    );
+    let (classes, hunks) = classify_page("p.html", false, Variant::Lxml, &expected, &actual);
+    assert_eq!(classes, ["encoding", "port-bug"]);
+    assert_eq!(hunks.len(), 2);
+
+    let expected = Some("html\n  td\n    p\n      #text \" was\"\n".to_string());
+    let actual =
+        Some("html\n  td\n    p\n      a\n        #text \" \"\n      #text \"was\"\n".to_string());
+    let (classes, _) = classify_page("p.html", true, Variant::Lxml, &expected, &actual);
+    assert_eq!(classes, ["port-bug"]);
+}
+
+#[test]
+fn report_names_per_variant() {
+    assert_eq!(Variant::Html5.report_name("report.md"), "report.md");
+    assert_eq!(
+        Variant::Lxml.report_name("output-report.md"),
+        "lxml-output-report.md"
+    );
+}
+
+#[test]
+fn lxml_upstream_error_reads_lxml_errors() {
+    let fixture = json!({
+        "lxml": {"tree": null, "errors": {"tree": "ValueError"}},
+        "html5": {"tree": "html\n", "errors": {"tree": null}},
+    });
+    let actual = Some("html\n".to_string());
+    let page = |variant| tree_page("p".to_string(), "p.html", true, variant, &fixture, &actual);
+    assert_eq!(page(Variant::Lxml).classes, ["upstream-error"]);
+    assert_eq!(page(Variant::Html5).classes, ["match"]);
+}
+
+#[test]
+fn lxml_output_skips_namespace_strip() {
+    let fixture = json!({
+        "lxml": {"formats": {"xml": "<doc xmlns:ns0=\"x\"/>"}},
+        "html5": {"formats": {"xml": "<doc xmlns:ns0=\"x\"/>"}},
+    });
+    assert_eq!(
+        expected_output(Variant::Lxml, "p", "xml", &fixture).as_deref(),
+        Some("<doc xmlns:ns0=\"x\"/>")
+    );
+    assert_eq!(
+        expected_output(Variant::Html5, "p", "xml", &fixture).as_deref(),
+        Some("<doc/>")
+    );
 }
 
 #[test]
 fn classify_page_ascii_change_is_port_bug() {
     let expected = Some("html\n  #text \"a\"\n".to_string());
     let actual = Some("html\n  #text \"b\"\n".to_string());
-    let (classes, hunks) = classify_page("p.html", true, &expected, &actual);
+    let (classes, hunks) = classify_page("p.html", true, Variant::Html5, &expected, &actual);
     assert_eq!(classes, ["port-bug"]);
     assert_eq!(hunks.len(), 1);
 }
@@ -196,6 +256,7 @@ fn stale_known_reports_entries_that_do_not_hold() {
         id: id.to_string(),
         classes: vec![],
         checked,
+        valid_utf8: true,
         fields: fields
             .iter()
             .map(|name| MetaField {
