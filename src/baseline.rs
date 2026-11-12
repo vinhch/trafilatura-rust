@@ -635,9 +635,8 @@ pub fn baseline_tree(
 }
 
 /// Runs basic html2txt on a document: the text of its `body`, with `clean` removing potentially
-/// undesirable elements. An empty tree gives `""`, as does a parsed document without a `body` (a
-/// feed, say, under libxml2); html5ever always builds a `body`, so that branch does not run for
-/// the input of this function (D-2).
+/// undesirable elements. An empty tree gives `""`, as does a parsed document without a `body`, which
+/// libxml2 builds for a page of `head` content only.
 // upstream: baseline.py::html2txt
 pub fn html2txt(
     input: HtmlInput<'_>,

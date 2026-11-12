@@ -119,40 +119,38 @@ fn copy_pairs_by_document_order() {
 const SVG_PAGE: &str = "<html><body><svg><title>t</title><a>x</a></svg><a>y</a></body></html>";
 
 #[test]
-fn svg_elements_skip_name_tests() {
+fn svg_elements_are_html_for_name_tests() {
+    // libxml2 has no foreign content: the svg `a` is an HTML `a`, so a name test sees both anchors
     let mut tree = parse(SVG_PAGE);
     let root = tree.root();
     let all = tree.iter(root, &[]).count();
-    // oracle: [e.tag for e in r.iter('a')] == ['a']
+    // oracle: [e.text for e in r.iter('a')] == ['x', 'y']
     let anchors: Vec<NodeId> = tree.iter(root, &["a"]).collect();
-    assert_eq!(anchors.len(), 1);
-    assert_eq!(tree.text_content(anchors[0]), "y");
-    assert_eq!(tree.find(root, "title"), None);
-    // oracle: svg title still present after etree.strip_elements(r, 'title')
+    assert_eq!(anchors.len(), 2);
+    assert_eq!(tree.text_content(anchors[0]), "x");
+    assert_eq!(tree.text_content(anchors[1]), "y");
+    assert!(tree.find(root, "title").is_some());
+    // oracle: etree.strip_elements(r, 'title') removes the svg title as well
     tree.strip_elements(root, &["title"], true);
-    assert_eq!(tree.iter(root, &[]).count(), all);
-    // lxml's strip_tags compares the same `{ns}a` tag, so the SVG `a` stays
-    tree.strip_tags(root, &["a"]);
     assert_eq!(tree.iter(root, &[]).count(), all - 1);
-    assert!(
-        tree.iter(root, &[])
-            .any(|id| tree.node(id).ns == Ns::Svg && &*tree.node(id).name == "a")
-    );
-    assert!(tree.iter(root, &[]).any(|id| tree.node(id).ns == Ns::Svg));
+    // oracle: etree.strip_tags(r, 'a') removes both anchors and keeps their text
+    tree.strip_tags(root, &["a"]);
+    assert_eq!(tree.iter(root, &[]).count(), all - 3);
 }
 
 #[test]
 fn set_name_drops_namespace() {
-    let mut tree = parse(SVG_PAGE);
-    let root = tree.root();
-    let a = tree
-        .iter(root, &[])
-        .find(|&id| tree.node(id).ns == Ns::Svg && &*tree.node(id).name == "a")
-        .unwrap();
+    // An SVG element built by hand: libxml2 gives every element the HTML namespace.
+    let mut tree = parse("<html><body></body></html>");
+    let body = find(&tree, "body");
+    let a = tree.add_child(body, "a".into(), Ns::Svg, Vec::new());
     tree.set_name(a, "ref");
     // oracle: x.tag = 'ref'; r.xpath('.//ref') finds it
     assert_eq!(tree.node(a).ns, Ns::Html);
-    assert_eq!(tree.iter(root, &["ref"]).collect::<Vec<_>>(), vec![a]);
+    assert_eq!(
+        tree.iter(tree.root(), &["ref"]).collect::<Vec<_>>(),
+        vec![a]
+    );
 }
 
 #[test]
@@ -214,8 +212,9 @@ fn root_of_detached_and_attached() {
 
 #[test]
 fn new_element_like_keeps_namespace() {
-    let mut tree = parse("<html><body><svg><title>t</title></svg></body></html>");
-    let title = find(&tree, "title");
+    let mut tree = parse("<html><body></body></html>");
+    let body = find(&tree, "body");
+    let title = tree.add_child(body, "title".into(), Ns::Svg, Vec::new());
     assert_eq!(tree.node(title).ns, Ns::Svg);
     tree.set(title, "id", "x");
     tree.node_mut(title).tail = Some("tail".to_string());
@@ -231,8 +230,9 @@ fn try_new_element_like_follows_lxml_tag_rule() {
     // oracle: etree.Element(name) and etree.SubElement(etree.Element("x"), name) agree on every name:
     //   "p", "x-y", "a.b", "_x", "Àx" and "{http://www.w3.org/2000/svg}title" are accepted;
     //   "o:p", "http:" and 'a"b' raise ValueError("Invalid tag name ...")
-    let mut tree = parse("<html><body><svg><title>t</title></svg></body></html>");
-    let svg_title = find(&tree, "title");
+    let mut tree = parse("<html><body></body></html>");
+    let body = find(&tree, "body");
+    let svg_title = tree.add_child(body, "title".into(), Ns::Svg, Vec::new());
     let accepted = ["p", "x-y", "a.b", "_x", "\u{C0}x"];
     for name in accepted {
         let source = tree.new_element(name);

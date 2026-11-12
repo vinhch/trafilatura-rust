@@ -41,15 +41,15 @@ fn paragraph_walk_stops_after_stripped_hi() {
 #[test]
 fn paragraph_strips_foreign_descendants() {
     // oracle: dump_tree(handle_paragraphs(p, TAG_CATALOG, Extractor())) with
-    // p = parse_document("<p>a <svg><title>t</title></svg> b</p>").find('.//p'): 'p', '#text "a t b"';
-    // dump_tree(doc) then has the document as html > head, body > done > #text "a t b"
+    // p = parse_document("<p>a <svg><title>t</title></svg> b</p>"), the root: 'p', '#text "a t b"';
+    // the root is then renamed done, with the text as its child
     let mut tree = parse_document(
         "<p>a <svg><title>t</title></svg> b</p>",
         &ParseLimits::default(),
         &Call::default(),
     )
     .unwrap();
-    let p = tree.find(tree.root(), "p").unwrap();
+    let p = tree.root();
     let options = options();
     let call = Call::default();
     let processed = handle_paragraphs(&mut tree, p, TAG_CATALOG, &ctx_for(&options, &call))
@@ -59,10 +59,8 @@ fn paragraph_strips_foreign_descendants() {
         dump_from(&tree, processed, DumpMode::Exact).0,
         "p\n  #text \"a t b\"\n"
     );
-    assert_eq!(
-        dump(&tree, DumpMode::Exact).0,
-        "html\n  head\n  body\n    done\n      #text \"a t b\"\n"
-    );
+    // oracle: scripts/oracle.sh handle_paragraphs(fromstring(html).root, TAG_CATALOG, Extractor())
+    assert_eq!(dump(&tree, DumpMode::Exact).0, "done\n  #text \"a t b\"\n");
 }
 
 #[test]

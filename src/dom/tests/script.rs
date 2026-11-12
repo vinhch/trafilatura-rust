@@ -87,11 +87,12 @@ fn script_type_match_is_exact() {
 }
 
 #[test]
-fn foreign_script_and_style_text_kept() {
+fn svg_script_and_style_text_dropped() {
+    // libxml2 has no foreign content: an SVG `script` is an HTML `script`, so its text is unread.
     let tree = parse_dropping("<svg><script>a</script><style>b</style></svg>");
-    assert_eq!(texts_of(&tree, "script"), [Some("a".to_string())]);
-    assert_eq!(texts_of(&tree, "style"), [Some("b".to_string())]);
-    assert!(!tree.dropped_script_text);
+    assert_eq!(texts_of(&tree, "script"), [None]);
+    assert_eq!(texts_of(&tree, "style"), [None]);
+    assert!(tree.dropped_script_text);
 }
 
 #[test]

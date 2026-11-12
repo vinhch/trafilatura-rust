@@ -449,3 +449,23 @@ fn deep_json_on_small_stack() {
         .unwrap();
     assert_eq!(text, body);
 }
+
+#[test]
+fn baseline_markup_without_body_keeps_raw_text() {
+    // oracle: scripts/oracle.sh 'baseline(page)' on the JSON-LD articleBody below: upstream's text is the
+    // raw value, markup included, and its length is 333
+    const SENTENCE: &str = " The raw text after the markup is long enough to pass the length gate of the baseline extraction.";
+    let body = format!(
+        "<html><head><title>t</title></head></html>{}",
+        SENTENCE.repeat(3)
+    );
+    let doc = page(&format!(r#"{{"articleBody": "{body}"}}"#));
+    let (_tree, _body, text, len) = baseline(
+        HtmlInput::Str(&doc),
+        &ParseLimits::default(),
+        &Call::default(),
+    )
+    .unwrap();
+    assert_eq!(text, body);
+    assert_eq!(len, 333);
+}

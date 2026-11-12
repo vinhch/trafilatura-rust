@@ -297,10 +297,9 @@ fn tostring_pretty_caps_indent_at_60() {
 }
 
 #[test]
-fn tostring_foreign_by_local_name() {
+fn tostring_svg_by_local_name() {
     let tree = parse("<html><body><svg><title>t</title></svg></body></html>");
     let title = find(&tree, "title");
-    assert_eq!(tree.node(title).ns, Ns::Svg);
     assert_eq!(tree.tostring(title, false, false), "<title>t</title>");
     let svg = find(&tree, "svg");
     assert_eq!(

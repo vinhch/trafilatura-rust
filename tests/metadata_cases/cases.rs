@@ -3,7 +3,7 @@
 //   scripts/oracle.sh 'from parity.gen_metadata_cases import cases; cases()' > tests/metadata_cases/cases.rs
 // Upstream's `extract_metadata` on pages: the metadata it returns.
 
-/// A page parsed by html5lib and the `Document` fields upstream's `extract_metadata` returns for it with the default
+/// A page parsed by lxml's HTML parser and the `Document` fields upstream's `extract_metadata` returns for it with the default
 /// URL and the author blacklist; `filedate` is not compared.
 pub struct MetadataCase {
     pub html: &'static str,

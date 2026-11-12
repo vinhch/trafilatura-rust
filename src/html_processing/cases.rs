@@ -40,11 +40,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><embed>x<b>y</b></embed>tail<p>after</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      embed\n      #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      embed\n        #text \"x\"\n        b\n          #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><fencedframe>x<b>y</b></fencedframe>tail<p>after</p></div></body></html>",
@@ -152,11 +152,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><svg>x<b>y</b></svg>tail<p>after</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      svg@svg\n        #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      svg@svg\n        #text \"x\"\n        b@svg\n          #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      svg@svg\n        #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><video>x<b>y</b></video>tail<p>after</p></div></body></html>",
@@ -264,11 +264,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><math>x<b>y</b></math>tail<p>after</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      math@math\n        #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      math@math\n        #text \"x\"\n        b@math\n          #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      math@math\n        #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><menuitem>x<b>y</b></menuitem>tail<p>after</p></div></body></html>",
@@ -376,11 +376,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><source>x<b>y</b></source>tail<p>after</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      source\n      #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      source\n        #text \"x\"\n        b\n          #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><style>x<b>y</b></style>tail<p>after</p></div></body></html>",
@@ -392,11 +392,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><track>x<b>y</b></track>tail<p>after</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      track\n      #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"before\"\n      track\n        #text \"x\"\n        b\n          #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"x\"\n      b\n        #text \"y\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
+        dump_out: "html\n  body\n    div\n      p\n        #text \"before\"\n      #text \"tail\"\n      p\n        #text \"after\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>before</p><textarea>x<b>y</b></textarea>tail<p>after</p></div></body></html>",
@@ -456,7 +456,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>a<address>inner<b>x</b></address>b</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"a\"\n      address\n        #text \"inner\"\n        b\n          #text \"x\"\n      #text \"b\"\n      p\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"a\"\n      address\n        #text \"inner\"\n        b\n          #text \"x\"\n      #text \"b\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -520,11 +520,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>a<hgroup>inner<b>x</b></hgroup>b</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"a\"\n      hgroup\n        #text \"inner\"\n        b\n          #text \"x\"\n      #text \"b\"\n      p\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"a\"\n        hgroup\n          #text \"inner\"\n          b\n            #text \"x\"\n        #text \"b\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      p\n        #text \"a\"\n      #text \"inner\"\n      b\n        #text \"x\"\n      #text \"b\"\n",
+        dump_out: "html\n  body\n    div\n      p\n        #text \"ainner\"\n        b\n          #text \"x\"\n        #text \"b\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>a<img>inner<b>x</b></img>b</p></div></body></html>",
@@ -616,7 +616,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>a<wbr>inner<b>x</b></wbr>b</p></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"a\"\n        wbr\n        #text \"inner\"\n        b\n          #text \"x\"\n        #text \"b\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \"a\"\n        wbr\n          #text \"inner\"\n          b\n            #text \"x\"\n        #text \"b\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -632,7 +632,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a</p><table><tr><th>h</th><td>d</td></tr></table><p>b</p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    table\n      tbody\n        tr\n          th\n            #text \"h\"\n          td\n            #text \"d\"\n    p\n      #text \"b\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    table\n      tr\n        th\n          #text \"h\"\n        td\n          #text \"d\"\n    p\n      #text \"b\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -640,7 +640,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a</p><table><tr><th>h</th><td>d</td></tr></table><p>b</p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    table\n      tbody\n        tr\n          th\n            #text \"h\"\n          td\n            #text \"d\"\n    p\n      #text \"b\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    table\n      tr\n        th\n          #text \"h\"\n        td\n          #text \"d\"\n    p\n      #text \"b\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
@@ -648,7 +648,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table role=\"presentation\"><tr><td>x</td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"presentation\"\n      tbody\n        tr\n          td\n            #text \"x\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"presentation\"\n      tr\n        td\n          #text \"x\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -656,7 +656,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table role=\"presentation\"><tr><td>x</td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"presentation\"\n      tbody\n        tr\n          td\n            #text \"x\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"presentation\"\n      tr\n        td\n          #text \"x\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
@@ -664,7 +664,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table role=\"none\"><tr><td>x</td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"none\"\n      tbody\n        tr\n          td\n            #text \"x\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"none\"\n      tr\n        td\n          #text \"x\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -672,7 +672,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table role=\"none\"><tr><td>x</td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"none\"\n      tbody\n        tr\n          td\n            #text \"x\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"none\"\n      tr\n        td\n          #text \"x\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
@@ -680,7 +680,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table role=\"grid\"><tr><td>x</td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"grid\"\n      tbody\n        tr\n          td\n            #text \"x\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"grid\"\n      tr\n        td\n          #text \"x\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -688,7 +688,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table role=\"grid\"><tr><td>x</td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"grid\"\n      tbody\n        tr\n          td\n            #text \"x\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table role=\"grid\"\n      tr\n        td\n          #text \"x\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
@@ -696,7 +696,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><figure><table><tr><th>h</th><td>d</td></tr></table><figcaption>c</figcaption></figure></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      table\n        tbody\n          tr\n            th\n              #text \"h\"\n            td\n              #text \"d\"\n      figcaption\n        #text \"c\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      table\n        tr\n          th\n            #text \"h\"\n          td\n            #text \"d\"\n      figcaption\n        #text \"c\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -704,7 +704,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><figure><table><tr><th>h</th><td>d</td></tr></table><figcaption>c</figcaption></figure></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      table\n        tbody\n          tr\n            th\n              #text \"h\"\n            td\n              #text \"d\"\n      figcaption\n        #text \"c\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      table\n        tr\n          th\n            #text \"h\"\n          td\n            #text \"d\"\n      figcaption\n        #text \"c\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
@@ -720,7 +720,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><figure><figure>x</figure><table><tr><td>t</td></tr></table></figure></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      figure\n        #text \"x\"\n      table\n        tbody\n          tr\n            td\n              #text \"t\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      figure\n        #text \"x\"\n      table\n        tr\n          td\n            #text \"t\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -728,15 +728,15 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>t</p><figure><img src='a.png' alt='x'><figcaption>cap</figcaption></figure><picture><source srcset='a.webp'><img src='a.png'></picture></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"t\"\n    figure\n      img alt=\"x\" src=\"a.png\"\n      figcaption\n        #text \"cap\"\n    picture\n      source srcset=\"a.webp\"\n      img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"t\"\n    figure\n      img alt=\"x\" src=\"a.png\"\n      figcaption\n        #text \"cap\"\n    picture\n      source srcset=\"a.webp\"\n        img src=\"a.png\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: true, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    p\n      #text \"t\"\n    figure\n      img alt=\"x\" src=\"a.png\"\n      figcaption\n        #text \"cap\"\n    picture\n      source srcset=\"a.webp\"\n      img src=\"a.png\"\n",
+        dump_out: "html\n  body\n    p\n      #text \"t\"\n    figure\n      img alt=\"x\" src=\"a.png\"\n      figcaption\n        #text \"cap\"\n    picture\n      source srcset=\"a.webp\"\n        img src=\"a.png\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>t</p><figure><img src='a.png' alt='x'><figcaption>cap</figcaption></figure><picture><source srcset='a.webp'><img src='a.png'></picture></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"t\"\n    figure\n      img alt=\"x\" src=\"a.png\"\n      figcaption\n        #text \"cap\"\n    picture\n      source srcset=\"a.webp\"\n      img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"t\"\n    figure\n      img alt=\"x\" src=\"a.png\"\n      figcaption\n        #text \"cap\"\n    picture\n      source srcset=\"a.webp\"\n        img src=\"a.png\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
@@ -744,7 +744,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><figure><table><tr><th>h</th><td>d</td></tr></table><img src='a.png'></figure></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      table\n        tbody\n          tr\n            th\n              #text \"h\"\n            td\n              #text \"d\"\n      img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    figure\n      table\n        tr\n          th\n            #text \"h\"\n          td\n            #text \"d\"\n      img src=\"a.png\"\n",
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: true, links: false, formatting: false, focus: "balanced" },
@@ -1108,7 +1108,7 @@ pub(super) const CASES: &[Case] = &[
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    p\n      #text \"a \"\n      math@math alttext=\"y_1\"\n        mi@math\n          #text \"y\"\n      #text \" b\"\n      svg@svg\n        title@svg\n          #text \"t\"\n",
+        dump_out: "html\n  body\n    p\n      #text \"a \\\\(y_1\\\\) b\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a <math alttext=\"y_1\"><mi>y</mi></math> b<svg><title>t</title></svg></p></body></html>",
@@ -1116,7 +1116,7 @@ pub(super) const CASES: &[Case] = &[
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    p\n      #text \"a \"\n      math@math alttext=\"y_1\"\n        mi@math\n          #text \"y\"\n      #text \" b\"\n      svg@svg\n        title@svg\n          #text \"t\"\n",
+        dump_out: "html\n  body\n    p\n      #text \"a \\\\(y_1\\\\) b\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a <math display=\"block\"><semantics><mi>x</mi><annotation encoding=\"application/x-tex\">x^2</annotation></semantics></math> b</p></body></html>",
@@ -1124,7 +1124,7 @@ pub(super) const CASES: &[Case] = &[
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    p\n      #text \"a \"\n      math@math display=\"block\"\n        semantics@math\n          mi@math\n            #text \"x\"\n          annotation@math encoding=\"application/x-tex\"\n            #text \"x^2\"\n      #text \" b\"\n",
+        dump_out: "html\n  body\n    p\n      #text \"a \\\\[x^2\\\\] b\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><svg><g><path d=\"M0\"></path></g></svg></div><svg><style>p{}</style></svg></body></html>",
@@ -1132,7 +1132,7 @@ pub(super) const CASES: &[Case] = &[
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    div\n      svg@svg\n        g@svg\n          path@svg d=\"M0\"\n    svg@svg\n      style@svg\n        #text \"p{}\"\n",
+        dump_out: "html\n  body\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a</p><math><mi>q</mi></math><aside>x</aside></body></html>",
@@ -1140,7 +1140,7 @@ pub(super) const CASES: &[Case] = &[
         scope: "",
         op: "tree_cleaning",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  body\n    p\n      #text \"a\"\n    math@math\n      mi@math\n        #text \"q\"\n",
+        dump_out: "html\n  body\n    p\n      #text \"a\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p>keep</p><article></article>tail<span>x</span></div></body></html>",
@@ -1440,11 +1440,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p> </p><p>x</p><p><b>y</b></p><a></a><td></td><em></em>t</div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \" \"\n      p\n        #text \"x\"\n      p\n        b\n          #text \"y\"\n      a\n      em\n      #text \"t\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \" \"\n      p\n        #text \"x\"\n      p\n        b\n          #text \"y\"\n      a\n      td\n      em\n      #text \"t\"\n",
         scope: "",
         op: "prune_html",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \" \"\n      p\n        #text \"x\"\n      p\n        b\n          #text \"y\"\n      a\n      #text \"t\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      p\n        #text \" \"\n      p\n        #text \"x\"\n      p\n        b\n          #text \"y\"\n      a\n      td\n      #text \"t\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p> </p><p>x</p><p><b>y</b></p><a></a>t</div></body></html>",
@@ -3032,19 +3032,19 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table><tr><td><p><ref>aaaaaaaaaaaaaaaaaaaa</ref></p></td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            p\n              ref\n                #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          p\n            ref\n              #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
         scope: "",
         op: "delete_by_link_density:p:false:false",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            p\n              ref\n                #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          p\n            ref\n              #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><table><tr><th><p><ref>aaaaaaaaaaaaaaaaaaaa</ref></p></th></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          th\n            p\n              ref\n                #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        th\n          p\n            ref\n              #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
         scope: "",
         op: "delete_by_link_density:p:false:false",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          th\n            p\n              ref\n                #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        th\n          p\n            ref\n              #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><p><ref>aaaaaaaaaaaaaaaaaaaa</ref></p></div></body></html>",
@@ -3072,11 +3072,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table><tr><td><div><ref>aaaaaaaaaaaaaaaaaaaa</ref></div></td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            div\n              ref\n                #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          div\n            ref\n              #text \"aaaaaaaaaaaaaaaaaaaa\"\n",
         scope: "",
         op: "delete_by_link_density:div:false:false",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><item><p><ref>aaaaaaaaaaaaaaaaaaaa</ref></p><p><ref>aaaaaaaaaaaaaaaaaaaa</ref></p></item></body></html>",
@@ -3216,11 +3216,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a<hr class='k'>b</p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    hr class=\"k\"\n    #text \"b\"\n    p\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    hr class=\"k\"\n    #text \"b\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    lb class=\"k\"\n    #text \"b\"\n    p\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a\"\n    lb class=\"k\"\n    #text \"b\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><del class='k' id='i'>text<b>x</b></del>tail</div></body></html>",
@@ -3520,19 +3520,19 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><table><tr><td><a href=\"http://x.org/a\" class=\"k\" title=\"t\">link</a></td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            a class=\"k\" href=\"http://x.org/a\" title=\"t\"\n              #text \"link\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          a class=\"k\" href=\"http://x.org/a\" title=\"t\"\n            #text \"link\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            ref class=\"k\" href=\"http://x.org/a\" title=\"t\"\n              #text \"link\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          ref class=\"k\" href=\"http://x.org/a\" title=\"t\"\n            #text \"link\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><table><tr><td><a href=\"http://x.org/a\" class=\"k\" title=\"t\">link</a></td></tr></table></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            a class=\"k\" href=\"http://x.org/a\" title=\"t\"\n              #text \"link\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          a class=\"k\" href=\"http://x.org/a\" title=\"t\"\n            #text \"link\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tbody\n        tr\n          td\n            #text \"link\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    table\n      tr\n        td\n          #text \"link\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><span><a href=\"http://x.org/a\" class=\"k\" title=\"t\">link</a></span></body></html>",
@@ -3568,11 +3568,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><div><table><tr><td><a href=\"http://x.org/a\" class=\"k\" title=\"t\">link</a></td></tr></table></div></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      table\n        tbody\n          tr\n            td\n              a class=\"k\" href=\"http://x.org/a\" title=\"t\"\n                #text \"link\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      table\n        tr\n          td\n            a class=\"k\" href=\"http://x.org/a\" title=\"t\"\n              #text \"link\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: false, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      table\n        tbody\n          tr\n            td\n              ref class=\"k\" href=\"http://x.org/a\" title=\"t\"\n                #text \"link\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    div\n      table\n        tr\n          td\n            ref class=\"k\" href=\"http://x.org/a\" title=\"t\"\n              #text \"link\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><ul><li><a href=\"http://x.org/a\" class=\"k\" title=\"t\">link</a></li></ul></body></html>",
@@ -4024,11 +4024,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><picture><source srcset='s'><img src='a.png'></picture></a></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n          img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n            img src=\"a.png\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      ref href=\"u\"\n        picture\n          source srcset=\"s\"\n          img src=\"a.png\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      ref href=\"u\"\n        picture\n          source srcset=\"s\"\n            img src=\"a.png\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><img src='a.png'>t</a><a href='v'><img src='b.png'></a><a href='w'>w</a></p></body></html>",
@@ -4088,11 +4088,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><picture><source srcset='s'><img src='a.png'></picture></a></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n          img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n            img src=\"a.png\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: true, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      ref href=\"u\"\n        picture\n          source srcset=\"s\"\n          graphic src=\"a.png\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      ref href=\"u\"\n        picture\n          source srcset=\"s\"\n            graphic src=\"a.png\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><img src='a.png'>t</a><a href='v'><img src='b.png'></a><a href='w'>w</a></p></body></html>",
@@ -4152,11 +4152,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><picture><source srcset='s'><img src='a.png'></picture></a></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n          img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n            img src=\"a.png\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: true, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      ref target=\"u\"\n        picture\n          source srcset=\"s\"\n          img src=\"a.png\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      ref target=\"u\"\n        picture\n          source srcset=\"s\"\n            img src=\"a.png\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><img src='a.png'>t</a><a href='v'><img src='b.png'></a><a href='w'>w</a></p></body></html>",
@@ -4216,7 +4216,7 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p><a href='u'><picture><source srcset='s'><img src='a.png'></picture></a></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n          img src=\"a.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      a href=\"u\"\n        picture\n          source srcset=\"s\"\n            img src=\"a.png\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: true, links: true, formatting: false, focus: "balanced" },
@@ -4272,11 +4272,11 @@ pub(super) const CASES: &[Case] = &[
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a <svg><a href=\"u\">l</a><strong class=\"schema-faq-question\">q</strong></svg></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        a@svg href=\"u\"\n          #text \"l\"\n      strong class=\"schema-faq-question\"\n        #text \"q\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        a@svg href=\"u\"\n          #text \"l\"\n        strong@svg class=\"schema-faq-question\"\n          #text \"q\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: true, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        a@svg href=\"u\"\n          #text \"l\"\n      head rend=\"h3\"\n        #text \"q\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        ref@svg target=\"u\"\n          #text \"l\"\n        head@svg rend=\"h3\"\n          #text \"q\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a <svg><a href=\"u\">l</a></svg><a href=\"v\">m</a></p></body></html>",
@@ -4284,31 +4284,31 @@ pub(super) const CASES: &[Case] = &[
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        a@svg href=\"u\"\n          #text \"l\"\n      ref href=\"v\"\n        #text \"m\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        ref@svg href=\"u\"\n          #text \"l\"\n      ref href=\"v\"\n        #text \"m\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a <math><mi>x</mi><sub></sub><i>y</i></math></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      math@math\n        mi@math\n          #text \"x\"\n      sub\n      i\n        #text \"y\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      math@math\n        mi@math\n          #text \"x\"\n        sub@math\n        i@math\n          #text \"y\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: false, formatting: true, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      math@math\n        mi@math\n          #text \"x\"\n      hi rend=\"#i\"\n        #text \"y\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      math@math\n        mi@math\n          #text \"x\"\n        hi@math rend=\"#i\"\n          #text \"y\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><p>a <svg><image href=\"a.png\"></image><img src=\"b.png\"></svg></p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        image@svg href=\"a.png\"\n      img src=\"b.png\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        image@svg href=\"a.png\"\n        img@svg src=\"b.png\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: true, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        image@svg href=\"a.png\"\n      graphic src=\"b.png\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    p\n      #text \"a \"\n      svg@svg\n        image@svg href=\"a.png\"\n        graphic@svg src=\"b.png\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><svg><br><h1>x</h1><ul><li>a</li></ul></svg><p>t</p></body></html>",
-        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    svg@svg\n    br\n    h1\n      #text \"x\"\n    ul\n      li\n        #text \"a\"\n    p\n      #text \"t\"\n",
+        dump_in: "html\n  head\n    title\n      #text \"t\"\n  body\n    svg@svg\n      br@svg\n      h1@svg\n        #text \"x\"\n      ul@svg\n        li@svg\n          #text \"a\"\n    p\n      #text \"t\"\n",
         scope: "",
         op: "convert_tags",
         options: CaseOptions { tables: true, images: false, links: false, formatting: false, focus: "balanced" },
-        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    svg@svg\n    lb\n    head rend=\"h1\"\n      #text \"x\"\n    list rend=\"ul\"\n      item\n        #text \"a\"\n    p\n      #text \"t\"\n",
+        dump_out: "html\n  head\n    title\n      #text \"t\"\n  body\n    svg@svg\n      lb@svg\n      head@svg rend=\"h1\"\n        #text \"x\"\n      list@svg rend=\"ul\"\n        item@svg\n          #text \"a\"\n    p\n      #text \"t\"\n",
     },
     Case {
         html: "<html><head><title>t</title></head><body><math><mrow><mi>x</mi></mrow></math><p>t</p></body></html>",

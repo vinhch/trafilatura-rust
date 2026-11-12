@@ -194,11 +194,21 @@ fn push_element_line(out: &mut String, depth: usize, node: &Node, foreign: Optio
     attrs.sort_by(|a, b| str::cmp(&a.0, &b.0));
     for (name, value) in attrs {
         out.push(' ');
-        out.push_str(name);
+        out.push_str(attribute_local_name(name));
         out.push('=');
         push_json_string(out, value);
     }
     out.push('\n');
+}
+
+/// The attribute name `treedump.py` writes: the local part of a Clark name `{ns}local`, empty when no
+/// `}` closes it. A plain name is kept.
+// upstream: tools/parity/parity/treedump.py::_split
+fn attribute_local_name(name: &str) -> &str {
+    match name.strip_prefix('{') {
+        Some(rest) => rest.split_once('}').map_or("", |(_, local)| local),
+        None => name,
+    }
 }
 
 /// One line per node in document order, two spaces of indent per depth.

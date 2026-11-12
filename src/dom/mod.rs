@@ -1,5 +1,5 @@
-//! The document tree: an arena of elements in lxml's text/tail model, filled by an html5ever tree
-//! sink (`parse`) and printed in the form the parity harness compares (`dump`).
+//! The document tree: an arena of elements in lxml's text/tail model, filled by the libxml2 tree builder
+//! (`parse`) and printed in the form the parity harness compares (`dump`).
 //!
 //! Items are `pub` inside this private module; they leave the crate only through the hidden
 //! `__internals` module.
@@ -9,15 +9,14 @@ mod dump;
 mod html_cases;
 mod mutate;
 mod parse;
-mod scan;
 mod serialize;
 mod walk;
 
 use std::sync::{Arc, LazyLock};
 
-pub use html5ever::LocalName;
 pub use parse::{ParseLimits, parse_document, parse_fragment};
 pub use walk::LiveIter;
+pub use web_atoms::LocalName;
 
 #[cfg(any(feature = "__internals", test))]
 pub use dump::{DumpMode, dump, dump_from};
@@ -30,8 +29,6 @@ pub use parse::MAX_DEPTH;
 static VALUELESS: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(""));
 
 /// The shared valueless value (`VALUELESS`).
-// Unread until the tree builder is the parse entry point.
-#[allow(dead_code)]
 pub(crate) fn valueless() -> Arc<str> {
     Arc::clone(&VALUELESS)
 }
@@ -50,9 +47,11 @@ pub struct NodeId(u32);
 pub enum Ns {
     /// HTML elements.
     Html,
-    /// SVG elements.
+    /// SVG elements. No parser builds them now: libxml2 has no foreign content (F-85).
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     Svg,
-    /// MathML elements.
+    /// MathML elements. No parser builds them now: libxml2 has no foreign content (F-85).
+    #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
     MathMl,
 }
 
@@ -148,8 +147,6 @@ impl Tree {
     }
 
     /// Makes `id` the root that `root` returns. The nodes outside it keep their links.
-    // Unread until the fromstring port is the parse entry point.
-    #[allow(dead_code)]
     pub(crate) fn set_root(&mut self, id: NodeId) {
         self.root = id;
     }
@@ -178,7 +175,8 @@ impl Tree {
         &mut self.nodes[id.0 as usize]
     }
 
-    /// Number of elements in the tree, root included; a tree is never empty.
+    /// Elements in the arena, root included. `remove` unlinks an element without freeing it, so a
+    /// removed element still counts; a tree is never empty.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.nodes.len()
@@ -244,19 +242,14 @@ impl Tree {
             Some(existing) => existing.push_str(&text),
             target @ None => {
                 let mut text = text;
-                // The sink grows text piece by piece, up to twice its length, and the raw tree
-                // lives through the whole extraction.
+                // A text run grows piece by piece, up to twice its length, and the raw tree lives
+                // through the whole extraction.
                 if text.capacity() > text.len() {
                     text.shrink_to_fit();
                 }
                 *target = Some(text);
             }
         }
-    }
-
-    /// Makes room for `additional` more elements in the arena.
-    pub fn reserve(&mut self, additional: usize) {
-        self.nodes.reserve(additional);
     }
 
     /// Where character data at the end of `parent`'s content goes.

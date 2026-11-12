@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use html5ever::{LocalName, local_name};
+use web_atoms::{LocalName, local_name};
 
 use super::ParseLimits;
 use super::emitter::{Emitter, Token, tokens};
@@ -318,6 +318,8 @@ fn attributes(
 }
 
 /// What one build did, for the limit tests.
+// Only tests read its fields.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct BuildStats {
     /// Tokens the loop took from the emitter, the abort included.

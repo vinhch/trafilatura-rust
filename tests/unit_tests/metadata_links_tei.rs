@@ -436,13 +436,7 @@ fn test_links_xml_output() {
 #[test]
 fn test_tei() {
     let call = Call::default();
-    // merge double elements
-    // D-2: upstream parses with libxml2, which closes the outer `p` at the second one and keeps the
-    // `p` inside the `span`, so the result is `<p><span>content</span></p>`. html5 pops the open
-    // `p` together with the `span` above it when the inner `p` starts, so the tree never holds that
-    // nesting: the result is `<p>content</p>` without the `span`. The expected string is
-    // upstream's own functions on the html5 tree; `test_tei_strip_double_tags_libxml2_nesting`
-    // asserts the libxml2 nesting.
+    // upstream keeps the inner `p` inside the `span`: the result is `<p><span>content</span></p>`
     // oracle: sanitize(etree.tostring(remove_empty_elements(strip_double_tags(parse_document(S))), encoding="unicode")).replace("\n", "") with S the html of this block
     let (mut tree, root) = lxml_fromstring(
         "<html>
@@ -455,7 +449,7 @@ fn test_tei() {
     );
     assert_eq!(
         strip_double_tags_then_clean(&mut tree, root, &call),
-        "<html><body><p>content</p></body></html>"
+        "<html><body><p><span>content</span></p></body></html>"
     );
 
     let (mut tree, root) = lxml_fromstring(
@@ -507,15 +501,10 @@ fn test_tei() {
     assert!(tree.tostring(root, false, false).contains("text7"));
 
     // nested elements with same tag not merged
-    // D-2: upstream's libxml2 keeps each `p` around its `list`, `table`, `note`, `quote` and
-    // `figure`, so all five `find` calls hit. html5 closes the open `p` at the inner `p` when only
-    // unknown elements (`item`, `note`, `quote`) lie between, and at a `table` or `figure` start
-    // tag: the `cell` and `figure` paths keep their `p` and the other three find none, before and
-    // after the call. `test_tei_strip_double_tags_libxml2_nesting` asserts the nesting upstream
-    // meant.
-    // oracle: [t.find(f".//{tag}/p") is not None for tag in ("item", "cell", "quote", "note", "figure")] on parse_document(S), before and after strip_double_tags(t)
+    // oracle: scripts/oracle.sh: [t.find(f".//{tag}/p") is not None for tag in (item, cell, quote, note,
+    // figure)] is all True before and after strip_double_tags(t) on fromstring(WHITELISTED_NESTING)
     let (mut tree, root) = lxml_fromstring(WHITELISTED_NESTING);
-    let expected = [false, true, false, false, true];
+    let expected = [true, true, true, true, true];
     assert_eq!(whitelisted_parents_with_p(&tree, root), expected);
     strip_double_tags(&mut tree, root, &call).unwrap();
     assert_eq!(whitelisted_parents_with_p(&tree, root), expected);

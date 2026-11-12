@@ -375,8 +375,8 @@ fn test_block_boundaries_not_fused() {
     let cats = extract(
         r#"<html><body><h1>T</h1><p class="entry-categories"><a href="/category/local"><div>Local</div><div>News</div></a></p></body></html>"#,
     );
-    // D-2: html5ever closes `<p>` on a `<div>` start tag, so the a is empty; upstream's libxml2 tree gives "Local News".
-    assert_eq!(cats.categories, Some(Vec::new()));
+    // oracle: scripts/oracle.sh 'bare_extraction(html, with_metadata=True).categories' -> ['Local News']
+    assert_eq!(cats.categories, Some(vec!["Local News".to_string()]));
 
     let lic = extract(
         r#"<html><body><h1>T</h1><footer><a rel="license" href="/legal"><div>Content</div><div>under our terms</div></a></footer></body></html>"#,

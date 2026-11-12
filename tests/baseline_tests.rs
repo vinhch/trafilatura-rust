@@ -6,11 +6,8 @@
 )]
 //! Ports of upstream `tests/baseline_tests.py`, case by case with the upstream names: all 23 tests.
 //!
-//! The upstream tests parse with `lxml.html` (libxml2). Where the html5 tree differs, the test
-//! asserts the value the oracle gives on the html5 tree, with a `deviation: D-2` comment
-//! (`test_html2txt`: the feed and the `svg` text). `html2txt("123")` is not one of them: the load
-//! rejects a fragment lxml returns a childless element for, which is what the plain lxml value
-//! shows. Tests that build a tree from a string (`html.fromstring`) use `trees::lxml_fromstring`.
+//! The upstream tests parse with `lxml.html` (libxml2), and so does the crate: the expected values are the
+//! oracle values on that tree. `trees::lxml_fromstring` builds a tree from a string (`html.fromstring`).
 //! `test_build_body_dedupe_cap` monkeypatches `DEDUPE_SCAN_CAP` upstream; here `build_body` takes
 //! the cap.
 
@@ -700,19 +697,13 @@ fn test_html2txt() {
         "<entry><title>Entry one</title><summary>Summary one</summary></entry>",
         "<entry><title>Entry two</title><summary>Summary two</summary></entry></feed>"
     );
-    // deviation: D-2
-    // oracle: html2txt(feed) under html5_parsers: the html5 tree gives the page a body, where
-    // libxml2 gives none and upstream asserts ""
-    assert_eq!(
-        html2txt_str(feed),
-        "Feed titleEntry one Summary one Entry two Summary two"
-    );
+    // oracle: scripts/oracle.sh 'from trafilatura.baseline import html2txt; print(repr(html2txt(feed)))' -> ''
+    // (libxml2 builds no body for a feed, so the text is empty as upstream's is)
+    assert_eq!(html2txt_str(feed), "");
     // spec-invisible content is not text: template is never rendered, svg text is graphical
     let invisible = "<html><body><svg><title>Icon name</title></svg><template><p>markup</p></template><p>visible</p></body></html>";
-    // deviation: D-2
-    // oracle: html2txt(invisible) under html5_parsers: the html5 svg carries a namespace, so the
-    // cleaning's `svg` name test skips it and upstream asserts "visible"
-    assert_eq!(html2txt_str(invisible), "Icon name visible");
+    // oracle: scripts/oracle.sh 'from trafilatura.baseline import html2txt; print(repr(html2txt(invisible)))' -> 'visible'
+    assert_eq!(html2txt_str(invisible), "visible");
     // regression: a caller-supplied tree can hold control chars lxml rejects on
     // write; html2txt must not raise (it would null the whole extract via the escalation gate).
     // the control char is dropped (as load_html does for string input), joining the two words

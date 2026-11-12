@@ -131,16 +131,16 @@ first outputs that differ, outputs with a `port-bug` hunk first.
 
 ## Metadata check
 
-`metadata_matches_html5_fixture` in `tests/parity/main.rs` runs `bare_extraction` with `with_metadata(true)`
+`metadata_matches_lxml_fixture` in `tests/parity/main.rs` runs `bare_extraction` with `with_metadata(true)`
 and `Call::max_date` set to the index's `max_date`, and no URL. It compares each
-field of `fixture["html5"]["metadata"]` with the same field of the crate's `Document`. Values compare as
+field of `fixture["lxml"]["metadata"]` with the same field of the crate's `Document`. Values compare as
 JSON: strings or `null`, and `categories` and `tags` as arrays, `None` as `[]`.
 
 Each page gets the first class that applies: `upstream-error`, `match` (equal, `null` on both sides
 included), `decompress` (compressed input without the feature, D-4), else per field `known` when
 `METADATA_KNOWN` lists the page and field, or `port-bug`. A `null` on one side only is a whole-page
-`port-bug`. The test fails on any `port-bug` field or page, and on a `METADATA_KNOWN` entry whose field
-matches the fixture or whose page is not in the corpus. Entries of a page that was not compared are not
+`port-bug`. The gate fails on a valid-UTF-8 page with a `port-bug` field or a whole-page `port-bug`, and
+on a `METADATA_KNOWN` entry whose field matches the fixture or whose page is not in the corpus. Entries of a page that was not compared are not
 checked.
 
 `METADATA_KNOWN` holds (page id, field, deviation id); each entry carries its reason in a comment. The
@@ -150,12 +150,14 @@ report is `.temp/parity/metadata-report.md`: the classes, the known differences 
 ## lxml reports
 
 Each of the three corpus tests classifies the one result it computes per page against both fixture
-variants. Only the `html5` classification asserts; the `lxml` one writes `lxml-report.md`,
-`lxml-output-report.md` and `lxml-metadata-report.md` beside the `html5` reports in `.temp/parity/`
-and prints their paths. The `html5` report names do not change.
+variants and asserts on the `lxml` one. The `html5` classification writes `report.md`, `output-report.md`
+and `metadata-report.md` in `.temp/parity/` without asserting, since the crate no longer builds the html5
+tree. The `lxml` one writes `lxml-report.md`, `lxml-output-report.md` and `lxml-metadata-report.md` beside
+them and prints their paths.
 
 - The lxml tree comparison dumps the crate tree with `DumpMode::Exact`; the `html5` one keeps
-  `DumpMode::Normalized`.
+  `DumpMode::Normalized`. `Exact` writes an attribute name as `treedump.py` does: the local part of a
+  Clark name `{ns}local`, so `{count}` is written as an empty name.
 - The lxml classes are `match`, `decompress`, `encoding` (D-3), `port-bug`, `upstream-error`, and
   `known-metadata` for outputs and `known` for metadata. `python-parser`, `html5lib-cell-space` and
   `normalized` are `html5` differences and never apply. The expected lxml output is used as it is, with no
@@ -165,6 +167,10 @@ and prints their paths. The `html5` report names do not change.
   `N` counts valid-UTF-8 pages with a `port-bug` class (the Phase 10b gate), `M` counts every page with
   one (the Phase 10c gate). The output report has one such line per format. `known-metadata`,
   `known`, `upstream-error` and `decompress` pages are reported apart.
+- The gate: zero valid-UTF-8 `port-bug` pages. `LXML_ACCEPTED` (page id, format or `tree`/`metadata`,
+  deviation id) lists the pages whose difference is accepted; a listed page with a `port-bug` is classed
+  `accepted`. More than `LXML_CAP` (10) accepted pages in one format fails, and so does an entry whose page
+  is not `accepted` in that format any more (stale).
 
 ## Test and measurement
 
@@ -308,9 +314,9 @@ writes it byte for byte.
 | `gen_tree_cases.py` | `src/dom/parse/tree_cases.rs` | the tree `lxml.html.document_fromstring` builds with `HTML_PARSER` on the spike snippets and the libxml2 tree-rule cases, with the other elements on the document node (`others`), and the element `lxml.html.fromstring` returns (`fromstring`) and the `div` `fragment_fromstring(create_parent="div")` returns (`fragment`) |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_metadata_cases` takes `json_cases` or `cases` in place of `main`, `gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs`, `lower` for `lower.rs`, `title` for `title.rs` and `alnum` for `alnum.rs`, and `gen_dedup_cases` takes `cases` in place of `main`. The files that hold HTML snippets carry the
-`treedump` of the html5lib tree next to each snippet, and their tests first check that the crate's
-parse dumps the same: a snippet that parses differently is changed, never the expectation.
+`gen_metadata_cases` takes `json_cases` or `cases` in place of `main`, `gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs`, `lower` for `lower.rs`, `title` for `title.rs` and `alnum` for `alnum.rs`, and `gen_dedup_cases` takes `cases` in place of `main`. The files that hold HTML snippets carry the `treedump` of the libxml2 tree (`lxml.html.fromstring` with
+`HTML_PARSER`) next to each snippet, and their tests first check that the crate's parse dumps the same: a
+snippet whose crate tree differs from lxml's is a port bug to fix in the builder, never a changed expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` (normalized
 mode) of the result with the dump upstream wrote. A case there may state that its operation must change
 the tree, and the generator fails when it does not.

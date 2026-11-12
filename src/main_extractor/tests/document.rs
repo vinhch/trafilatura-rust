@@ -156,12 +156,11 @@ fn frame_with_foreign_element_is_not_single_run() {
         "<body><p>Lead text <hi rend=\"#b\">bold</hi> text <hi rend=\"#i\">it</hi> more</p></body>"
     );
     let foreign = "<html><body><div class=\"post\">Lead text <b>bold</b> text <svg><title>t</title></svg> <i>it</i> more</div></body></html>";
+    // oracle: scripts/oracle.sh, _extract(tree_cleaned, Extractor(min size 0, formatting)) on the foreign page:
+    // the svg is an unknown element on the libxml2 tree, so the paragraph is one run with a double space
     assert_eq!(
         body_of(foreign, &tight).0,
-        concat!(
-            "<body><p>Lead text</p><p><hi rend=\"#b\">bold</hi>text</p>",
-            "<p><hi rend=\"#i\">it</hi>more</p></body>"
-        )
+        "<body><p>Lead text <hi rend=\"#b\">bold</hi> text  <hi rend=\"#i\">it</hi> more</p></body>"
     );
     // oracle: the first form, `tags == {"lb"}`, with a long outside paragraph so `div` is not
     // added: a frame of line breaks is one run (nothing handles it), with an svg it is not
@@ -181,7 +180,7 @@ fn frame_with_foreign_element_is_not_single_run() {
             &options
         )
         .0,
-        "<body><p>text two</p></body>"
+        "<body/>"
     );
 }
 
@@ -517,17 +516,17 @@ fn define_newelem_rejects_colon_tag() {
 }
 
 #[test]
-fn define_newelem_keeps_svg_child() {
-    // oracle: the same call on these pages returns the text below; the namespaced `title` passes
-    //   lxml's check on its local name
-    let want = format!("{LEAD}\n- a t b\n- c\n{TRAIL}");
+fn define_newelem_drops_svg_title_text() {
+    // oracle: scripts/oracle.sh, extract(page, output_format="txt", fast=True, zero min size): the svg
+    // title is an unknown element on the libxml2 tree, so its text goes and the rest of the item stays
+    let want = format!("{LEAD}\n- a b\n- c\n{TRAIL}");
     assert_eq!(
         extract_txt(&article_page(&format!(
             "<ul><li>a {SVG_TITLE} b</li><li>c</li></ul>"
         ))),
         Ok(want)
     );
-    let want = format!("{LEAD}\na t b\n{TRAIL}");
+    let want = format!("{LEAD}\na  b\n{TRAIL}");
     assert_eq!(
         extract_txt(&article_page(&format!(
             "<blockquote>a {SVG_TITLE} b</blockquote>"

@@ -132,6 +132,65 @@ const OUTPUT_FORMATS: [(&str, Format); 6] = [
 /// today.
 const NORMALIZED_REJECTS: &[(&str, &str)] = &[];
 
+/// Pages whose difference from lxml in one format is accepted: (page id, format or `tree`/`metadata`,
+/// deviation id). The page keeps its `port-bug` hunks in the report and is classed `accepted`. None
+/// today: every valid-UTF-8 page matches lxml in every format.
+const LXML_ACCEPTED: &[(&str, &str, &str)] = &[];
+
+/// Most accepted pages one format may carry: 1% of the valid-UTF-8 pages (stop rule a).
+const LXML_CAP: usize = 10;
+
+/// Relabels the `port-bug` class of page `id` in `format` as `accepted` when `accepted` lists the page
+/// for that format. A listed page with no `port-bug` keeps its classes, so `accepted_failures` sees it
+/// as stale.
+fn accept(accepted: &[(&str, &str, &str)], format: &str, id: &str, classes: &mut [&'static str]) {
+    if accepted
+        .iter()
+        .any(|(page, listed, _)| *page == id && *listed == format)
+    {
+        for class in classes.iter_mut().filter(|class| **class == "port-bug") {
+            *class = "accepted";
+        }
+    }
+}
+
+/// The failures of the `accepted` list for `format`: more entries than `cap`, and an entry whose page
+/// is not in `accepted_ids` (classed `accepted` after `accept`), so it no longer differs in `format`.
+fn accepted_failures(
+    accepted: &[(&str, &str, &str)],
+    format: &str,
+    accepted_ids: &[&str],
+    cap: usize,
+) -> Vec<String> {
+    let entries: Vec<&str> = accepted
+        .iter()
+        .filter(|(_, listed, _)| *listed == format)
+        .map(|(id, _, _)| *id)
+        .collect();
+    let mut failures = Vec::new();
+    if entries.len() > cap {
+        failures.push(format!(
+            "{format}: {} accepted pages, the cap is {cap}",
+            entries.len()
+        ));
+    }
+    failures.extend(
+        entries
+            .iter()
+            .filter(|id| !accepted_ids.contains(*id))
+            .map(|id| format!("{format}: stale accepted entry {id}")),
+    );
+    failures
+}
+
+/// The ids of the pages classed `accepted`.
+fn accepted_ids<'a>(pages: impl Iterator<Item = (&'a str, &'a [&'static str])>) -> Vec<&'a str> {
+    pages
+        .filter(|(_, classes)| classes.contains(&"accepted"))
+        .map(|(id, _)| id)
+        .collect()
+}
+
 const DIFF_PAGES: usize = 20;
 const DIFF_LINES: usize = 10;
 
@@ -176,8 +235,9 @@ fn load_corpus() -> Option<(PathBuf, PathBuf, Value)> {
     }
 }
 
+/// Every tree against lxml's `fromstring`. The html5 report is written for reference and not asserted.
 #[test]
-fn tree_dump_matches_html5_fixture() {
+fn tree_dump_matches_lxml_fixture() {
     let Some((fixtures, upstream, index)) = load_corpus() else {
         return;
     };
@@ -192,78 +252,118 @@ fn tree_dump_matches_html5_fixture() {
     }
     let path = write_report(&pages, parser_count, Variant::Html5);
     let lxml_path = write_report(&lxml_pages, parser_count, Variant::Lxml);
+    eprintln!("parity: report at {}", path.display());
     eprintln!("parity: lxml report at {}", lxml_path.display());
-    let port_bugs: Vec<&str> = pages
+    for page in &mut lxml_pages {
+        accept(LXML_ACCEPTED, "tree", &page.id, &mut page.classes);
+    }
+    let accepted = accepted_ids(
+        lxml_pages
+            .iter()
+            .map(|p| (p.id.as_str(), p.classes.as_slice())),
+    );
+    let failures = accepted_failures(LXML_ACCEPTED, "tree", &accepted, LXML_CAP);
+    let port_bugs: Vec<&str> = lxml_pages
         .iter()
-        .filter(|p| p.classes.contains(&"port-bug"))
+        .filter(|p| p.valid_utf8 && p.classes.contains(&"port-bug"))
         .map(|p| p.id.as_str())
         .collect();
-    eprintln!("parity: report at {}", path.display());
     assert!(
-        port_bugs.is_empty(),
-        "{} port-bug pages (see {}): {port_bugs:?}",
+        port_bugs.is_empty() && failures.is_empty(),
+        "{} valid-UTF-8 port-bug pages (see {}): {port_bugs:?}; {failures:?}",
         port_bugs.len(),
-        path.display()
+        lxml_path.display()
     );
 }
 
 #[test]
-fn outputs_match_html5_fixture() {
+fn outputs_match_lxml_fixture() {
     let Some((fixtures, upstream, index)) = load_corpus() else {
         return;
     };
     let entries = index["pages"].as_array().unwrap();
     let max_date = index["max_date"].as_str().unwrap();
-    let (results, lxml_results): (Vec<OutputResult>, Vec<OutputResult>) = entries
+    let (results, mut lxml_results): (Vec<OutputResult>, Vec<OutputResult>) = entries
         .iter()
         .flat_map(|entry| run_output_page(&upstream, &fixtures, entry, max_date))
         .unzip();
     let path = write_output_report(&results, entries.len(), Variant::Html5);
     let lxml_path = write_output_report(&lxml_results, entries.len(), Variant::Lxml);
+    eprintln!("parity: output report at {}", path.display());
     eprintln!("parity: lxml output report at {}", lxml_path.display());
-    let port_bugs: Vec<String> = results
+    for result in &mut lxml_results {
+        accept(
+            LXML_ACCEPTED,
+            result.format,
+            &result.id,
+            &mut result.classes,
+        );
+    }
+    let port_bugs: Vec<String> = lxml_results
         .iter()
-        .filter(|r| r.classes.contains(&"port-bug"))
+        .filter(|r| r.valid_utf8 && r.classes.contains(&"port-bug"))
         .map(|r| format!("{} {}", r.id, r.format))
         .collect();
-    eprintln!("parity: output report at {}", path.display());
+    let mut failures = Vec::new();
+    for (format, _) in OUTPUT_FORMATS {
+        let accepted = accepted_ids(
+            lxml_results
+                .iter()
+                .filter(|r| r.format == format)
+                .map(|r| (r.id.as_str(), r.classes.as_slice())),
+        );
+        failures.extend(accepted_failures(
+            LXML_ACCEPTED,
+            format,
+            &accepted,
+            LXML_CAP,
+        ));
+    }
     assert!(
-        port_bugs.is_empty(),
-        "{} port-bug outputs (see {}): {port_bugs:?}",
+        port_bugs.is_empty() && failures.is_empty(),
+        "{} valid-UTF-8 port-bug outputs (see {}): {port_bugs:?}; {failures:?}",
         port_bugs.len(),
-        path.display()
+        lxml_path.display()
     );
 }
 
 #[test]
-fn metadata_matches_html5_fixture() {
+fn metadata_matches_lxml_fixture() {
     let Some((fixtures, upstream, index)) = load_corpus() else {
         return;
     };
     let max_date = index["max_date"].as_str().unwrap();
-    let (pages, lxml_pages): (Vec<MetaPage>, Vec<MetaPage>) = index["pages"]
+    let (pages, mut lxml_pages): (Vec<MetaPage>, Vec<MetaPage>) = index["pages"]
         .as_array()
         .unwrap()
         .iter()
         .map(|entry| run_metadata_page(&upstream, &fixtures, entry, max_date))
         .unzip();
-    let stale = stale_known(&pages, METADATA_KNOWN);
-    let path = write_metadata_report(&pages, &stale, Variant::Html5);
+    let path = write_metadata_report(&pages, &stale_known(&pages, METADATA_KNOWN), Variant::Html5);
     let lxml_stale = stale_known(&lxml_pages, METADATA_KNOWN);
     let lxml_path = write_metadata_report(&lxml_pages, &lxml_stale, Variant::Lxml);
+    eprintln!("parity: metadata report at {}", path.display());
     eprintln!("parity: lxml metadata report at {}", lxml_path.display());
-    let port_bugs: Vec<&str> = pages
+    for page in &mut lxml_pages {
+        accept(LXML_ACCEPTED, "metadata", &page.id, &mut page.classes);
+    }
+    let accepted = accepted_ids(
+        lxml_pages
+            .iter()
+            .map(|p| (p.id.as_str(), p.classes.as_slice())),
+    );
+    let failures = accepted_failures(LXML_ACCEPTED, "metadata", &accepted, LXML_CAP);
+    let port_bugs: Vec<&str> = lxml_pages
         .iter()
-        .filter(|p| p.classes.contains(&"port-bug"))
+        .filter(|p| p.valid_utf8 && p.classes.contains(&"port-bug"))
         .map(|p| p.id.as_str())
         .collect();
-    eprintln!("parity: metadata report at {}", path.display());
     assert!(
-        port_bugs.is_empty() && stale.is_empty(),
-        "{} port-bug pages, {} stale entries (see {}): {port_bugs:?} {stale:?}",
+        port_bugs.is_empty() && lxml_stale.is_empty() && failures.is_empty(),
+        "{} valid-UTF-8 port-bug pages, {} stale entries (see {}): {port_bugs:?} {lxml_stale:?} {failures:?}",
         port_bugs.len(),
-        stale.len(),
-        path.display()
+        lxml_stale.len(),
+        lxml_path.display()
     );
 }
 

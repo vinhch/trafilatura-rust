@@ -96,6 +96,7 @@ fn strip_elements_takes_tail() {
     tree.strip_elements(root, &["s"], true);
     assert_eq!(xml(&tree, root), "<div>a<p>b</p></div>");
     let mut tree = fragment(html);
+    let root = tree.root();
     tree.strip_elements(root, &["s"], false);
     assert_eq!(xml(&tree, root), "<div>at1<p>bt2</p>t3</div>");
 
@@ -103,9 +104,11 @@ fn strip_elements_takes_tail() {
     //   with_tail=True -> b"<div><p/></div>"; with_tail=False -> b"<div>t1<p/></div>"
     let html = "<s>1</s>t1<p></p>";
     let mut tree = fragment(html);
+    let root = tree.root();
     tree.strip_elements(root, &["s"], true);
     assert_eq!(xml(&tree, root), "<div><p/></div>");
     let mut tree = fragment(html);
+    let root = tree.root();
     tree.strip_elements(root, &["s"], false);
     assert_eq!(xml(&tree, root), "<div>t1<p/></div>");
 }
@@ -130,14 +133,12 @@ fn strip_elements_drops_nested_matches_with_their_parent() {
 }
 
 #[test]
-fn strip_tags_where_strips_foreign() {
+fn strip_tags_where_strips_svg_elements() {
     // oracle: p = etree.fromstring("<p>a<svg><title>t</title></svg>b</p>")
     //   etree.strip_tags(p, "svg", "title") -> p.text == "atb", len(p) == 0
     let mut tree = fragment("<p>a<svg><title>t</title></svg>b</p>");
     let p = tree.first_child(tree.root()).unwrap();
     assert_eq!(tree.iter(p, &[]).count(), 3);
-    assert_eq!(tree.node(find(&tree, "svg")).ns, Ns::Svg);
-    assert_eq!(tree.node(find(&tree, "title")).ns, Ns::Svg);
     tree.strip_tags_where(p, |tree, node| tree.tag(node) != Some("p"));
     assert_eq!(xml(&tree, p), "<p>atb</p>");
 }

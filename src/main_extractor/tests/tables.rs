@@ -278,7 +278,7 @@ fn table_cell_foreign_element() {
     // oracle: p = parse_document('<html><body><table><tr><td>a <svg><title>t</title></svg> b</td>
     // </tr></table></body></html>') after tree_cleaning and convert_tags;
     // r = handle_table(p.find('.//table'), TAG_CATALOG, Extractor()); dump_tree(r) and dump_tree(p).
-    // The foreign elements and their tail are dropped, as handle_textelem finds no handler for them
+    // The svg title is an unknown element here: its text goes and its tail stays
     let (mut tree, table) = converted(
         "<html><body><table><tr><td>a <svg><title>t</title></svg> b</td></tr></table></body></html>",
         "table",
@@ -288,13 +288,14 @@ fn table_cell_foreign_element() {
     let processed = handle_table(&mut tree, table, TAG_CATALOG, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
+    // oracle: upstream handle_table on the converted tree gives these dumps
     assert_eq!(
         dump_from(&tree, processed, DumpMode::Exact).0,
-        "table\n  row\n    cell\n      #text \"a \"\n"
+        "table\n  row\n    cell\n      #text \"a b\"\n"
     );
     assert_eq!(
         dump(&tree, DumpMode::Exact).0,
-        "html\n  body\n    table\n      done\n        done\n          #text \"a \"\n          done\n            done\n              #text \"t\"\n          #text \" b\"\n"
+        "html\n  body\n    table\n      done\n        done\n          #text \"a b\"\n"
     );
 }
 

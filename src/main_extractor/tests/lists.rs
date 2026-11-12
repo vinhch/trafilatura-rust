@@ -77,13 +77,14 @@ fn list_item_foreign_title_kept_with_namespace() {
     let processed = handle_lists(&mut tree, list, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
+    // oracle: scripts/oracle.sh: convert the page as the helper does, then handle_lists(list, Extractor())
     assert_eq!(
         dump_from(&tree, processed, DumpMode::Exact).0,
-        "list rend=\"ul\"\n  item\n    #text \"a \"\n    title@svg\n      #text \"t\"\n    #text \"b\"\n"
+        "list rend=\"ul\"\n  item\n    #text \"a b\"\n"
     );
     assert_eq!(
         dump(&tree, DumpMode::Exact).0,
-        "html\n  body\n    done rend=\"ul\"\n      done\n        #text \"a \"\n        done\n          done\n            #text \"t\"\n          #text \"b\"\n"
+        "html\n  body\n    done rend=\"ul\"\n      done\n        #text \"a b\"\n"
     );
 }
 
@@ -100,13 +101,14 @@ fn quote_foreign_title_kept_with_namespace() {
     let processed = handle_quotes(&mut tree, quote, &ctx_for(&options, &call))
         .unwrap()
         .unwrap();
+    // oracle: the upstream dumps for the same call are below
     assert_eq!(
         dump_from(&tree, processed, DumpMode::Exact).0,
-        "quote\n  #text \"a \"\n  title@svg\n    #text \"t\"\n  #text \"b\"\n"
+        "quote\n  #text \"a  b\"\n"
     );
     assert_eq!(
         dump(&tree, DumpMode::Exact).0,
-        "html\n  body\n    quote\n      #text \"a \"\n      done\n        done\n          #text \"t\"\n        #text \"b\"\n"
+        "html\n  body\n    quote\n      #text \"a  b\"\n"
     );
 }
 

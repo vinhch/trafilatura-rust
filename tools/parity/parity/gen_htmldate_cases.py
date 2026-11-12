@@ -299,10 +299,10 @@ def datetime_cases() -> None:
     sys.stdout.write("\n".join(out))
 
 
-# `Tree::tostring_html` (src/dom/html_cases.rs): whole pages, parsed by html5tree; each row covers one rule of
+# `Tree::tostring_html` (src/dom/html_cases.rs): whole pages, parsed by lxml.html.fromstring; each row covers one rule of
 # libxml2's HTMLtree.c (the version the header of html_cases.rs names) as lxml.html.tostring runs it.
-# `isindex` has no page row: html5lib expands it into a search form, which the crate's parser (html5ever)
-# does not, so its void rule is an element row.
+# `isindex` has no page row: html5lib expands it into a search form, which libxml2 does not,
+# so its void rule is an element row.
 VOID_NAMES = "area base basefont br col frame hr img input link meta param".split()
 NON_VOID_NAMES = "embed wbr source track".split()
 BOOLEAN_NAMES = "checked compact declare defer disabled ismap multiple nohref noresize noshade nowrap readonly selected".split()
@@ -317,6 +317,7 @@ TOSTRING_PAGES = [
     "<p></p><span></span><div></div>",
     "<p>a &amp; b &lt; c &gt; d \" '   é &#13; e</p>",
     "<div><p>x</p>a &amp; &lt; &gt; \" ' tail</div>",
+    '<div><p data-x title>a</p><input disabled data-x></div>',
     "<script>if (a < b && c) x('&amp;');</script>",
     '<style>p > a { content: "<" } & </style>',
     '<textarea>a &amp; <b> "x"</textarea>',
@@ -411,13 +412,12 @@ TOSTRING_TAIL_PAGES = [
 def serialize_cases() -> None:
     from lxml import etree
     from lxml import html as lxml_html
-    from parity import html5tree
+    from trafilatura.utils import HTML_PARSER
 
     oracle_setup()
     lines = []
     for page in TOSTRING_PAGES:
-        tree = html5tree.parse_document(page)
-        assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {page[:80]!r}"
+        tree = lxml_html.fromstring(page, parser=HTML_PARSER)
         expected = lxml_html.tostring(tree, encoding="unicode")
         lines.append(f"    ({rust_str(page)}, {rust_str(expected)}),")
     element_lines = []
@@ -430,8 +430,7 @@ def serialize_cases() -> None:
         element_lines.append(f"    ({rust_str(name)}, {text_literal}, {rust_str(expected)}),")
     tail_lines = []
     for page in TOSTRING_TAIL_PAGES:
-        tree = html5tree.parse_document(page)
-        assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {page[:80]!r}"
+        tree = lxml_html.fromstring(page, parser=HTML_PARSER)
         p = tree.find(".//p")
         assert p is not None, f"no <p> in {page!r}"
         with_tail = lxml_html.tostring(p, encoding="unicode", with_tail=True)
@@ -895,9 +894,6 @@ W3_RUN_PAGE = "w3.org/2020/ " * 20000 + " 2021 "
 
 
 def search_cases() -> None:
-    from parity import html5tree
-    from parity.generate import html5_parsers
-
     oracle_setup()
     from htmldate.core import examine_text, search_page
     from htmldate.utils import Extractor
@@ -907,29 +903,22 @@ def search_cases() -> None:
             extensive=False, max=max_date, min=VALIDATOR_EARLIEST, original=original, format=VALIDATOR_FORMAT
         )
 
-    needs_copy_rule = []
-
     def checked(html: str, max_date: datetime, original: bool) -> str | None:
-        html5tree.parse_document(html)
-        if html5tree.last_parse_normalized():
-            needs_copy_rule.append(html)
         return search_page(html, options(max_date, original))
 
-    with html5_parsers():
-        page_lines = []
-        for html, original in SEARCH_PAGE_INPUTS:
-            result = checked(html, VALIDATOR_LATEST, original)
-            page_lines.append(f"    ({rust_str(html)}, {str(original).lower()}, {rust_option_str(result)}),")
-        late_lines = []
-        for html, original in SEARCH_PAGE_MAX_2045_INPUTS:
-            result = checked(html, datetime(2045, 12, 31), original)
-            late_lines.append(f"    ({rust_str(html)}, {str(original).lower()}, {rust_option_str(result)}),")
-        examine_lines = []
-        for text in EXAMINE_TEXT_INPUTS:
-            result = examine_text(text, options())
-            examine_lines.append(f"    ({rust_str(text)}, {rust_option_str(result)}),")
-        w3_result = checked(W3_RUN_PAGE, VALIDATOR_LATEST, False)
-    assert not needs_copy_rule, f"snippets need the copy rule: {[h[:60] for h in needs_copy_rule]!r}"
+    page_lines = []
+    for html, original in SEARCH_PAGE_INPUTS:
+        result = checked(html, VALIDATOR_LATEST, original)
+        page_lines.append(f"    ({rust_str(html)}, {str(original).lower()}, {rust_option_str(result)}),")
+    late_lines = []
+    for html, original in SEARCH_PAGE_MAX_2045_INPUTS:
+        result = checked(html, datetime(2045, 12, 31), original)
+        late_lines.append(f"    ({rust_str(html)}, {str(original).lower()}, {rust_option_str(result)}),")
+    examine_lines = []
+    for text in EXAMINE_TEXT_INPUTS:
+        result = examine_text(text, options())
+        examine_lines.append(f"    ({rust_str(text)}, {rust_option_str(result)}),")
+    w3_result = checked(W3_RUN_PAGE, VALIDATOR_LATEST, False)
     out = [
         f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}, {library_versions()}.",
         "// Do not edit. Regenerate from the repository root with:",
@@ -1117,21 +1106,19 @@ def examine_result(result) -> str:
 
 def examine_cases() -> None:
     oracle_setup()
-    from parity import html5tree
-    from parity.generate import html5_parsers
+    from lxml.html import fromstring
+    from trafilatura.utils import HTML_PARSER
 
     lines = []
-    with html5_parsers():
-        for html, function in EXAMINE_INPUTS:
-            for original, extensive in examine_variants(function):
-                tree = html5tree.parse_document(html)
-                assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {html[:60]!r}"
-                result = run_examine(tree, function, original, extensive)
-                lines.append(
-                    f"    ExamineCase {{ html: {rust_str(html)}, function: {rust_str(function)}, "
-                    f"original: {str(original).lower()}, extensive: {str(extensive).lower()}, "
-                    f"result: {examine_result(result)} }},"
-                )
+    for html, function in EXAMINE_INPUTS:
+        for original, extensive in examine_variants(function):
+            tree = fromstring(html, parser=HTML_PARSER)
+            result = run_examine(tree, function, original, extensive)
+            lines.append(
+                f"    ExamineCase {{ html: {rust_str(html)}, function: {rust_str(function)}, "
+                f"original: {str(original).lower()}, extensive: {str(extensive).lower()}, "
+                f"result: {examine_result(result)} }},"
+            )
     print(f"examine cases: {len(lines)}", file=sys.stderr)
     out = [
         f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}, {library_versions()}.",
@@ -1232,25 +1219,22 @@ FIND_DATE_MAX = "2024-01-31"
 
 
 def find_date_cases() -> None:
-    from parity import html5tree
-    from parity.generate import html5_parsers
-
     oracle_setup()
     from htmldate.core import find_date
+    from lxml.html import fromstring
+    from trafilatura.utils import HTML_PARSER
 
     lines = []
-    with html5_parsers():
-        for html, url in FIND_DATE_PAGES:
-            for original, extensive in itertools.product((False, True), repeat=2):
-                tree = html5tree.parse_document(html)
-                assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {html[:60]!r}"
-                result = find_date(
-                    tree, original_date=original, extensive_search=extensive, max_date=FIND_DATE_MAX, url=url
-                )
-                lines.append(
-                    f"    ({rust_str(html)}, {rust_option_str(url)}, {str(original).lower()}, "
-                    f"{str(extensive).lower()}, {rust_option_str(result)}),"
-                )
+    for html, url in FIND_DATE_PAGES:
+        for original, extensive in itertools.product((False, True), repeat=2):
+            tree = fromstring(html, parser=HTML_PARSER)
+            result = find_date(
+                tree, original_date=original, extensive_search=extensive, max_date=FIND_DATE_MAX, url=url
+            )
+            lines.append(
+                f"    ({rust_str(html)}, {rust_option_str(url)}, {str(original).lower()}, "
+                f"{str(extensive).lower()}, {rust_option_str(result)}),"
+            )
     print(f"find_date cases: {len(lines)}", file=sys.stderr)
     out = [
         f"// @generated by tools/parity/parity/gen_htmldate_cases.py with Python {version()}, {library_versions()}.",

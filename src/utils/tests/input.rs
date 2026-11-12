@@ -51,7 +51,6 @@ fn patterns_compile() {
     assert!(DOCTYPE_TAG.is_some());
     assert!(FAULTY_HTML.is_some());
     assert!(INVALID_XML_CHARS.is_some());
-    assert!(LOOKS_LIKE_FULL_HTML.is_some());
 }
 
 #[test]
@@ -153,7 +152,8 @@ fn load_html_counts_ins_del_noscript_as_inline() {
             "{html}"
         );
     }
-    assert!(load("t <div>a</div>").is_ok());
+    // oracle: upstream load_html("t <div>a</div>") is None: the root div holds one child element
+    assert!(load("t <div>a</div>").is_err());
 }
 
 #[test]
@@ -246,9 +246,11 @@ fn load_html_full_document_ignores_synthetic_head() {
 }
 
 #[test]
-fn load_html_leading_text_counts_implicit_paragraph() {
-    assert!(load("text <p>a</p>").is_ok());
-    assert!(load("x<div><p>a</p><p>b</p></div>").is_ok());
+fn load_html_leading_text_does_not_count_as_a_child() {
+    // oracle: upstream load_html("text <p>a</p>") and load_html("x<div><p>a</p><p>b</p></div>") are None:
+    // the root holds one child element, so the leading text adds no child
+    assert!(load("text <p>a</p>").is_err());
+    assert!(load("x<div><p>a</p><p>b</p></div>").is_err());
     assert!(load("hello <b>x</b> <i>y</i>").is_ok());
     assert!(load("hello <b>x</b>").is_err());
     assert!(load("just text").is_err());

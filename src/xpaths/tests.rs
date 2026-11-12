@@ -50,7 +50,7 @@ fn attr_missing_is_empty() {
 #[test]
 fn first_attr_takes_source_order() {
     let first = |html: &str, names: &[&str]| {
-        let tree = parse(html);
+        let tree = parse(&format!("<html><body>{html}</body></html>"));
         let div = tree.find(tree.root(), "div").unwrap();
         first_attr(&tree, div, names).to_string()
     };
@@ -88,13 +88,14 @@ fn author_rel_me_is_the_whole_string_value_of_a_rel_child() {
 }
 
 #[test]
-fn is_html_rejects_svg() {
+fn is_html_takes_svg_as_html() {
+    // libxml2 has no foreign content: the svg element is an HTML element named `svg`
     let tree = parse("<svg></svg><p></p>");
     let svg = tree
         .iter(tree.root(), &[])
         .find(|&n| &*tree.node(n).name == "svg")
         .unwrap();
-    assert!(!is_html(&tree, svg, &["svg"]));
+    assert!(is_html(&tree, svg, &["svg"]));
     let p = tree.find(tree.root(), "p").unwrap();
     assert!(is_html(&tree, p, &["p", "div"]));
     assert!(!is_html(&tree, p, &["div"]));
@@ -129,8 +130,9 @@ fn subtree_from_a_nested_context_walks_the_document() {
     let found = subtree(&tree, c, &Call::default(), |_, _| true).unwrap();
     let top = tree.root_of(c);
     let expected: Vec<NodeId> = tree.iter(top, &[]).collect();
-    // html, head, body, #c, two posts, the section, its div and the post after it
-    assert_eq!(found.len(), 9);
+    // html, body, #c, two posts, the section, its div and the post after it
+    // oracle: fromstring(POSTS) is the div #c in an implied html and body: eight elements
+    assert_eq!(found.len(), 8);
     assert_eq!(found, expected);
     assert_eq!(found.first(), Some(&top));
 }

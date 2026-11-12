@@ -25,8 +25,8 @@ pub const MAX_FILE_SIZE: usize = 20_000_000;
 // upstream: settings.cfg::MIN_FILE_SIZE
 pub const MIN_FILE_SIZE: usize = 10;
 
-/// Element count above which parsing fails with `Rejection::TreeTooLarge(TreeLimit::MaxNodes)`,
-/// clones html5ever builds included. Added by this crate, not an upstream constant (deviation D-5).
+/// Element count above which parsing fails with `Rejection::TreeTooLarge(TreeLimit::MaxNodes)`.
+/// Added by this crate, not an upstream constant (deviation D-5).
 pub const DEFAULT_MAX_NODES: usize = 500_000;
 
 /// Raw input length, in bytes, above which loading fails with

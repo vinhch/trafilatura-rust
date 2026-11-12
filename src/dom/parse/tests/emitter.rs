@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use html5ever::LocalName;
 use html5gum::Emitter as _;
+use web_atoms::LocalName;
 
 use crate::dom::parse::MAX_TAG_ATTRIBUTES;
 use crate::dom::parse::ParseLimits;

@@ -47,10 +47,6 @@ pub static INVALID_XML_CHARS: LazyLock<Option<Regex>> =
 pub static HTML_STRIP_TAGS: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile(r"(<!--.*?-->|<[^>]*>)"));
 
-// lxml's `fromstring` keeps the whole document when the input starts like one.
-static LOOKS_LIKE_FULL_HTML: LazyLock<Option<Regex>> =
-    LazyLock::new(|| compile(r"(?i)^\s*<(?:html|!doctype)"));
-
 /// Most members of a concatenated gzip or zstd stream; bgzip output needs about 320 for 20 MB.
 // upstream: utils.py::MAX_MEMBERS
 #[cfg(feature = "decompress")]
@@ -443,105 +439,10 @@ pub fn load_html(
     // One parse of the decoded string covers upstream's string pass and its bytes retry
     // (`fromstring_bytes`): the parser has no encoding declaration to refuse, so both give this tree.
     let tree = parse_document(&html, limits, call)?;
-    let is_full_html = LOOKS_LIKE_FULL_HTML
-        .as_ref()
-        .is_some_and(|full| full.is_match(&html));
-    if check_flag && lxml_len(&tree, is_full_html) < 2 {
+    if check_flag && tree.children(tree.root()).count() < 2 {
         return Err(ExtractError::Rejected(Rejection::EmptyTree));
     }
     Ok(tree)
-}
-
-/// `len(tree)` of the element lxml's `fromstring` returns for this parse.
-///
-/// A full document is returned whole. For a fragment lxml returns the lone element of `body`
-/// when there is no `head`, else the document. html5ever always adds an empty `head` while
-/// libxml2 (`default_doctype=False`) makes one only for head content, so an empty `head` is not
-/// counted. libxml2 also wraps leading body text in an implicit `p` that takes in the inline
-/// elements after it, so text followed by a block element counts as one more child.
-///
-/// Known mismatches that come from the parser (D-2), not fixed here: `<head></head><div><p>x</p></div>`
-/// (libxml2 keeps the explicit empty head and accepts; this rejects) and `<td>a</td><td>b</td>`
-/// (html5ever drops the stray `td`).
-// upstream: lxml/html/__init__.py::fromstring (the part `load_html` observes)
-fn lxml_len(tree: &Tree, is_full_html: bool) -> usize {
-    let root = tree.root();
-    let child_named = |parent, name: &str| {
-        tree.children(parent)
-            .find(|&child| tree.tag(child) == Some(name))
-    };
-    let has_head =
-        child_named(root, "head").is_some_and(|head| tree.children(head).next().is_some());
-    let root_len = || {
-        let empty_head = usize::from(!has_head && child_named(root, "head").is_some());
-        tree.children(root).count().saturating_sub(empty_head)
-    };
-    if is_full_html || has_head {
-        return root_len();
-    }
-    let Some(body) = child_named(root, "body") else {
-        return root_len();
-    };
-    let blank = |text: &Option<String>| text.as_deref().is_none_or(|t| t.trim().is_empty());
-    let mut children = tree.children(body);
-    match (children.next(), children.next()) {
-        (Some(only), None) if blank(&tree.node(body).text) && blank(&tree.node(only).tail) => {
-            tree.children(only).count()
-        }
-        (Some(first), _)
-            if !blank(&tree.node(body).text) && tree.tag(first).is_some_and(is_block_tag) =>
-        {
-            tree.children(body).count().saturating_add(1)
-        }
-        _ => tree.children(body).count(),
-    }
-}
-
-/// Whether `name` makes libxml2 end the implied `p` that wraps leading body text: the entries of
-/// `lxml.html.defs.block_tags` except `ins`, `del` and `noscript`, which libxml2 treats as inline
-/// there, so `t <ins>a</ins>` keeps one child.
-// upstream: lxml/html/defs.py::block_tags
-fn is_block_tag(name: &str) -> bool {
-    matches!(
-        name,
-        "address"
-            | "blockquote"
-            | "center"
-            | "div"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "hr"
-            | "isindex"
-            | "p"
-            | "pre"
-            | "dir"
-            | "dl"
-            | "dt"
-            | "dd"
-            | "li"
-            | "menu"
-            | "ol"
-            | "ul"
-            | "table"
-            | "caption"
-            | "colgroup"
-            | "col"
-            | "thead"
-            | "tfoot"
-            | "tbody"
-            | "tr"
-            | "td"
-            | "th"
-            | "fieldset"
-            | "form"
-            | "legend"
-            | "optgroup"
-            | "option"
-    )
 }
 
 mod text;

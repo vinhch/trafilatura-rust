@@ -858,3 +858,30 @@ fn url_base_comes_from_meta_elements_only() {
         Some("https://good.example/p")
     );
 }
+
+#[test]
+fn title_after_closing_html() {
+    // oracle: scripts/oracle.sh 'extract_metadata(load_html(page)).title' gives 'Big Title' (lxml 6.1.3,
+    // libxml2 2.14.6): the h1 after the closing html is still in the body
+    let html =
+        r#"<html><head></head><body><p>x</p></body></html><h1 class="post-title">Big Title</h1>"#;
+    let mut tree = crate::utils::load_html(
+        crate::utils::HtmlInput::Str(html),
+        crate::settings::MAX_FILE_SIZE,
+        &ParseLimits::default(),
+        &Call::default(),
+    )
+    .unwrap();
+    let root = tree.root();
+    let document = extract_metadata(
+        &mut tree,
+        root,
+        None,
+        None,
+        false,
+        &HashSet::new(),
+        &Call::default(),
+    )
+    .unwrap();
+    assert_eq!(document.title.as_deref(), Some("Big Title"));
+}

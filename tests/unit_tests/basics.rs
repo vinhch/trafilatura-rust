@@ -300,9 +300,7 @@ fn test_formatting() {
     let html = r#"<html><body><article><h3>Title</h3><p>Here is a code sample:</p><code><span>import</span> <span>something</span><br/>something.run("somewhere")</code><p>Sometimes code is wrapped using <code>pre</code> and <code>code</code>:</p><pre><code>import trafilatura
 trafilatura.extract("")</code></pre><p>Less often code is wrapped using just <code>pre</code>:</p><pre>
 trafilatura.extract("")</pre></article></body></html>"#;
-    // deviation: D-2, html5 drops the newline right after `<pre>`, which libxml2 keeps and upstream's
-    // fenced last block needs; the last block is inline code here; oracle: extract(<html5
-    // fromstring>(html), include_formatting=True, config=ZERO_CONFIG) with fast=True
+    // oracle: extract(html, include_formatting=True, config=zero min sizes, fast=True), scripts/oracle.sh
     assert_eq!(
         extract_tree(html, &Kw::zero().formatting(true)).unwrap(),
         r#"### Title
@@ -321,7 +319,9 @@ trafilatura.extract("")
 ```
 Less often code is wrapped using just `pre`:
 
-`trafilatura.extract("")`"#
+```
+trafilatura.extract("")
+```"#
     );
     // wild div
     assert_eq!(

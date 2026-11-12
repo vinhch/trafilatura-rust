@@ -830,31 +830,29 @@ def metadata_snippets() -> list[tuple[str, str | None, tuple[str, ...]]]:
 
 
 def run_metadata(html: str, default_url: str | None, blacklist: tuple[str, ...]):
-    from parity import html5tree
+    from lxml.html import fromstring
     from trafilatura.metadata import extract_metadata
+    from trafilatura.utils import HTML_PARSER
 
-    tree = html5tree.parse_document(html)
-    assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {html[:80]!r}"
+    tree = fromstring(html, parser=HTML_PARSER)
     date_config = {"original_date": True, "extensive_search": False, "max_date": MAX_DATE}
     return extract_metadata(tree, default_url, date_config, author_blacklist=set(blacklist))
 
 
 def cases() -> None:
     from parity.gen_htmldate_cases import oracle_setup
-    from parity.generate import html5_parsers
 
     oracle_setup()
 
     lines = []
-    with html5_parsers():
-        for html, default_url, blacklist in metadata_snippets():
-            document = run_metadata(html, default_url, blacklist)
-            strings = ", ".join(f"{name}: {option(getattr(document, name))}" for name in CASE_STRING_FIELDS)
-            blacklisted = ", ".join(rust_str(name) for name in blacklist)
-            lines.append(
-                f"    MetadataCase {{ html: {rust_str(html)}, default_url: {option(default_url)}, author_blacklist: &[{blacklisted}], "
-                f"{strings}, categories: {categories(document.categories)}, tags: {categories(document.tags)} }},"
-            )
+    for html, default_url, blacklist in metadata_snippets():
+        document = run_metadata(html, default_url, blacklist)
+        strings = ", ".join(f"{name}: {option(getattr(document, name))}" for name in CASE_STRING_FIELDS)
+        blacklisted = ", ".join(rust_str(name) for name in blacklist)
+        lines.append(
+            f"    MetadataCase {{ html: {rust_str(html)}, default_url: {option(default_url)}, author_blacklist: &[{blacklisted}], "
+            f"{strings}, categories: {categories(document.categories)}, tags: {categories(document.tags)} }},"
+        )
     print(f"metadata cases: {len(lines)}", file=sys.stderr)
     fields = [f"    pub {name}: Option<&'static str>," for name in CASE_STRING_FIELDS]
     out = [
@@ -863,7 +861,7 @@ def cases() -> None:
         "//   scripts/oracle.sh 'from parity.gen_metadata_cases import cases; cases()' > tests/metadata_cases/cases.rs",
         "// Upstream's `extract_metadata` on pages: the metadata it returns.",
         "",
-        "/// A page parsed by html5lib and the `Document` fields upstream's `extract_metadata` returns for it with the default",
+        "/// A page parsed by lxml's HTML parser and the `Document` fields upstream's `extract_metadata` returns for it with the default",
         "/// URL and the author blacklist; `filedate` is not compared.",
         "pub struct MetadataCase {",
         "    pub html: &'static str,",

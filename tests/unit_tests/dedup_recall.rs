@@ -277,13 +277,11 @@ fn test_prune_boilerplate_table_after_nested() {
     let call = Call::default();
     let ctx = ctx_for(&options, &call);
     let page = boilerplate_page();
-    // D-2: the html5 parser foster-parents `row`, `cell` and `ref` out of the tables, so three
-    // empty tables remain where libxml2 leaves none.
-    // oracle: len(prune_unwanted_sections(h5(page), {"table", "p"}, Extractor(tables=True))
-    //   .findall(".//table")) is 3, and the p is kept
+    // oracle: len(prune_unwanted_sections(fromstring(page), {"table", "p"}, Extractor(tables=True))
+    //   .findall(".//table")) is 0, and the p is kept
     let (mut tree, root) = lxml_fromstring(&page);
     prune_unwanted_sections(&mut tree, root, &["table", "p"], &ctx, false).unwrap();
-    assert_eq!(tree.iter(root, &["table"]).count(), 3);
+    assert_eq!(tree.iter(root, &["table"]).count(), 0);
     assert!(tree.find(root, "p").is_some());
     // oracle: the same call on html.fromstring(page) leaves findall(".//table") == [] and the p
     let mut tree = xml_tree(&page);

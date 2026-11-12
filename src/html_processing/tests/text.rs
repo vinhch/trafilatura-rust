@@ -184,9 +184,10 @@ const COUNT_SOURCES: [&str; 6] = [
     "<p>a<b></b>b</p>",
 ];
 
-/// The parsed `source` and the first element of its body.
+/// The parsed `source` in a body, and the first element of that body.
 fn first_body_element(source: &str) -> (Tree, NodeId) {
-    let tree = parse_document(source, &ParseLimits::default(), &Call::default()).unwrap();
+    let html = format!("<html><body>{source}</body></html>");
+    let tree = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap();
     let body = tree.find(tree.root(), "body").unwrap();
     let first = tree.iterdescendants(body, &[]).next().unwrap();
     (tree, first)

@@ -5,8 +5,8 @@ use std::collections::{HashSet, VecDeque};
 use std::mem;
 use std::sync::Arc;
 
-use html5ever::LocalName;
 use html5gum::{Error, State};
+use web_atoms::LocalName;
 
 use super::tables::{DataMode, element};
 use super::{ATTRIBUTES_PER_NODE, BOM, MAX_TAG_ATTRIBUTES, ParseLimits, is_unread_text_element};

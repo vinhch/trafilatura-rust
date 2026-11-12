@@ -80,9 +80,9 @@ fn cleaning_loop_skips_like_lxml() {
     };
     let root = tree.root();
     tree_cleaning(&mut tree, root, &ctx).unwrap();
-    // oracle: dump_tree(tree_cleaning(parse_document(html), Extractor())): deleting the outer aside
-    // leaves the walk at the detached inner one, so the second aside is never visited
-    let expected = "html\n  body\n    aside\n      #text \"after\"\n    p\n      #text \"x\"\n";
+    // oracle: dump_tree(tree_cleaning(fromstring(html), Extractor())): the body is the root, and the walk
+    // leaves the second aside as the first is deleted, so the inner one is never visited
+    let expected = "div\n  aside\n    #text \"after\"\n  p\n    #text \"x\"\n";
     assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
 }
 
@@ -104,7 +104,7 @@ fn cleaning_deletes_a_root_that_is_the_only_match() {
     let aside = tree.find(document, "aside").unwrap();
     tree_cleaning_with(&mut tree, aside, &ctx, &["aside"], &[]).unwrap();
     // the walk includes its start node, so the only aside is `root` itself and still goes
-    let expected = "html\n  head\n  body\n    p\n      #text \"keep\"\n";
+    let expected = "html\n  body\n    p\n      #text \"keep\"\n";
     assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
 }
 

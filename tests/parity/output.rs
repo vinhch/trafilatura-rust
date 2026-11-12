@@ -238,7 +238,7 @@ pub(crate) struct OutputResult {
     pub(crate) id: String,
     pub(crate) format: &'static str,
     pub(crate) classes: Vec<&'static str>,
-    valid_utf8: bool,
+    pub(crate) valid_utf8: bool,
     hunks: Vec<(Hunk, &'static str)>,
     expected: Option<String>,
     actual: Option<String>,

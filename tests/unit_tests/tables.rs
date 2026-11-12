@@ -188,41 +188,30 @@ fn test_handle_table() {
 
 #[test]
 fn test_handle_table_malformed_html5() {
-    // D-2: the html5 parser repairs these three tables, so the tree is not the one libxml2 builds.
-    // Each has an `xml_tree` twin of the libxml2 shape asserting upstream's value.
-    // oracle: etree.tostring(handle_table(h5(s), TAG_CATALOG, Extractor())) with h5(s) the html5tree
-    // parse of s read the way lxml.html.fromstring reads a fragment; None where that is no table
+    // Malformed tables: libxml2 builds the tree as it is written, and upstream's handle_table reads
+    // that tree. Each expectation is upstream's value on the lxml tree.
+    // oracle: scripts/oracle.sh 'handle_table(fromstring(s, parser=HTML_PARSER), TAG_CATALOG, Extractor())'
     let cases = [
         // a td directly in the table after a tr gets a row of its own
         (
             "<table><tr><td>a</td></tr><td>b</td><tr><td>c</td></tr></table>",
-            Some("<row><cell>a</cell></row><row><cell>b</cell></row><row><cell>c</cell></row>"),
             "<row><cell>a</cell><cell>b</cell></row><row><cell>c</cell></row>",
         ),
-        // a p in a tr is foster-parented out: lxml returns the body, which is no table
+        // a p in a tr stays in the row
         (
             "<table><tr><p>text</p></tr><tr><td>cell</td></tr></table>",
-            None,
             "<row><cell>cell</cell></row>",
         ),
-        // a td in a div in a td closes the outer cell
+        // a td in a div in a td nests inside the outer cell
         (
             "<table><tr><td><div><td>inner</td></div></td></tr></table>",
-            Some("<row><cell/><cell>inner</cell></row>"),
             "<row><cell><cell>inner</cell></cell></row>",
         ),
     ];
-    for (table, html5, upstream) in cases {
+    for (table, upstream) in cases {
         let (mut tree, element) = lxml_fromstring(table);
         assert_eq!(
             handle_table_of(&mut tree, element, false),
-            html5.map(|rows| format!("<table>{rows}</table>")),
-            "{table}"
-        );
-        let mut tree = xml_tree(table);
-        let root = tree.root();
-        assert_eq!(
-            handle_table_of(&mut tree, root, false),
             Some(format!("<table>{upstream}</table>")),
             "{table}"
         );
@@ -368,11 +357,11 @@ fn test_colspan_zero_trust() {
         tree.set(cell, "colspan", colspan);
         assert_eq!(span(&tree, cell, "colspan"), Ok(expected), "{colspan:?}");
     }
-    // D-2: the html5 parser drops a td outside a table, so the parsed node carries no attribute
-    // oracle: _span(h5(f'<td colspan="{colspan}">x</td>'), "colspan") is 1 for "3" and "12"
-    for colspan in ["3", "12"] {
+    // oracle: scripts/oracle.sh over _span(fromstring('<td colspan="N">x</td>', parser=HTML_PARSER), "colspan"):
+    // lxml keeps the td, so the span is its value for "3" and "12"
+    for (colspan, expected) in [("3", 3), ("12", 12)] {
         let (tree, cell) = lxml_fromstring(&format!("<td colspan=\"{colspan}\">x</td>"));
-        assert_eq!(span(&tree, cell, "colspan"), Ok(1), "{colspan:?}");
+        assert_eq!(span(&tree, cell, "colspan"), Ok(expected), "{colspan:?}");
     }
 }
 

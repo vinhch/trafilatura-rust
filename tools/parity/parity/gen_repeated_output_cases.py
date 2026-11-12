@@ -7,8 +7,8 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 Upstream runs that file with the slow default (`fast=False`), and the crate has fast mode only (D-1), so
 its expectation sets do not carry over: a page the slow path keeps whole may repeat words (or come back
 empty) on the fast path. The generator imports the file by path from the checkout at the pin (the tables,
-`_page`, `_number`, `_assert_unique`, the expectation sets), runs every test with `fast=True` inside
-`parity.generate.html5_parsers()` (D-2) and writes the fast-mode outcome:
+`_page`, `_number`, `_assert_unique`, the expectation sets), runs every test with `fast=True` on upstream's own
+parse and writes the fast-mode outcome:
 
     EMPTY                  the keys of `test_no_repeated_words` whose result is `None`
     KNOWN_DUPLICATES       the keys whose result repeats a word, with upstream's reason when upstream lists
@@ -130,13 +130,10 @@ def rust_key(key) -> str:
 
 
 def main() -> None:
-    from parity.generate import html5_parsers
-
     module = load_upstream()
-    with html5_parsers():
-        plain_tests(module)
-        empty, duplicates = product_sets(module)
-        repeated = comment_list_repeated(module)
+    plain_tests(module)
+    empty, duplicates = product_sets(module)
+    repeated = comment_list_repeated(module)
 
     out = [HEADER, "#[rustfmt::skip]", "pub const EMPTY: &[Key] = &["]
     out += [f"    {rust_key(key)}," for key in empty]

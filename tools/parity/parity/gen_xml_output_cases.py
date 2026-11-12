@@ -16,10 +16,9 @@ imported and not copied, plus the `summary` `rend` and `hi` `rend` cases (a `ren
 snippet goes through `tree_cleaning`, `convert_tags` and `extract_comments` / `extract_content`; the outputs
 are those of the content body and, for `comments_then_content`, of the comments body. The Rust test builds
 the bodies with its own pipeline; `gen_main_extractor_cases` already holds the dump check of the parse.
-A foreign element (`svg`, `math`) reaches the HTML output because the html5 tree keeps it. The oracle's html5
-tree names it `{ns}local`, so lxml writes `ns0:title` under an `xmlns:ns0` declaration, where the crate and a
-libxml2 tree write the local name (deviation D-2); the expected HTML is rewritten to local names
-(`rewrite_namespaces`) and the generator prints how many cases it touched.
+A foreign element (`svg`, `math`) reaches the HTML output as an HTML element: libxml2 has no foreign content and
+writes no prefix for it. `rewrite_namespaces` removes lxml's `ns0:` prefixes and `xmlns:ns0` declarations from
+the HTML output, and the generator prints how many cases it touched.
 
 `XmlOutCase`: an `etree.fromstring` snippet, the root being the tree. The snippets are grouped by what they
 cover (one function per group, below). `etree.fromstring` decodes `&#NN;` and normalizes whitespace in
@@ -934,11 +933,11 @@ def run_xml(source: str):
 
 def run_html(item: main_cases.HtmlCase):
     "Outputs of the comments body (None for `extract_content`) and of the content body."
-    from parity import html5tree
+    from lxml.html import fromstring
     from trafilatura import htmlprocessing, main_extractor
+    from trafilatura.utils import HTML_PARSER
 
-    document = html5tree.parse_document(item.html)
-    assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {item.html!r}"
+    document = fromstring(item.html, parser=HTML_PARSER)
     options = main_cases.make_options(item.options)
     tree = htmlprocessing.convert_tags(htmlprocessing.tree_cleaning(document, options), options)
     comments = None

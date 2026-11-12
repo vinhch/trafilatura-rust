@@ -11,7 +11,7 @@ references, as upstream does: non-ASCII text reaches libxml2 as text. The snippe
 processing instruction, which `tests/trees` does not keep.
 
 `DocCase`: a page through `extract` with `fast=True` (D-1), as XML, XML-TEI, JSON without metadata, JSON with
-metadata and CSV with metadata. The page is parsed with html5lib (D-2), and the copy rule must not fire.
+metadata and CSV with metadata. The page is parsed by upstream's own parse (lxml's `HTML_PARSER`).
 
 `BUFFER_SPLIT_KEPT`: a probe of libxml2's parse buffer. A run of blanks between two elements straddles a
 character offset near 4,000, counted in characters and in bytes at the width of the variant's widest character.
@@ -248,15 +248,8 @@ def doc_case(page: Page, extensive: bool) -> DocCase:
 def doc_cases() -> list[DocCase]:
     from trafilatura.settings import DEFAULT_CONFIG
 
-    from parity.generate import html5_parsers
-
     extensive = DEFAULT_CONFIG.getboolean("DEFAULT", "EXTENSIVE_DATE_SEARCH")
-    cases = []
-    for page in doc_pages():
-        normalized: list[bool] = []
-        with html5_parsers(normalized):
-            cases.append(doc_case(page, extensive))
-        assert not any(normalized), f"page {page.name} needs the copy rule"
+    cases = [doc_case(page, extensive) for page in doc_pages()]
     names = [case.name for case in cases]
     assert len(set(names)) == len(names), names
     assert any(UPSTREAM_VERSION_TOKEN in case.xmltei for case in cases), "the pinned version is not in any xmltei value"

@@ -4,7 +4,7 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 
     scripts/oracle.sh 'from parity.gen_xpath_cases import main; main()' > src/xpaths/cases.rs
 
-Each snippet is parsed with `parity.html5tree.parse_document`; every `XPath` of the content, comment,
+Each snippet is parsed with `lxml.html.fromstring(html, parser=HTML_PARSER)`; every `XPath` of the content, comment,
 discard and metadata lists and `BASIC_CLEAN_XPATH` runs on the context element, and the matches are written as
 positions in `root.iter()` order. A snippet carries the `treedump.dump_tree` of its tree, so the Rust
 test can tell a parser difference from a selector difference.
@@ -541,7 +541,7 @@ def snippets() -> list[Snippet]:
         Snippet(page("<cite>a<quote>b</quote></cite><quote>c<cite>d</cite></quote>"), hit=(cd(1),)),
         Snippet(page("<div><blockquote>a</blockquote><cites>b</cites><q>c</q></div>"), miss=(cd(1),)),
         Snippet(page("<svg><cite>a</cite><quote>b</quote></svg><cite>c</cite>"), hit=(cd(1),)),
-        Snippet(page("<svg><cite>a</cite><quote>b</quote></svg>"), miss=(cd(1),)),
+        Snippet(page("<svg><cite>a</cite><quote>b</quote></svg>"), hit=(cd(1),)),
     ]
     out += plain(cd(2), "class", ["comments-title"], hit=True)
     out += plain(cd(2), "style", ["display:none", "x;display:none;y"], hit=True)
@@ -594,7 +594,7 @@ def snippets() -> list[Snippet]:
         Snippet(page("<author>a</author>"), hit=(a0,)),
         Snippet(page("<div><author>a</author></div><p>x</p><author>b</author>"), hit=(a0,)),
         Snippet(page("<authors>a</authors><auth>b</auth><div class='Author'>c</div>"), miss=(a0,)),
-        Snippet(page("<svg><author>a</author></svg>"), miss=(a0,)),
+        Snippet(page("<svg><author>a</author></svg>"), hit=(a0,)),
         # a union is in document order, whichever operand finds the node
         Snippet(page('<author>a<div class="author">b</div><author>c</author></author><p id="author">d</p>'), hit=(a0, a1, a2)),
         Snippet(page('<div class="author"><author>x</author></div><author>y</author>'), hit=(a0, a1, a2)),
@@ -665,7 +665,7 @@ def snippets() -> list[Snippet]:
         Snippet(page("<time><figure>a</figure></time>"), hit=(ad1,)),
         Snippet(page("<div><figure><figure>a</figure></figure></div>"), hit=(ad1,)),
         Snippet(page("<times>a</times><figcaption>b</figcaption><div class='time'>c</div>"), miss=(ad1,)),
-        Snippet(page("<svg><time>a</time><figure>b</figure></svg>"), miss=(ad1,)),
+        Snippet(page("<svg><time>a</time><figure>b</figure></svg>"), hit=(ad1,)),
         Snippet(page("<svg><time>a</time></svg><figure>b</figure>"), hit=(ad1,)),
     ]
 
@@ -688,7 +688,7 @@ def snippets() -> list[Snippet]:
         Snippet(page('<div class="meta"><span href="/c">c</span></div>'), miss=(c0,)),
         Snippet(page('<div class="meta"></div><a href="/c">c</a>'), miss=(c0,)),
         Snippet(page('<a href="/c">c</a><div class="meta">x</div>'), miss=(c0,)),
-        Snippet(page('<div class="meta"><svg><a href="/c">c</a></svg></div>'), miss=(c0,)),
+        Snippet(page('<div class="meta"><svg><a href="/c">c</a></svg></div>'), hit=(c0,)),
         Snippet(page('<div class="meta"><a href="/1">a</a><div class="postmeta"><a href="/2">b</a><a href="/3">c</a></div><a href="/4">d</a></div><a href="/5">e</a>'), hit=(c0,)),
         Snippet(page('<div id="postpath"><div class="x"><a href="/1">a</a></div></div><div class="meta"><a href="/2">b</a></div>'), hit=(c0,)),
         Snippet(page('<div class="meta" id="postpath"><a href="/1">a</a></div>'), hit=(c0,)),
@@ -736,7 +736,7 @@ def snippets() -> list[Snippet]:
         Snippet('<html class="entry-meta"><body><a href="/c">c</a></body></html>', hit=(t3,)),
         Snippet('<html class="topics"><body><p>x</p></body></html>', miss=(t3,)),
         Snippet('<html><body class="tags-links"><a href="/c">c</a></body></html>', hit=(t3,)),
-        Snippet(page('<div class="tags"><svg><a href="/c">c</a></svg></div>'), miss=(t0, t3)),
+        Snippet(page('<div class="tags"><svg><a href="/c">c</a></svg></div>'), hit=(t0,), miss=(t3,)),
         Snippet(page('<div class="tags"><a href="/1">a</a></div><div class="tags"><p><a href="/2">b</a></p><a>c</a></div>'), hit=(c5, t0)),
         Snippet(page('<div class="row"><div class="tags"><a href="/1">a</a></div><a href="/2">b</a></div>'), hit=(c5, t0, t2)),
         Snippet(page('<div class="tags"><a href="/1">a</a></div><a href="/2">b</a>'), hit=(c5, t0, t2), miss=(t1,)),
@@ -788,7 +788,7 @@ def snippets() -> list[Snippet]:
         Snippet(page("<script>var a = 1;</script>"), hit=(clean,)),
         Snippet("<html><head><script>var a;</script><style>p{}</style></head><body><p>x</p></body></html>", hit=(clean,)),
         Snippet(page("<style>p{}</style>"), hit=(clean,)),
-        Snippet(page("<svg><title>t</title></svg>"), miss=(clean,)),
+        Snippet(page("<svg><title>t</title></svg>"), hit=(clean,)),
         Snippet(page("<template></template>"), hit=(clean,)),
         Snippet(page("<div><aside><aside>a</aside></aside></div>"), hit=(clean,)),
         Snippet(page("<asides>a</asides><footers>b</footers><scripts>c</scripts><styles>d</styles>"), miss=(clean,)),
@@ -834,20 +834,20 @@ def snippets() -> list[Snippet]:
         Snippet(page('<a class="cookie-banner"></a>'), hit=(clean,)),
     ]
 
-    # ---- namespaces: a name test sees HTML elements only, `*` sees every element
+    # ---- no foreign content: libxml2 builds svg and math as HTML elements, so a name test sees them too
     out += [
-        Snippet(page('<svg id="s"><title class="x">t</title><style>s</style><a id="a" class="comment">l</a></svg><p>b</p>'), miss=(clean,)),
+        Snippet(page('<svg id="s"><title class="x">t</title><style>s</style><a id="a" class="comment">l</a></svg><p>b</p>'), hit=(clean,)),
         Snippet(page('<svg class="cookiebot"><title>t</title></svg>'), hit=(clean,)),
-        Snippet(page('<svg><aside>a</aside><footer>b</footer><script>c</script><template></template></svg>'), miss=(clean,)),
-        Snippet(page('<svg><a class="main">l</a><section class="post-body">s</section><article>a</article></svg>'), miss=(b(0), b(1), b(2), b(4))),
-        Snippet(page('<svg><header>h</header><div class="x"></div></svg>'), miss=(pd(0),)),
-        Snippet(page('<svg><section class="comments">s</section><details id="comments">d</details></svg>'), miss=(c(1), rc, rcl)),
+        Snippet(page('<svg><aside>a</aside><footer>b</footer><script>c</script><template></template></svg>'), hit=(clean,)),
+        Snippet(page('<svg><a class="main">l</a><section class="post-body">s</section><article>a</article></svg>'), hit=(b(0), b(1)), miss=(b(2), b(4))),
+        Snippet(page('<svg><header>h</header><div class="x"></div></svg>'), hit=(pd(0),)),
+        Snippet(page('<svg><section class="comments">s</section><details id="comments">d</details></svg>'), hit=(c(1), rc, rcl)),
         Snippet(page('<svg><section class="social">s</section><section class="teaser">t</section><section class="caption">c</section></svg>'),
-                miss=(d0, t0, di)),
-        Snippet(page('<svg class="infinitescroll"><aside class="infinitescroll">a</aside></svg>'), miss=(p0,)),
+                hit=(d0, di), miss=(t0,)),
+        Snippet(page('<svg class="infinitescroll"><aside class="infinitescroll">a</aside></svg>'), hit=(p0,)),
         Snippet(page('<math><mi class="message">x</mi></math>'), hit=(d1,)),
-        Snippet(page('<svg><svg class="hide-me"><title>t</title></svg></svg>'), hit=(d1,), miss=(clean,)),
-        Snippet(page('<svg><a>l</a></svg><a>m</a><svg><title>t</title></svg><title>u</title>'), miss=(clean,)),
+        Snippet(page('<svg><svg class="hide-me"><title>t</title></svg></svg>'), hit=(d1, clean)),
+        Snippet(page('<svg><a>l</a></svg><a>m</a><svg><title>t</title></svg><title>u</title>'), hit=(clean,)),
     ]
 
     # ---- the context node
@@ -900,7 +900,10 @@ def rust_str(text: str) -> str:
 
 
 def main() -> None:
-    from parity import html5tree, treedump
+    from lxml.html import fromstring
+
+    from parity import treedump
+    from trafilatura.utils import HTML_PARSER
 
     sels = selectors()
     out = [
@@ -911,7 +914,7 @@ def main() -> None:
         "/// One snippet, the upstream selectors' matches on it.",
         "pub(super) struct Case {",
         "    pub html: &'static str,",
-        "    /// `treedump.dump_tree` of the html5lib tree.",
+        "    /// `treedump.dump_tree` of the lxml tree.",
         "    pub dump: &'static str,",
         "    /// Position in `root.iter()` order of the context node: 0 (the root) or the element carrying",
         "    /// `data-context`.",
@@ -938,8 +941,7 @@ def main() -> None:
             known.miss += snippet.miss
     problems: list[str] = []
     for snippet in unique.values():
-        root = html5tree.parse_document(snippet.html)
-        assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {snippet.html!r}"
+        root = fromstring(snippet.html, parser=HTML_PARSER)
         nodes = list(root.iter())
         position = {node: i for i, node in enumerate(nodes)}
         contexts = [node for node in nodes if "data-context" in node.attrib]

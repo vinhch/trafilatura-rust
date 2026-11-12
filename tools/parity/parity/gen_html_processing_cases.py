@@ -4,7 +4,7 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 
     scripts/oracle.sh 'from parity.gen_html_processing_cases import main; main()' > src/html_processing/cases.rs
 
-Each snippet is parsed with `parity.html5tree.parse_document`; `op` runs on the document root (or on the
+Each snippet is parsed with `lxml.html.fromstring(html, parser=HTML_PARSER)`; `op` runs on the document root (or on the
 first element named `scope`) with the options of the case, and the result is written as a
 `treedump.dump_tree`, next to the dump of the input so the Rust test can tell a parser difference from a
 function difference. The result is the document root, except for `tree_cleaning`, which returns the root to
@@ -538,13 +538,14 @@ def conversion_cases() -> None:
 
 def run(item: Case):
     "(dump_in, dump_out) of one case, run on upstream's code."
-    from parity import html5tree, treedump
+    from lxml.html import fromstring
+    from parity import treedump
     from trafilatura import htmlprocessing as hp
     from trafilatura import settings, xpaths
     from trafilatura.settings import Extractor
+    from trafilatura.utils import HTML_PARSER
 
-    document = html5tree.parse_document(item.html)
-    assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {item.html!r}"
+    document = fromstring(item.html, parser=HTML_PARSER)
     dump_in = treedump.dump_tree(document)
     target = document
     if item.scope:

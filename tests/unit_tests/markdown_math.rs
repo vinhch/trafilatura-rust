@@ -582,12 +582,9 @@ fn test_math_is_not_commonmark_escaped() {
 
 #[test]
 fn test_math_recovery() {
-    // D-2: upstream parses with libxml2, where `math` has no namespace and is recovered. On the
-    // html5 tree `math` carries the MathML namespace, so neither `recover_math` nor the
-    // `MANUALLY_CLEANED` loop sees it: nothing is recovered and nothing is dropped. The expected
-    // dumps are the html5 results of upstream's own functions; `recover_math` itself is tested in
-    // `html_processing::tests::cleaning::recover_math_on_html_namespace_math`.
-    // oracle: dump_tree(tree_cleaning(parse_document(html), options)) with options.tables = True
+    // upstream parses with libxml2, where `math` has no namespace and is recovered by
+    // `recover_math`; the expected dumps are upstream's tree_cleaning output (tables = True)
+    // oracle: scripts/oracle.sh over tree_cleaning(fromstring(html, parser=HTML_PARSER), Extractor(tables=True))
     let call = Call::default();
     let mut options = default_options();
     options.tables = true;
@@ -597,79 +594,30 @@ fn test_math_recovery() {
         dump(&tree, DumpMode::Exact).0
     };
 
-    // the annotation holds the original LaTeX and takes precedence over alttext
     assert_eq!(
         clean(
             r#"<html><body><p>a <math alttext="rendered"><semantics><annotation encoding="application/x-tex">x^2</annotation></semantics></math> b</p></body></html>"#
         ),
-        dump_lines(&[
-            "html",
-            "  body",
-            "    p",
-            r#"      #text "a ""#,
-            r#"      math@math alttext="rendered""#,
-            "        semantics@math",
-            r#"          annotation@math encoding="application/x-tex""#,
-            r#"            #text "x^2""#,
-            r#"      #text " b""#,
-        ])
+        dump_lines(&["html", "  body", "    p", r#"      #text "a \\(x^2\\) b""#])
     );
-    // alttext is used when there is no LaTeX annotation
     assert_eq!(
         clean(r#"<html><body><p>a <math alttext="y_1"><mi>y</mi></math> b</p></body></html>"#),
-        dump_lines(&[
-            "html",
-            "  body",
-            "    p",
-            r#"      #text "a ""#,
-            r#"      math@math alttext="y_1""#,
-            "        mi@math",
-            r#"          #text "y""#,
-            r#"      #text " b""#,
-        ])
+        dump_lines(&["html", "  body", "    p", r#"      #text "a \\(y_1\\) b""#])
     );
-    // display="block" yields block delimiters
     assert_eq!(
         clean(
             r#"<html><body><p><math display="block" alttext="z"><mi>z</mi></math></p></body></html>"#
         ),
-        dump_lines(&[
-            "html",
-            "  body",
-            "    p",
-            r#"      math@math alttext="z" display="block""#,
-            "        mi@math",
-            r#"          #text "z""#,
-        ])
+        dump_lines(&["html", "  body", "    p", r#"      #text "\\[z\\]""#])
     );
-    // nothing to recover: the element stays too, as nothing sees it
     assert_eq!(
         clean("<html><body><p>a <math><mi>q</mi></math> b</p></body></html>"),
-        dump_lines(&[
-            "html",
-            "  body",
-            "    p",
-            r#"      #text "a ""#,
-            "      math@math",
-            "        mi@math",
-            r#"          #text "q""#,
-            r#"      #text " b""#,
-        ])
+        dump_lines(&["html", "  body", "    p", r#"      #text "a  b""#])
     );
-    // the tail of the formula
     assert_eq!(
         clean(r#"<html><body><p><math alttext="u"><mi>u</mi></math> tail</p></body></html>"#),
-        dump_lines(&[
-            "html",
-            "  body",
-            "    p",
-            r#"      math@math alttext="u""#,
-            "        mi@math",
-            r#"          #text "u""#,
-            r#"      #text " tail""#,
-        ])
+        dump_lines(&["html", "  body", "    p", r#"      #text "\\(u\\) tail""#])
     );
-    // a formula in a table cell
     assert_eq!(
         clean(
             r#"<html><body><table><tr><td>name</td><td><math alttext="1.33\times 10^{-4}"><mi>v</mi></math></td></tr></table></body></html>"#
@@ -682,22 +630,17 @@ fn test_math_recovery() {
             "        td",
             r#"          #text "name""#,
             "        td",
-            r#"          math@math alttext="1.33\\times 10^{-4}""#,
-            "            mi@math",
-            r#"              #text "v""#,
+            r#"          #text "\\(1.33\\times 10^{-4}\\)""#,
         ])
     );
 
     // end to end: Markdown output renders the recovered formula as $...$
-    // deviation: D-2, upstream asserts "$1.33\times 10^{-4}$" in the result; on the html5 tree the
-    // `math` element carries the MathML namespace, so nothing is recovered and the annotation text
-    // stays as it is. oracle: extract(doc, output_format="markdown", config=ZERO_CONFIG) inside
-    // html5_parsers(), with fast=True
+    // oracle: scripts/oracle.sh extract(doc, output_format="markdown", config=min sizes 0, fast=True)
     let doc = r#"<html><body><article><p>Some introductory prose that is long enough to be retained here.</p><p>The error was <math alttext="1.33\times 10^{-4}"><semantics><annotation encoding="application/x-tex">1.33\times 10^{-4}</annotation></semantics></math> overall.</p></article></body></html>"#;
     assert_eq!(
         extract(doc, &Kw::zero().markdown()).as_deref(),
         Some(
-            "Some introductory prose that is long enough to be retained here.\n\nThe error was 1.33\\times 10^{-4} overall."
+            "Some introductory prose that is long enough to be retained here.\n\nThe error was $1.33\\times 10^{-4}$ overall."
         )
     );
 }

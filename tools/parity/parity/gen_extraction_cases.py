@@ -4,11 +4,10 @@ Regenerate with (from the repository root, Git Bash or Linux; Docker on Windows 
 
     scripts/oracle.sh 'from parity.gen_extraction_cases import main; main()' > tests/extraction_cases/cases.rs
 
-Everything runs inside `parity.generate.html5_parsers()`, which replaces `utils.fromstring` and
-`baseline.fragment_fromstring` with html5lib parses, so the expected values come from the same kind of tree
-as the Rust side (D-2). Every `Extractor` is built with `fast=True` (D-1) and `dedup=False`. Every page is a
+Everything runs on upstream's own parse (lxml's `HTML_PARSER`), so the expected values come from the same
+tree as the Rust side. Every `Extractor` is built with `fast=True` (D-1) and `dedup=False`. Every page is a
 full `<html>` document, except the empty load `""`: a fragment such as `"123"` is rejected by the length
-check the crate emulates (`lxml_len`) and is a unit test with the plain-lxml value.
+check of `load_html` and is a unit test with the plain-lxml value.
 
 `ExtractCase`: a page, an output format (`txt`, `markdown`, `html`), the options and what `extract` returns:
 `Ok(Some(text))`, `Ok(None)` for a `None` from one of `bare_extraction`'s own checks, `Err(name)` for the class of
@@ -1052,8 +1051,6 @@ pub struct BaselineCase {
 
 
 def main() -> None:
-    from parity.generate import html5_parsers
-
     targeted_pages()
     baseline_pages()
     snippets = snippet_pages()
@@ -1073,37 +1070,36 @@ def main() -> None:
             return
         cases.append(ExtractCase(html, output_format, options, results[key], kind))
 
-    with html5_parsers():
-        for html, options in snippets:
-            for output_format, run_options, same_as in format_sets(options):
-                add("snippet", html, output_format, run_options, unless_same_as=same_as)
-        # the traced run of each page first: another page's variants must not take its place
-        for item in TARGETS:
-            trace = Trace()
-            add("targeted", item.html, "txt", item.options, trace)
-            print(f"{item.name}: {trace.line()}", file=sys.stderr)
-            if item.check is not None and not item.check(trace):
-                failures.append(item.name)
-            if item.text is not None:
-                marker, present = item.text
-                output = results[(item.html, "txt", item.options)][1]
-                if output is None or (marker in output) != present:
-                    failures.append(f"{item.name}: output {'lacks' if present else 'holds'} {marker[:30]!r}")
-        for item in TARGETS:
-            for output_format, run_options, same_as in format_sets(item.options)[1:]:
-                add("targeted", item.html, output_format, run_options, unless_same_as=same_as)
-        baseline_cases = []
-        for html in dict.fromkeys(BASELINE_PAGES):
-            found, text = run_baseline(html)
-            baseline_cases.append((html, found, text))
-            add("baseline", html, "txt", Options())
-            # Markdown differs from TXT only where it escapes or formats
-            add("baseline", html, "markdown", Options(formatting=True), unless_same_as=("txt", Options()))
-        for name, html, output_format, error in RAISING_PAGES:
-            for fmt in FORMATS:
-                add("raising", html, fmt, Options())
-            if results[(html, output_format, Options())] != ("Err", error):
-                failures.append(f"{name}: {output_format} gives {results[(html, output_format, Options())]}, not {error}")
+    for html, options in snippets:
+        for output_format, run_options, same_as in format_sets(options):
+            add("snippet", html, output_format, run_options, unless_same_as=same_as)
+    # the traced run of each page first: another page's variants must not take its place
+    for item in TARGETS:
+        trace = Trace()
+        add("targeted", item.html, "txt", item.options, trace)
+        print(f"{item.name}: {trace.line()}", file=sys.stderr)
+        if item.check is not None and not item.check(trace):
+            failures.append(item.name)
+        if item.text is not None:
+            marker, present = item.text
+            output = results[(item.html, "txt", item.options)][1]
+            if output is None or (marker in output) != present:
+                failures.append(f"{item.name}: output {'lacks' if present else 'holds'} {marker[:30]!r}")
+    for item in TARGETS:
+        for output_format, run_options, same_as in format_sets(item.options)[1:]:
+            add("targeted", item.html, output_format, run_options, unless_same_as=same_as)
+    baseline_cases = []
+    for html in dict.fromkeys(BASELINE_PAGES):
+        found, text = run_baseline(html)
+        baseline_cases.append((html, found, text))
+        add("baseline", html, "txt", Options())
+        # Markdown differs from TXT only where it escapes or formats
+        add("baseline", html, "markdown", Options(formatting=True), unless_same_as=("txt", Options()))
+    for name, html, output_format, error in RAISING_PAGES:
+        for fmt in FORMATS:
+            add("raising", html, fmt, Options())
+        if results[(html, output_format, Options())] != ("Err", error):
+            failures.append(f"{name}: {output_format} gives {results[(html, output_format, Options())]}, not {error}")
     if failures:
         raise AssertionError(f"pages that miss their branch, their output or their raise: {failures}")
     for case in cases:

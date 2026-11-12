@@ -13,8 +13,8 @@ fn max_depth(tree: &Tree) -> usize {
 
 #[test]
 fn dump_matches_python_format() {
-    // Input of tools/parity test_dump_tree_format; the comment is not a node and html5ever adds
-    // an empty head, so the expected text below has that one extra line.
+    // Input of tools/parity test_dump_tree_format; the comment is not a node and libxml2 adds no head
+    // for a document without head content, so the expected text is the python text unchanged.
     let html = r#"<html><body><div b="2" a="1">x<!--c--><p> </p>tail</div><svg><path d="M0"/></svg></body></html>"#;
     let python = concat!(
         "html\n",
@@ -27,8 +27,10 @@ fn dump_matches_python_format() {
         "    svg@svg\n",
         "      path@svg d=\"M0\"\n",
     );
-    let expected = python.replacen("html\n", "html\n  head\n", 1);
-    assert_eq!(dump(&parse(html), DumpMode::Exact), (expected, false));
+    assert_eq!(
+        dump(&parse(html), DumpMode::Exact),
+        (python.to_string(), false)
+    );
 
     // The same tree built by hand, without the implied head, gives the Python string verbatim.
     let name = |n: &str| LocalName::from(n);
@@ -133,21 +135,20 @@ fn add_text_owned_drops_spare_capacity() {
 }
 
 #[test]
-fn implied_tbody_and_head() {
+fn table_root_gets_no_implied_tbody_or_head() {
+    // oracle: fromstring("<table><tr><td>x</td></tr></table>") is the table itself, with no tbody or head
     let tree = parse("<table><tr><td>x</td></tr></table>");
     let (text, _) = dump(&tree, DumpMode::Exact);
-    assert!(text.contains("\n  head\n"), "{text}");
-    assert!(
-        text.contains("    table\n      tbody\n        tr\n"),
-        "{text}"
-    );
+    assert_eq!(text, "table\n  tr\n    td\n      #text \"x\"\n");
 }
 
 #[test]
 fn depth_limit_cuts_and_drops_rest() {
     let html = format!("{}<p>after</p>", "<div>".repeat(300));
     let tree = parse(&html);
-    assert_eq!(max_depth(&tree), 256);
+    // oracle: fromstring returns the body as the root, so the cut at 256 elements of the document
+    // (html and body included) leaves 254 below the root
+    assert_eq!(max_depth(&tree), 254);
     let (text, _) = dump(&tree, DumpMode::Exact);
     assert!(!text.contains("after"), "{text}");
 }
@@ -178,18 +179,16 @@ fn default_limit_is_the_default_max_nodes() {
 }
 
 #[test]
-fn default_limits_reject_formatting_element_amplification() {
-    // Each `<p>` re-opens the 200 formatting elements: 10000 paragraphs would make ~2M elements.
+fn formatting_element_input_is_linear_by_default() {
+    // Each `<p>` closes the one before it, and libxml2 never rebuilds the 200 `<b>` above.
+    // oracle: fromstring builds 10,203 elements for this input
     let mut html = String::from("<html><body><p>");
     for i in 0..200 {
         html.push_str(&format!("<b id={i}>"));
     }
     html.push_str(&"<p>x".repeat(10_000));
-    let err = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap_err();
-    assert_eq!(
-        err,
-        ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
-    );
+    let tree = parse_document(&html, &ParseLimits::default(), &Call::default()).unwrap();
+    assert_eq!(tree.len(), 10_203);
 }
 
 #[test]
@@ -238,6 +237,18 @@ fn dump_normalized_drops_invalid_names() {
 }
 
 #[test]
+fn dump_writes_clark_attribute_name_by_local_part() {
+    // libxml2 keeps `{count}` as a name; lxml reads it as namespace `count` with no local name, and
+    // treedump.py writes that empty local name. Attributes still sort by their full name.
+    let tree = parse("<a href=\"h\" {count}=\"\" class=\"c\">x</a>");
+    let (exact, _) = dump(&tree, DumpMode::Exact);
+    assert!(
+        exact.contains("a class=\"c\" href=\"h\" =\"\"\n"),
+        "{exact}"
+    );
+}
+
+#[test]
 fn dump_normalized_unchanged_tree_is_not_flagged() {
     let tree = parse("<p class=\"a\">x<b>y</b>z</p>");
     let (exact, _) = dump(&tree, DumpMode::Exact);
@@ -247,7 +258,9 @@ fn dump_normalized_unchanged_tree_is_not_flagged() {
 #[test]
 fn dump_from_detached_copy() {
     let mut tree = parse("<div id=\"x\">t<p class=\"a\">a<b>b</b>c</p>tail<i>i</i></div>tail2");
-    let div = find(&tree, "div");
+    // oracle: the text after the div keeps the body from being one element, so fromstring returns the
+    // body as a `div` holding the `div id="x"`, which is the root's first child
+    let div = tree.first_child(tree.root()).unwrap();
     let copy = tree.copy(div, &Call::default()).unwrap();
     assert_eq!(tree.node(copy).parent(), None);
     // the copy is the root of its dump and its tail is left out
@@ -274,7 +287,8 @@ fn dump_from_detached_copy() {
     );
     // the copy rule runs on the subtree only: the invalid name outside it is not counted
     let mut tree = parse("<p @a=\"1\">x</p><div id=\"y\">z</div>");
-    let div = find(&tree, "div");
+    // the body is the root here, so the div #y is its last child
+    let div = tree.last_child(tree.root()).unwrap();
     let copy = tree.copy(div, &Call::default()).unwrap();
     assert!(dump(&tree, DumpMode::Normalized).1);
     assert_eq!(
@@ -298,20 +312,22 @@ fn tree_is_send_sync() {
 }
 
 #[test]
-fn max_nodes_rejects_formatting_element_amplification() {
-    // Each `<p>` re-opens the 50 formatting elements, so 2000 paragraphs make ~100k elements.
+fn max_nodes_counts_the_elements_of_formatting_input() {
+    // oracle: fromstring builds 2,053 elements for this input: the limit is exact at that count
     let mut html = String::from("<html><body><p>");
     for i in 0..50 {
         html.push_str(&format!("<b id={i}>"));
     }
     html.push_str(&"<p>x".repeat(2000));
-    let limits = ParseLimits {
-        max_nodes: Some(5_000),
+    let limited = |max_nodes| ParseLimits {
+        max_nodes: Some(max_nodes),
         ..ParseLimits::default()
     };
-    let err = parse_document(&html, &limits, &Call::default()).unwrap_err();
+    let err = parse_document(&html, &limited(2_052), &Call::default()).unwrap_err();
     assert_eq!(
         err,
         ExtractError::Rejected(Rejection::TreeTooLarge(TreeLimit::MaxNodes))
     );
+    let tree = parse_document(&html, &limited(2_053), &Call::default()).unwrap();
+    assert_eq!(tree.len(), 2_053);
 }

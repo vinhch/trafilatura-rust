@@ -112,92 +112,13 @@ pub fn xml_tree(source: &str) -> Tree {
     tree.expect("no element in the source")
 }
 
-/// `lxml.html.defs.block_tags`.
-const BLOCK_TAGS: &[&str] = &[
-    "h5",
-    "ul",
-    "h1",
-    "h4",
-    "div",
-    "ins",
-    "thead",
-    "form",
-    "legend",
-    "del",
-    "tr",
-    "h6",
-    "dir",
-    "col",
-    "dt",
-    "optgroup",
-    "pre",
-    "dd",
-    "noscript",
-    "option",
-    "tbody",
-    "menu",
-    "p",
-    "li",
-    "center",
-    "colgroup",
-    "td",
-    "h2",
-    "ol",
-    "caption",
-    "hr",
-    "tfoot",
-    "blockquote",
-    "address",
-    "th",
-    "table",
-    "isindex",
-    "h3",
-    "fieldset",
-    "dl",
-];
-
-/// Whether the source starts like a whole document: `^\s*<(?:html|!doctype)`, ignoring case.
-fn looks_like_full_html(html: &str) -> bool {
-    let Some(rest) = html.trim_start().strip_prefix('<') else {
-        return false;
-    };
-    let starts = |prefix: &str| {
-        rest.get(..prefix.len())
-            .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
-    };
-    starts("html") || starts("!doctype")
-}
-
-/// `lxml.html.fromstring(html)` over the html5 tree: the element lxml returns, and the tree.
-///
-/// A full document gives `html`. Otherwise, the only child of `body` when it has one, with no
-/// text around it; else `body` itself, renamed `div` when it holds a block-level tag and `span`
-/// when not. lxml also returns the whole document whenever the parse has a `head`; the html5 tree
-/// always has one, so that check is left out.
+/// `lxml.html.fromstring(html)`: the crate's `parse_document`, which is that function over the libxml2
+/// tree. Returns the tree and the element lxml returns.
 // upstream: lxml/html/__init__.py::fromstring
 pub fn lxml_fromstring(html: &str) -> (Tree, NodeId) {
-    let mut tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
+    let tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
     let root = tree.root();
-    if looks_like_full_html(html) {
-        return (tree, root);
-    }
-    let body = tree
-        .children(root)
-        .find(|&child| tree.tag(child) == Some("body"))
-        .expect("the html5 tree has a body");
-    let blank = |text: &Option<String>| text.as_deref().is_none_or(|text| text.trim().is_empty());
-    if let Some(only) = tree.first_child(body)
-        && tree.child_count(body) == 1
-        && blank(&tree.node(body).text)
-        && blank(&tree.node(only).tail)
-    {
-        return (tree, only);
-    }
-    let has_block = tree
-        .iter(body, &[])
-        .any(|element| BLOCK_TAGS.contains(&&*tree.node(element).name));
-    tree.set_name(body, if has_block { "div" } else { "span" });
-    (tree, body)
+    (tree, root)
 }
 
 /// A context over `options` and `call`, as `Ctx` is made where upstream passes `options`.

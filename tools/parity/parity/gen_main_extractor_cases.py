@@ -16,7 +16,7 @@ case holds the result's `treedump.dump_tree` (none when the handler returns None
 snippet after the call, since the handlers rename what they consume to `done`. A snippet holds no `svg` or
 `math`: `treedump` tags those by name in a tree without namespaces, the crate's dump by namespace.
 
-`HtmlCase`: an html5 snippet (`parity.html5tree`) goes through `tree_cleaning` and `convert_tags`, then
+`HtmlCase`: an HTML snippet (`lxml.html.fromstring`) goes through `tree_cleaning` and `convert_tags`, then
 `op` runs:
 
     extract_content            on the converted tree
@@ -1146,11 +1146,12 @@ def run_xml(item: XmlCase):
 
 def run_html(item: HtmlCase):
     "(dump of the parsed snippet, comments dump, comments text, body dump, body text)."
-    from parity import html5tree, treedump
+    from lxml.html import fromstring
+    from parity import treedump
     from trafilatura import htmlprocessing, main_extractor
+    from trafilatura.utils import HTML_PARSER
 
-    document = html5tree.parse_document(item.html)
-    assert not html5tree.last_parse_normalized(), f"snippet needs the copy rule: {item.html!r}"
+    document = fromstring(item.html, parser=HTML_PARSER)
     dump_in = treedump.dump_tree(document)
     options = make_options(item.options)
     tree = htmlprocessing.convert_tags(htmlprocessing.tree_cleaning(document, options), options)

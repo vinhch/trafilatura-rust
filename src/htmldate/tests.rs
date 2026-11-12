@@ -175,11 +175,11 @@ fn clean_html_stops_like_lxml() {
     let cases = [
         (
             "<object><audio></audio></object><video>v</video>",
-            "<html><head></head><body><video>v</video></body></html>",
+            "<span><video>v</video></span>",
         ),
         (
             "<object><svg></svg></object><video>v</video>",
-            "<html><head></head><body></body></html>",
+            "<span><video>v</video></span>",
         ),
     ];
     for (page, expected) in cases {
@@ -293,15 +293,12 @@ fn pattern_not_after_retries_one_code_point_later() {
 
 #[test]
 fn remove_if_attached_drops_the_tail() {
-    // oracle: lxml's parent.remove(p) on <div><p>a</p>TAIL<span>s</span></div>, the html root serialized
+    // oracle: lxml's parent.remove(p) on <div><p>a</p>TAIL<span>s</span></div>, the root serialized
     let mut tree = parse("<div><p>a</p>TAIL<span>s</span></div>");
     let root = tree.root();
     let p = tree.iter(root, &["p"]).next().expect("a p");
     remove_if_attached(&mut tree, p);
-    assert_eq!(
-        tree.tostring_html(root, true),
-        "<html><head></head><body><div><span>s</span></div></body></html>"
-    );
+    assert_eq!(tree.tostring_html(root, true), "<div><span>s</span></div>");
 }
 
 #[test]
@@ -663,16 +660,13 @@ fn free_text_expressions_keeps_document_order() {
 
 #[test]
 fn discard_unwanted_drops_tail() {
-    // oracle: scripts/oracle.sh 'from parity import html5tree; from htmldate.extractors import discard_unwanted;
-    // from lxml.html import tostring; t = html5tree.parse_document(<page>); discard_unwanted(t);
-    // print(tostring(t, encoding="unicode"))', with <page> the div below: the wm-ipp div and its tail "TAIL" go
+    // oracle: scripts/oracle.sh 'from htmldate.extractors import discard_unwanted; from trafilatura.utils
+    // import HTML_PARSER; from lxml.html import fromstring, tostring; t = fromstring(<page>, parser=HTML_PARSER);
+    // discard_unwanted(t); print(tostring(t, encoding="unicode"))', with <page> the div below: the wm-ipp div and its tail "TAIL" go
     let mut tree = parse(r#"<div><div id="wm-ipp">x</div>TAIL<p>a</p></div>"#);
     let root = tree.root();
     discard_unwanted(&mut tree, root, &Call::default()).expect("not cancelled");
-    assert_eq!(
-        tree.tostring_html(root, true),
-        "<html><head></head><body><div><p>a</p></div></body></html>"
-    );
+    assert_eq!(tree.tostring_html(root, true), "<div><p>a</p></div>");
 }
 
 #[test]
