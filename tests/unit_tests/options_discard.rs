@@ -2,7 +2,7 @@ use super::*;
 
 /// Whether any of the selectors selects a `<tag attrs>` wrapping a paragraph.
 // upstream: tests/unit_tests.py::_xpath_hits
-// Upstream parses the snippet with `etree.fromstring`; the html5 parse selects the same element for
+// Upstream parses the snippet with `etree.fromstring`; the libxml2 parse selects the same element for
 // these snippets.
 fn xpath_hits(xpaths: &[Selector], attrs: &str, tag: &str) -> bool {
     let html = format!("<html><body><{tag} {attrs}><p>content</p></{tag}></body></html>");

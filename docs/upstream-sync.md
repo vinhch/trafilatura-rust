@@ -28,7 +28,7 @@ tab that it is enabled.
    comment when it changes, and when a `web_atoms` bump fails that test, diff the table before
    updating the values.
 5. Read upstream's `settings.cfg` diff as well as `settings.py`: defaults such as `MAX_FILE_SIZE`
-   live there. Check OI-5 in `phase-plan.md`: a merged upstream parser switch changes D-2 and the
+   live there. Check OI-5 in `phase-plan.md`: a merged upstream parser switch changes the libxml2 rules this crate follows and the
    fixtures. Check the version bumps of upstream's own dependencies in `pyproject.toml` (`htmldate`, `courlan`,
    `charset_normalizer`, `lxml`): a dependency release can change extraction output with no change in
    trafilatura itself. Diff the ported parts of that package too. `courlan.rs` ports the version in

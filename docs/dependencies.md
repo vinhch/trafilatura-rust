@@ -31,14 +31,13 @@ is NCSA), moved by its own Dependabot entry, and never shipped to users.
 
 | Crate | Kind | Replaces upstream | Why this crate |
 | --- | --- | --- | --- |
-| `html5ever` | always | `lxml.html` parsing | Servo's WHATWG parser, widely used; feeds the crate's own tree through `TreeSink` (D-2) |
 | `html5gum` | always | `lxml.html` parsing (libxml2's HTML tokenizer) | WHATWG tokenizer with a byte-level emitter and no tree builder; `src/dom/parse/emitter.rs` applies libxml2's name, attribute and raw-text rules on top. Default features off |
 | `encoding_rs` | always | Python codecs | The WHATWG encodings, maintained by Firefox's encoding owner |
 | `chardetng` | always | `charset_normalizer` | Firefox's detector, same maintainer as `encoding_rs` (D-3) |
 | `regex` | always | `re` | rust-lang regex; lookaround and backreferences are written by hand (`gotchas.md`) |
 | `blake2` | always | `hashlib.blake2b` | RustCrypto's BLAKE2b, the digest `hashlib` computes; the content fingerprint and `generate_bow_hash` are built on it, the duplicate cache keys its entries with a 16-byte digest (D-24), and `fingerprint_matches_python` checks the fingerprint's values. Default features off |
 | `psl` | always | `tld` (the suffix list of `get_tld`) | Maintained, MIT/Apache-2.0, with the Public Suffix List compiled in and no runtime data; tld's own list is MPL-2.0 data, which the license policy leaves out. Its list release differs from tld 0.13.2's, so `extract_domain` differs for hosts under the rules only one list holds (D-18). `courlan/tld.rs` shapes its answer to tld's trie (exception parents, `xn--` rules below the top level; tables generated from tld's own trie) and `TLD_CASES` checks it. Default features off: the `helpers` free functions are not used |
-| `web_atoms` | always | none | Servo, shared with `html5ever`; supplies the entity table for `pyhtml::unescape` (`pyurl` calls it too), which `entity_table_matches_python` checks |
+| `web_atoms` | always | none | Servo; supplies the entity table for `pyhtml::unescape` (`pyurl` calls it too), which `entity_table_matches_python` checks |
 | `flate2` | feature `decompress` | `gzip`, `zlib` | rust-lang; pure-Rust `miniz_oxide` backend (D-4) |
 | `brotli-decompressor` | feature `decompress` | `brotli` | Decompress-only, forbids `unsafe` by default (D-4) |
 | `ruzstd` | feature `decompress` | `zstd` | Pure Rust, no C build (D-4) |

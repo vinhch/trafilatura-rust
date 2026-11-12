@@ -318,7 +318,7 @@ fn walk_json_rows() {
 
 #[test]
 fn render_text_rows() {
-    // oracle: _render_text(raw) on the html5 parse
+    // oracle: _render_text(raw) on the lxml parse
     let rows = [
         ("  plain   text ", "plain text"),
         ("<p>Hello</p><p>World</p>", "Hello World"),

@@ -6,7 +6,7 @@ fn options_with(configure: impl FnOnce(&mut Extractor)) -> Extractor {
     options
 }
 
-/// The html5 tree of `html` after `tree_cleaning` and `convert_tags` under `options`, and the root
+/// The libxml2 tree of `html` after `tree_cleaning` and `convert_tags` under `options`, and the root
 /// `tree_cleaning` returns.
 fn cleaned(html: &str, options: &Extractor) -> (Tree, NodeId) {
     let mut tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
@@ -162,10 +162,15 @@ fn frame_with_foreign_element_is_not_single_run() {
         body_of(foreign, &tight).0,
         "<body><p>Lead text <hi rend=\"#b\">bold</hi> text  <hi rend=\"#i\">it</hi> more</p></body>"
     );
-    // oracle: scripts/oracle.sh 'from trafilatura.main_extractor import _extract; ...' on the cleaned, converted
-    // tree with Extractor(fast=True, comments=False): the body is empty both for a frame of line breaks and
-    // for the same frame with an svg after the second text, so both asserts expect `<body/>`. The frame
-    // with the svg is no longer a separate run on the libxml2 tree, where svg is an unknown element.
+    // oracle: scripts/oracle.sh 'from lxml.html import fromstring, tostring; from trafilatura.utils import HTML_PARSER;
+    //   from trafilatura.settings import Extractor; from trafilatura.htmlprocessing import tree_cleaning, convert_tags;
+    //   from trafilatura.main_extractor import _extract; o = Extractor(fast=True, comments=False);
+    //   h = "<html><body><p>" + "This outside paragraph is deliberately long enough to pass the size gate. " * 12 +
+    //   "</p><div class=\"post\">text one<br>text two<svg><title>t</title></svg></div></body></html>";
+    //   t = convert_tags(tree_cleaning(fromstring(h, parser=HTML_PARSER), o), o);
+    //   print(tostring(_extract(t, o)[0], encoding="unicode"))' prints an empty body for the svg frame, and the frame
+    //   of line breaks without the svg gives the same empty body, so both asserts expect `<body/>`. The frame with the
+    //   svg is not a separate run on the libxml2 tree, where svg is an unknown element.
     let outside = OUTSIDE_PARAGRAPH.repeat(12);
     let options = options();
     assert_eq!(

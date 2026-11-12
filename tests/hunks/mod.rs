@@ -5,8 +5,8 @@ use std::ops::Range;
 
 use similar::{Algorithm, DiffTag, capture_diff_slices};
 
-/// Elements whose tree differs because html5lib (the fixture parser) predates a WHATWG change that
-/// html5ever has: the 2025 "customizable select" parsing, where `select` and `option` keep phrasing
+/// Elements whose tree differs because html5lib (the html5 fixture parser) predates a WHATWG change that
+/// WHATWG has: the 2025 "customizable select" parsing, where `select` and `option` keep phrasing
 /// content such as `<span>` instead of dropping the tags, and the `search`, `hgroup` and
 /// `selectedcontent` elements.
 pub(crate) const PYTHON_PARSER_TAGS: [&str; 6] = [
@@ -19,7 +19,7 @@ pub(crate) const PYTHON_PARSER_TAGS: [&str; 6] = [
 ];
 
 /// Table cell elements: html5lib's `InCellPhase` has no `processSpaceCharacters`, so whitespace-only
-/// text in a cell skips "reconstruct the active formatting elements", which html5ever (and WHATWG)
+/// text in a cell skips "reconstruct the active formatting elements", which WHATWG
 /// does.
 const CELL_TAGS: [&str; 2] = ["td", "th"];
 
@@ -194,7 +194,7 @@ fn is_dumped_whitespace(payload: &str) -> bool {
 
 /// Rule for the html5lib whitespace bug in a table cell: one text line `ws+rest` on the expected side
 /// against a formatting element holding the whitespace `ws`, then the text `rest`, on the actual side
-/// (the element html5ever reconstructs), inside an unchanged `td` or `th`.
+/// (the element WHATWG reconstructs), inside an unchanged `td` or `th`.
 pub(crate) fn is_html5lib_cell_space_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
     let (left, right) = (
         lines_in(expected, &hunk.expected),

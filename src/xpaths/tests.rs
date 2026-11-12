@@ -209,19 +209,19 @@ fn snippet(html: &str) -> String {
 }
 
 #[test]
-fn case_trees_match_html5lib() {
+fn case_trees_match_lxml() {
     for case in CASES {
         let tree = parse(case.html);
         let (dumped, changed) = dump(&tree, DumpMode::Normalized);
         assert!(
             !changed,
-            "the copy rule changed the tree of {}",
+            "the normalized dump changed the tree of {}",
             snippet(case.html)
         );
         assert_eq!(
             dumped,
             case.dump,
-            "tree differs from html5lib for {}",
+            "tree differs from lxml for {}",
             snippet(case.html)
         );
     }

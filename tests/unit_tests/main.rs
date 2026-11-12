@@ -287,7 +287,7 @@ fn extract(html: &str, kw: &Kw) -> Option<String> {
     or_none(kw.options().build().extract(&input, &Call::default()))
 }
 
-/// `extract(html.fromstring(html), **kw)`: a caller's tree, as the html5 tree stands for lxml's.
+/// `extract(html.fromstring(html), **kw)`: a caller's tree, as lxml's fromstring builds it.
 fn extract_tree(html: &str, kw: &Kw) -> Option<String> {
     let (tree, root) = lxml_fromstring(html);
     let settings = kw.settings();

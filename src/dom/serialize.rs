@@ -101,7 +101,7 @@ fn push_name(out: &mut String, node: &Node, method: Method) {
     if method == Method::Html && node.ns != Ns::Html {
         out.push_str("ns0:");
     }
-    out.push_str(&node.name); // deviation: D-2
+    out.push_str(&node.name);
 }
 
 /// Void elements and an empty `li` have no end tag in the HTML method. Only HTML elements count.

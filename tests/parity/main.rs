@@ -4,7 +4,7 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-//! Parity of the crate's parsed tree with the html5 fixtures generated from upstream
+//! Parity of the crate's parsed tree with the lxml fixtures generated from upstream (gating) and the html5 fixtures (report only)
 //! (`docs/parity-harness.md`). Skips when the fixtures or the upstream checkout are missing.
 
 #[allow(dead_code)]

@@ -189,7 +189,7 @@ pub fn describe(options: &CaseOptions) -> String {
     )
 }
 
-/// The html pipeline of a case on the html5 parse of `html`: `tree_cleaning`, `convert_tags`, then
+/// The html pipeline of a case on the libxml2 parse of `html`: `tree_cleaning`, `convert_tags`, then
 /// `op` (`extract_content`, or `comments_then_content`: `extract_comments`, then `extract_content`
 /// on the tree it leaves). Returns the tree, the comments body and its text (for the second op),
 /// and the content body and its text; the bodies are detached elements of the tree.

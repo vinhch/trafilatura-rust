@@ -53,26 +53,21 @@ function.
 
 ## Parsing, namespaces and selectors
 
-- On the html5 tree lxml names a foreign element `{namespace}name` (D-2), a plain string in the
-  places upstream treats tags as strings: `.//*` includes SVG and MathML elements (`{ns}svg` in the
-  `tags` set of `_extract`, so its `tags == {"lb"}` tests fail), `strip_tags(element, *{str(c.tag)
-  ...})` in `handle_paragraphs` strips them, and `SubElement(orig, processed.tag)` in
-  `define_newelem` keeps the namespace. The port compares by namespace and name: it strips every
-  descendant whose tag is outside `potential_tags` and `done`, foreign ones included, and builds
-  copies with `new_element_like`.
-- The parser is not html5. Upstream parses with `lxml.html.HTMLParser` (libxml2), configured in
-  `utils.py` (`HTML_PARSER`: comments and processing instructions removed). libxml2 2.14+ tokenizes
-  as HTML5 but builds the tree with its own rules: no implied `tbody`, no adoption agency, different
-  handling of misnested and stray tags. This crate uses html5ever (D-2). lxml wheels bundle libxml2, and the
-  Windows wheels bundle an older one than the Linux and macOS wheels, so upstream itself differs by platform:
-  fixtures come from Linux. The generated headers name the libxml2 version each run used.
-  Upstream may switch parsers (OI-5, checked in `upstream-sync.md`).
-- html5ever's tree sink cannot stop the parse. After the depth cut, a node-limit abort (D-5), a
-  cancellation or a deadline, the sink in `dom/parse/sink.rs` must ignore every later call, and depth is
-  checked again when html5ever moves a subtree (reparenting, foster parenting, the adoption agency).
-  html5ever clones open formatting elements, attributes included, so attribute values are shared
-  `Arc<str>`, never copied per clone (`StrTendril` is not `Send`). The doc comments in
-  `dom/parse.rs` give the chunking and sharing details, and `dom/parse/sink.rs` holds the driver that feeds the pieces.
+- SVG and MathML elements are plain HTML elements on the libxml2 tree, with no namespace, so `.//*` includes
+  them and a name test such as `tags == {"lb"}` sees their names. `strip_tags` and
+  `SubElement(orig, processed.tag)` treat them like any other tag. The port strips every descendant whose tag is
+  outside `potential_tags` and `done`, and builds copies with `new_element_like`; its `Ns::Svg` and `Ns::MathMl`
+  branches are kept for trees built by hand, since no parser builds those namespaces any more (F-85).
+- The parser is libxml2's. Upstream parses with `lxml.html.HTMLParser` (libxml2), configured in `utils.py`
+  (`HTML_PARSER`: comments and processing instructions removed). The crate tokenizes with html5gum and applies
+  libxml2 2.14.6's rules (`dom/parse/`): no implied `tbody`, no adoption agency, misnested and stray tags handled
+  as libxml2 handles them. Its tree matches lxml 6.1.3's on the pinned corpus (`docs/parity-harness.md`).
+  lxml wheels bundle libxml2, and the Windows wheels bundle an older one than the Linux and macOS wheels, so
+  upstream itself differs by platform: fixtures come from Linux. The generated headers name the libxml2 version
+  each run used. Upstream may switch parsers (OI-5, checked in `upstream-sync.md`).
+- The token loop stops at the first limit: the emitter queues one `Token::Abort` and nothing after it
+  (`dom/parse/emitter.rs`), and the builder stops at the depth cut (D-5), keeping the partial tree. A run of text,
+  comment or attribute value has no cancellation check inside it (`docs/architecture.md`, Runtime contract).
 - Decode strictly. Upstream tries each guessed codec and falls back to UTF-8 with replacement only
   when all fail; `encoding_rs`'s `Encoding::decode` sniffs a BOM and replaces silently, which skips
   that fallback. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
@@ -82,16 +77,13 @@ function.
   `translate(s, from, to)` maps only the listed characters, so it is not a lowercase:
   `contains(translate(@id,'CM','cm'), 'main-content')` matches `Main-Content` but not `MAIN-CONTENT`.
   Port each call as its own character map.
-- Names and namespaces. In the html5 tree SVG and MathML elements carry a namespace; libxml2 has
-  none. A plain tag name in XPath matches the HTML namespace only, and renaming an element
-  drops its namespace (D-2).
-- MathML and SVG survive cleaning. In the html5 tree `math` and `svg` carry a namespace, so
-  `tree.iter("math")` in `recover_math` and the `MANUALLY_CLEANED` loop skip them: `tree_cleaning`
-  leaves both in place and recovers no LaTeX, where upstream's libxml2 tree drops them and keeps the
-  formula (D-2). The lxml tag of such an element is `{ns}name`, so a plain comparison upstream writes
-  (`elem.tag == "graphic"`, `elem.tag in (...)`) is false for it. Port the test as
-  `tree.tag(id) == Some(..)` and never return early on `None`: `handle_textnode` and `process_node`
-  keep such elements.
+- Names and namespaces. On the libxml2 tree SVG and MathML elements have no namespace, so a plain tag name in
+  XPath matches them too. Renaming an element drops its namespace.
+- MathML and SVG survive cleaning. On the libxml2 tree `math` and `svg` are plain HTML elements, so `recover_math`
+  and the `MANUALLY_CLEANED` loop see them, and `math` is recovered to its LaTeX as upstream's tree does. The port
+  reads a tag by name (`tree.tag(id) == Some(..)`), so a comparison with `elem.tag == "graphic"` or
+  `elem.tag in (...)` works for them too, and it never returns early on `None`: `handle_textnode` and
+  `process_node` keep such elements.
 - XPath position and union. `.//x[1]` selects every `x` that is the first `x` child of its parent;
   `(.//x)[1]` selects the first `x` in the document. A union in string context (`re:test(@id|@class,
   ...)`) reads only the first node in document order, which for two attributes is the one written
@@ -257,9 +249,8 @@ function.
   `<body><div> <p>x</p></div></body>` gives `<body>\n  <div> <p>x</p></div>\n</body>\n`.
   Indentation stops at 60 spaces (35 nested `div` stay at 60 from level 30 on). `<x/>` needs a
   `None` text and no children: `p.text = ""` gives `<p></p>`. `Tree::tostring` follows all three.
-- Serializing a foreign element. `Tree::tostring` writes an SVG or MathML element by its local name,
-  as a libxml2 tree does; lxml on the oracle's html5 tree writes `ns0:` prefixes under an
-  `xmlns:ns0` declaration, so a comparison with that output strips them (D-2).
+- Serializing a foreign element. `Tree::tostring` writes an SVG or MathML element by its local name, as lxml
+  does on the libxml2 tree, which writes no `ns0:` prefix.
 - htmldate searches `lxml.html.tostring` output, which differs from `etree.tostring`: the HTML method
   writes void elements and an empty `li` with no end tag, `script` and `style` text raw, `href`,
   `action` and `src` (and `name` on `a`) percent-escaped, boolean attributes bare, foreign elements

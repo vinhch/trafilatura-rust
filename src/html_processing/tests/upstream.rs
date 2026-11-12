@@ -119,7 +119,7 @@ fn cases_match_upstream() {
     }
     assert!(
         parser_differences.is_empty(),
-        "{} of {} snippets parse differently from html5lib (change the snippet)\n{}",
+        "{} of {} snippets parse differently from lxml (change the snippet)\n{}",
         parser_differences.len(),
         CASES.len(),
         parser_differences.join("\n")

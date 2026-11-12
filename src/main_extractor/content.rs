@@ -301,8 +301,8 @@ pub(super) fn extract_body(
 
         let mut subelems = select::descendants(tree, subtree, call, |_, _| true)?;
         // a single text run (only lb or inline elements): process the frame itself. A foreign
-        // element (svg, math) is neither: on the html5 tree lxml names it `{namespace}name`
-        // (D-2), and the port compares by namespace and name.
+        // element (svg, math) is neither: a libxml2 tree gives it no namespace, and the port compares
+        // by namespace and name.
         let (mut only_lb, mut only_inline) = (!subelems.is_empty(), true);
         let mut visited = 0usize;
         for &subelem in &subelems {

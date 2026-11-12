@@ -159,7 +159,7 @@ fn tostring_matches_lxml() {
 
 #[test]
 fn tostring_html_matches_lxml() {
-    // Each page is `lxml.html.tostring(html, encoding="unicode")` of the page parsed by html5lib.
+    // Each page is `lxml.html.tostring(html, encoding="unicode")` of the page parsed by lxml.html.fromstring with HTML_PARSER.
     for &(page, expected) in TOSTRING_HTML_CASES {
         let tree = parse(page);
         assert_eq!(

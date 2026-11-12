@@ -73,7 +73,7 @@ def cleaning_cases() -> None:
     special = {
         "frame": frames,
         "frameset": frames,
-        # html5ever lets a select hold a b, html5lib flattens it to text
+        # a select with an option: libxml2 keeps it as it is written (checked against lxml's tree)
         "select": page("<div><p>before</p><select><option>x</option></select>tail<p>after</p></div>"),
         "head": page("<p>x</p>", '<title>t</title><meta charset="utf-8"><style>p{}</style>'),
     }
@@ -166,7 +166,7 @@ def cleaning_cases() -> None:
     case(page("<div><nav><nav>1</nav></nav><nav>2</nav><nav>3</nav></div><p>x</p>"), clean, changes=True)
     case(page("<aside>a<aside>b<aside>c</aside></aside></aside><aside>d</aside><aside>e</aside>"), clean, changes=True)
 
-    # namespaces (D-2): MathML and SVG survive, with their LaTeX unrecovered
+    # svg and math are plain HTML elements on the libxml2 tree (no namespace)
     mixed = '<p>a <math alttext="y_1"><mi>y</mi></math> b<svg><title>t</title></svg></p>'
     case(page(mixed), clean, changes=None)
     case(page(mixed), clean, tables=False, changes=None)
@@ -524,7 +524,7 @@ def conversion_cases() -> None:
     case(page("<p><ref><img src='a.png'></ref>x</p>"), conv, images=True, links=True, changes=True)
     case(page("<p><ref><img src='a.png'></ref>x</p>"), conv, images=True, links=False, changes=True)
 
-    # namespaces (D-2): elements of an svg or math subtree keep their name, a plain tag test skips them
+    # svg and math are plain HTML elements on the libxml2 tree (no namespace): a plain tag test sees them
     case(page('<p>a <svg><a href="u">l</a><strong class="schema-faq-question">q</strong></svg></p>'), conv, links=True)
     case(page('<p>a <svg><a href="u">l</a></svg><a href="v">m</a></p>'), conv, links=False, changes=True)
     case(page('<p>a <math><mi>x</mi><sub></sub><i>y</i></math></p>'), conv, formatting=True, changes=None)

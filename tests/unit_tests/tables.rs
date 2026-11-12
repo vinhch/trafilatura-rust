@@ -58,7 +58,7 @@ const COLSPAN_ROWS: &str = "<td>b</td></tr><tr><td>c</td><td>d</td><td>e</td></t
 fn test_handle_table() {
     // handle_table output structure on small and broken tables.
     let cases = [
-        // comments in a table (the html5 tree keeps none)
+        // comments in a table (the tree keeps none)
         (
             "<table><!-- c1 --><tr><td>cell text<!-- c2 --></td></tr></table>",
             false,

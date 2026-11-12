@@ -6,7 +6,7 @@
 )]
 //! The TXT, Markdown and HTML output against what upstream gives for extracted bodies and for
 //! `etree.fromstring` snippets (`docs/parity-harness.md`). An integration test because the
-//! snippets start from `tests/trees`. The html cases are not checked against the html5lib parse
+//! snippets start from `tests/trees`. The html cases are not checked against lxml's parse
 //! here: `tests/main_extractor_cases.rs` checks the parse of the snippets of
 //! `gen_main_extractor_cases` only, and a parser difference on the other snippets shows up here as
 //! an output mismatch.

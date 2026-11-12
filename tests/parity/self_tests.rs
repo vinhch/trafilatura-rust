@@ -46,7 +46,7 @@ fn accepted_page_counts_against_the_cap() {
 
 #[test]
 fn stale_accepted_entry_fails() {
-    let accepted = [("page", "tree", "D-2")];
+    let accepted = [("page", "tree", "D-n")];
     assert_eq!(
         accepted_failures(&accepted, "tree", &[], 10),
         ["tree: stale accepted entry page"]
@@ -57,7 +57,7 @@ fn stale_accepted_entry_fails() {
 
 #[test]
 fn accept_relabels_only_listed_port_bugs() {
-    let accepted = [("page", "tree", "D-2")];
+    let accepted = [("page", "tree", "D-n")];
     let mut listed = vec!["match", "port-bug"];
     accept(&accepted, "tree", "page", &mut listed);
     assert_eq!(listed, ["match", "accepted"]);

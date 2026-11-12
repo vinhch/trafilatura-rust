@@ -109,7 +109,7 @@ fn show(tree: &Tree, id: NodeId) -> String {
     out
 }
 
-/// The `tag` element of the html5 tree of `html` after `tree_cleaning` and `convert_tags` with
+/// The `tag` element of the libxml2 tree of `html` after `tree_cleaning` and `convert_tags` with
 /// default options.
 fn converted(html: &str, tag: &str) -> (Tree, NodeId) {
     let mut tree = parse_document(html, &ParseLimits::default(), &Call::default()).unwrap();
