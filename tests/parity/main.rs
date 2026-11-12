@@ -115,10 +115,7 @@ fn gate_count_line(scope: &str, rows: impl Iterator<Item = bool>) -> String {
     let (valid, all) = rows.fold((0, 0), |(valid, all), valid_utf8| {
         (valid + usize::from(valid_utf8), all + 1)
     });
-    format!(
-        "Gate count (port-bug pages){scope}: valid-UTF-8 {valid}, all {all}
-"
-    )
+    format!("Gate count (port-bug pages){scope}: valid-UTF-8 {valid}, all {all}\n")
 }
 
 const OUTPUT_FORMATS: [(&str, Format); 6] = [

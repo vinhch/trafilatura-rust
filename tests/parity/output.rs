@@ -174,8 +174,9 @@ fn known_metadata_hunk(
     }
     let left = expected.get(hunk.expected.clone()).unwrap_or_default();
     let right = actual.get(hunk.actual.clone()).unwrap_or_default();
-    // Values under four characters occur inside ordinary header words (`T` in "Today"), so they
-    // cannot tell which line they explain; a longer one must fill a text segment or its tail.
+    // A value under four characters can fill a whole segment by chance (a language code), so it
+    // cannot tell which line it explains; a longer one must fill a segment or one of its
+    // `", "`-separated pieces.
     let mentions = |line: &str| {
         known_values
             .iter()

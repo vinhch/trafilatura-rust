@@ -493,3 +493,24 @@ fn known_value_matches_whole_segment_or_tail() {
     assert!(!mentions_value("        <title>Maine news</title>", "Main"));
     assert!(!mentions_value("        <note>x2008-07-30</note>", date));
 }
+
+#[test]
+fn known_metadata_ignores_a_short_value_that_fills_a_segment() {
+    // "T" fills the whole segment of one line, but a value under four characters never explains it.
+    let known = ["T".to_string()];
+    let note = |text: &str| {
+        format!("<TEI>\n  <teiHeader>\n    <note>{text}</note>\n  </teiHeader>\n</TEI>\n")
+    };
+    let expected = note("T");
+    let actual: Result<String, ExtractError> = Ok(note("U"));
+    let case = OutputCase {
+        id: "page.html",
+        source: "page.html",
+        valid_utf8: true,
+        expected: Some(&expected),
+        upstream_error: false,
+        actual: &actual,
+        known_values: &known,
+    };
+    assert_eq!(classify_output(&case, &[]).0, ["port-bug"]);
+}

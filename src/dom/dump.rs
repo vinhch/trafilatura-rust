@@ -151,8 +151,8 @@ fn push_text_line(out: &mut String, depth: usize, text: Option<&str>) {
 
 /// The `@svg`/`@math` tag of a foreign element: from its namespace in a tree that has any
 /// namespaced element, else from the outermost `svg`/`math` ancestor-or-self (`inherited` is the
-/// tag the parent passed down; `None` in a namespaced tree).
-// upstream: tools/parity/parity/treedump.py::dump_tree
+/// tag the parent passed down, read only when `plain`). Mirrors
+/// `tools/parity/parity/treedump.py::dump_tree`.
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
 fn foreign_tag(node: &Node, plain: bool, inherited: Option<&'static str>) -> Option<&'static str> {
     if !plain {
