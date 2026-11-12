@@ -134,7 +134,7 @@ checked.
 report is `.temp/parity/metadata-report.md`: the classes, the known differences by deviation id, the
 `port-bug` pages with expected and actual values, and the stale entries.
 
-## lxml reports
+## Reports
 
 Each of the three corpus tests classifies the one result it computes per page against the lxml fixture and
 asserts on it. The reports are `.temp/parity/report.md`, `output-report.md` and `metadata-report.md`; the test

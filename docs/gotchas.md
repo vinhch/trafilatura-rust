@@ -68,6 +68,18 @@ function.
 - The token loop stops at the first limit: the emitter queues one `Token::Abort` and nothing after it
   (`dom/parse/emitter.rs`), and the builder stops at the depth cut (D-5), keeping the partial tree. A run of text,
   comment or attribute value has no cancellation check inside it (`docs/architecture.md`, Runtime contract).
+- Raw text switches by tag name, after a start tag that is not self-closed: `title` and `textarea` read as
+  RCDATA, `style`, `iframe`, `noembed`, `noframes` and `xmp` as RAWTEXT, `script` as script data and `plaintext`
+  as PLAINTEXT. `noscript` is ordinary markup. The names come from the generated `dataMode` column
+  (`dom/parse/tables.rs`).
+- `/>` ends the open element whatever it is, not only a void one: `<div class="x"/>text` gives an empty `div`.
+  After a discarded misplaced tag, the element it closes is the one already open.
+- A misplaced `html`, `head` or `body` start tag is discarded, and its attributes are not merged into the open
+  element. Its end tag only ends the discard; an end tag whose element is not open is dropped.
+- A valueless attribute takes its own name as value when libxml2's `htmlBooleanAttrs` lists it (`<script defer>`
+  reads `defer="defer"`), and the empty string otherwise. The HTML method writes a valueless attribute bare, and
+  `a=""` keeps its quotes.
+- Void elements: `img` only. `source` and `track` are not void in libxml2 2.14.6; 2.15 makes them void (OI-5).
 - Decode strictly. Upstream tries each guessed codec and falls back to UTF-8 with replacement only
   when all fail; `encoding_rs`'s `Encoding::decode` sniffs a BOM and replaces silently, which skips
   that fallback. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
