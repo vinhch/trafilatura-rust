@@ -123,14 +123,26 @@ fn descendants_exclude_context_in_order() {
 }
 
 #[test]
-fn subtree_starts_with_the_context_node() {
+fn subtree_from_a_nested_context_walks_the_document() {
     let tree = parse(POSTS);
     let c = by_id(&tree, "c");
     let found = subtree(&tree, c, &Call::default(), |_, _| true).unwrap();
-    let expected: Vec<NodeId> = tree.iter(c, &[]).collect();
-    assert_eq!(found.len(), 6);
+    let top = tree.root_of(c);
+    let expected: Vec<NodeId> = tree.iter(top, &[]).collect();
+    // html, head, body, #c, two posts, the section, its div and the post after it
+    assert_eq!(found.len(), 9);
     assert_eq!(found, expected);
-    assert_eq!(found.first(), Some(&c));
+    assert_eq!(found.first(), Some(&top));
+}
+
+#[test]
+fn subtree_from_a_detached_context_walks_only_that_subtree() {
+    let mut tree = parse(POSTS);
+    let detached = tree.new_element("aside");
+    let p = tree.new_element("p");
+    tree.append(detached, p);
+    let found = subtree(&tree, detached, &Call::default(), |_, _| true).unwrap();
+    assert_eq!(found, vec![detached, p]);
 }
 
 #[test]

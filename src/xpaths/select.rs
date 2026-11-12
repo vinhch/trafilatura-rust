@@ -107,20 +107,29 @@ pub(crate) fn descendants(
     Ok(found)
 }
 
-/// `//*[pred]` from the document root, which `ctx` is: `ctx` itself first when it satisfies `keep`,
-/// then its descendants, in document order.
+/// `//*[pred]` from `ctx`: the matches in document order, walked from the topmost ancestor of `ctx`.
+/// Under the first document-level element that is every document-level element in order; otherwise
+/// (a detached subtree) that topmost ancestor alone.
 pub(crate) fn subtree(
     tree: &Tree,
     ctx: NodeId,
     call: &Call<'_>,
     keep: impl Fn(&Tree, NodeId) -> bool,
 ) -> Result<Vec<NodeId>, ExtractError> {
+    let top = tree.root_of(ctx);
+    let starts = if tree.document_roots.first() == Some(&top) {
+        tree.document_roots.as_slice()
+    } else {
+        std::slice::from_ref(&top)
+    };
     let mut ticker = Ticker { call, visited: 0 };
     let mut found = Vec::new();
-    for id in tree.iter(ctx, &[]) {
-        ticker.tick()?;
-        if keep(tree, id) {
-            found.push(id);
+    for &start in starts {
+        for id in tree.iter(start, &[]) {
+            ticker.tick()?;
+            if keep(tree, id) {
+                found.push(id);
+            }
         }
     }
     Ok(found)

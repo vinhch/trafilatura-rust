@@ -13,7 +13,7 @@ mod scan;
 mod serialize;
 mod walk;
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 pub use html5ever::LocalName;
 pub use parse::{ParseLimits, parse_document, parse_fragment};
@@ -24,6 +24,22 @@ pub use dump::{DumpMode, dump, dump_from};
 // The depth test of the output walks builds trees past it.
 #[cfg(test)]
 pub use parse::MAX_DEPTH;
+
+/// The value of a valueless attribute whose name `htmlBooleanAttrs` does not list. It is one allocation,
+/// told apart from `""` by identity: the HTML method writes such an attribute as its bare name.
+static VALUELESS: LazyLock<Arc<str>> = LazyLock::new(|| Arc::from(""));
+
+/// The shared valueless value (`VALUELESS`).
+// Unread until the tree builder is the parse entry point.
+#[allow(dead_code)]
+pub(crate) fn valueless() -> Arc<str> {
+    Arc::clone(&VALUELESS)
+}
+
+/// Whether `value` is the shared valueless value, by identity.
+pub(crate) fn is_valueless_value(value: &Arc<str>) -> bool {
+    Arc::ptr_eq(value, &VALUELESS)
+}
 
 /// Index of a node in its `Tree`; only valid for the tree that produced it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -76,7 +92,7 @@ impl Node {
         }
     }
 
-    /// The parent element, `None` for the root.
+    /// The parent element, `None` for a document-level element (the root or one of `document_roots`).
     pub fn parent(&self) -> Option<NodeId> {
         self.parent
     }
@@ -92,10 +108,13 @@ impl Node {
     }
 }
 
-/// An element tree with one root; nodes are never freed before the tree is dropped.
+/// An element tree: an arena of elements with a root, and the document-level elements it was parsed into.
+/// Nodes are never freed before the tree is dropped; a node outside the root's subtree stays in the arena.
 #[derive(Clone, Debug)]
 pub struct Tree {
     nodes: Vec<Node>,
+    /// The element `root` returns. It is `NodeId(0)` unless `set_root` moved it.
+    root: NodeId,
     /// Cells `main_extractor` table construction has minted here; copies of the tree share it
     /// because they live in the same arena (D-9).
     pub(crate) table_cells: usize,
@@ -115,6 +134,7 @@ impl Tree {
     pub fn new(name: LocalName, ns: Ns, attrs: Vec<(LocalName, Arc<str>)>) -> Self {
         Self {
             nodes: vec![Node::new(name, ns, attrs)],
+            root: NodeId(0),
             table_cells: 0,
             dropped_script_text: false,
             needs_script_text: false,
@@ -124,7 +144,25 @@ impl Tree {
 
     /// The root element.
     pub fn root(&self) -> NodeId {
-        NodeId(0)
+        self.root
+    }
+
+    /// Makes `id` the root that `root` returns. The nodes outside it keep their links.
+    // Unread until the fromstring port is the parse entry point.
+    #[allow(dead_code)]
+    pub(crate) fn set_root(&mut self, id: NodeId) {
+        self.root = id;
+    }
+
+    /// Whether attribute `name` of `id` holds the valueless sentinel (`valueless`) rather than a value
+    /// that equals it.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn is_valueless(&self, id: NodeId, name: &str) -> bool {
+        self.node(id)
+            .attrs
+            .iter()
+            .find(|(key, _)| &**key == name)
+            .is_some_and(|(_, value)| is_valueless_value(value))
     }
 
     /// The element behind `id`.

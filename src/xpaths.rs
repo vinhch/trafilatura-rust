@@ -20,7 +20,8 @@ use select::{
 
 /// Evaluates one XPath expression against a context node: the matches in document order. An
 /// expression that starts with `.//` never matches the context node; one that starts with `//`
-/// selects from the document root, so the context node can be among its matches.
+/// selects from the document the context node is in (`Tree::root_of`), so the context node can be
+/// among its matches and so can elements outside the subtree that holds it.
 pub type Selector = fn(&Tree, NodeId, &Call<'_>) -> Result<Vec<NodeId>, ExtractError>;
 
 /// Joins XPath alternatives with `|`; `None` for an empty list, where upstream raises `ValueError`.
@@ -338,8 +339,8 @@ pattern!(COMMENTS_DISCARD_REPLY, "^reply-|akismet");
 
 // 5. METADATA
 
-// An expression starting with `//` selects from the document root, which is the context element of
-// every metadata call, so `subtree` (the context node itself first) is its walk.
+// An expression starting with `//` selects from the document of its context element, which is the
+// root of every metadata call, so `subtree` is its walk.
 
 pattern!(AUTHOR_NAME_CLASS, "author-?name|AuthorName|authorName");
 pattern!(AUTHOR_LOOSE_ID, "author|zuozhe|bianji|xiaobian");

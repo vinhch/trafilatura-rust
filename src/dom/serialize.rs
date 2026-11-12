@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::parse::tables::BOOLEAN_ATTRIBUTES;
-use super::{Node, NodeId, Ns, Tree};
+use super::{Node, NodeId, Ns, Tree, is_valueless_value};
 
 /// libxml2 stops indenting after this many levels (two spaces each).
 const MAX_INDENT_LEVEL: usize = 30;
@@ -349,6 +349,11 @@ impl Tree {
                     push_escaped(out, value, true);
                     out.push('"');
                 }
+                // libxml2 2.14.6 writes a valueless attribute of a name `htmlBooleanAttrs` does not list bare
+                Method::Html if is_valueless_value(value) => {
+                    out.push(' ');
+                    out.push_str(name);
+                }
                 Method::Html => push_html_attribute(out, node, name, value),
             }
         }
@@ -379,3 +384,6 @@ impl Tree {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -13,7 +13,7 @@ use super::ParseLimits;
 use super::emitter::{Emitter, Token, tokens};
 use super::tables::{BOOLEAN_ATTRIBUTES, element, end_priority, start_closes};
 use crate::cancel::{CHECK_INTERVAL, Call};
-use crate::dom::{NodeId, Ns, Tree};
+use crate::dom::{NodeId, Ns, Tree, valueless};
 use crate::error::{ExtractError, Rejection, TreeLimit};
 
 /// libxml2's `htmlInsertMode`: how far the implied `head` and `body` have got. An implied element is
@@ -298,16 +298,21 @@ fn is_html_space(ch: char) -> bool {
 }
 
 /// The attributes a kept start tag carries. A valueless attribute is its own name when `htmlBooleanAttrs`
-/// lists it, else empty.
+/// lists it, else the shared valueless value (`valueless`), which the HTML method writes bare.
 // libxml2: HTMLtree.c::htmlIsBooleanAttr
 fn attributes(
     mut attrs: Vec<(LocalName, Arc<str>)>,
-    valueless: &[LocalName],
+    valueless_names: &[LocalName],
 ) -> Vec<(LocalName, Arc<str>)> {
     for (name, value) in &mut attrs {
-        if valueless.contains(name) && BOOLEAN_ATTRIBUTES.contains(&&**name) {
-            *value = Arc::from(&**name);
+        if !valueless_names.contains(name) {
+            continue;
         }
+        *value = if BOOLEAN_ATTRIBUTES.contains(&&**name) {
+            Arc::from(&**name)
+        } else {
+            valueless()
+        };
     }
     attrs
 }
