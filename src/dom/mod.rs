@@ -105,6 +105,9 @@ pub struct Tree {
     /// A dropped-text element survived `tree_cleaning`, so the readers after it would see its
     /// missing text and the extraction must run again on a full parse.
     pub(crate) needs_script_text: bool,
+    /// libxml2's document-level elements in order: the first `html`, the root, then each `html` opened
+    /// after the first one closed (implied or written). Only the first has no parent; the others are detached.
+    pub(crate) document_roots: Vec<NodeId>,
 }
 
 impl Tree {
@@ -115,6 +118,7 @@ impl Tree {
             table_cells: 0,
             dropped_script_text: false,
             needs_script_text: false,
+            document_roots: vec![NodeId(0)],
         }
     }
 
@@ -157,6 +161,18 @@ impl Tree {
     ) -> NodeId {
         let id = self.push(Node::new(name, ns, attrs));
         self.link_last(parent, id);
+        id
+    }
+
+    /// Adds a detached element as the next document-level root, after the ones there are.
+    pub(crate) fn add_document_root(
+        &mut self,
+        name: LocalName,
+        ns: Ns,
+        attrs: Vec<(LocalName, Arc<str>)>,
+    ) -> NodeId {
+        let id = self.push(Node::new(name, ns, attrs));
+        self.document_roots.push(id);
         id
     }
 

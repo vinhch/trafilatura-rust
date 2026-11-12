@@ -49,6 +49,8 @@ not when it looks similar or scores well on a benchmark.
   upstream, so a rename never loses it.
 - Give each ported function one trace comment naming its source:
   `// upstream: main_extractor.py::handle_paragraphs`. No line numbers; they drift every release.
+  A libxml2 rule takes `// libxml2: HTMLparser.c::htmlAutoClose` (the file and function of the libxml2
+  release `src/dom/parse/tables.rs` is generated from); an lxml port keeps `// upstream: lxml/html/__init__.py::fn`.
 - Record a departure from upstream, deliberate or forced, as a row in `docs/deviations.md` with an id,
   and put `// deviation: D-n` at the spot in the code. An unrecorded difference is a bug.
 - Port upstream bugs as they are, unless a row in `docs/deviations.md` says otherwise. Parity comes

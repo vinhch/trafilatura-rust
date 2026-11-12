@@ -588,11 +588,15 @@ pub fn parse_fragment(
 }
 
 #[allow(dead_code)]
+mod builder;
+#[allow(dead_code)]
 mod emitter;
 mod sink;
 // Some items are read only by tests until the tree builder reads them.
 #[allow(dead_code)]
 pub(in crate::dom) mod tables;
+#[cfg(test)]
+mod tree_cases;
 
 use sink::{Driver, drive, new_sink};
 
