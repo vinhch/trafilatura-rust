@@ -18,12 +18,11 @@ import lxml.etree
 from lxml.html import document_fromstring, fragment_fromstring, fromstring
 
 from parity.gen_xpath_cases import rust_str
+from parity.generate import LIBXML2_VERSION, check_libxml2
 from parity.treedump import dump_tree
 
-LIBXML2_VERSION = (2, 14, 6)
-
-# The 38 snippets of .work/spike-parsers/cases/, names kept.
-SPIKE_CASES = [
+# One snippet per behavior of libxml2's HTML parser.
+PARSER_CASES = [
     ("01-p-closed-by-li", "<ul><li><p>a<li>b</ul>"),
     ("02-p-closed-by-dd-dt", "<dl><dt><p>t<dd><p>d<dt>t2</dl>"),
     ("03-p-closed-by-td-th", "<table><tr><td><p>a<td><p>b<th><p>c</table>"),
@@ -64,8 +63,8 @@ SPIKE_CASES = [
     ("38-html-duplicate-lang", '<html lang="de-DE" lang="de"><body><p>a</p></body></html>'),
 ]
 
-# Cases for the rules the spike does not reach, in the order of the plan.
-EXTRA_CASES = [
+# Snippets of single tree-builder rules, and of the `fromstring` and fragment shapes.
+RULE_CASES = [
     ("ws-before-head", "<html>\n<head><title>t</title></head><body><p>a</p></body></html>"),
     ("ws-in-head", "<html><head>\n<title>t</title>\n<meta charset=utf-8>\n</head><body><p>a</p></body></html>"),
     ("ws-after-head", "<html><head><title>t</title></head>\n<body><p>a</p></body></html>"),
@@ -114,6 +113,8 @@ EXTRA_CASES = [
     ("fromstring-leading-text", "text<p>x</p>"),
     ("fromstring-two-bodies", "<p>a</p></body><body><p>b</p>"),
     ("fromstring-dropped-body-tail", "<p>a</p></body><body><p>b</p></body>z"),
+    ("fromstring-later-body-text", "<p>a</p></body><body>x<p>b</p>"),
+    ("fromstring-several-heads", "<title>t</title></head><head><meta name=a><p>x</p>"),
     # fragment shapes
     ("fragment-leading-text", "text<p>x</p>"),
     ("fragment-blank-leading-text", "  <p>x</p>"),
@@ -161,10 +162,9 @@ def main() -> None:
     from trafilatura.utils import HTML_PARSER
     from importlib.metadata import version as package_version
 
-    if lxml.etree.LIBXML_VERSION != LIBXML2_VERSION:
-        raise RuntimeError(f"libxml2 {lxml.etree.LIBXML_VERSION}, expected {LIBXML2_VERSION}")
+    check_libxml2()
     rows = []
-    for name, html in SPIKE_CASES + EXTRA_CASES:
+    for name, html in PARSER_CASES + RULE_CASES:
         document, others = dump_case(html, HTML_PARSER)
         fromstring_dump = dump_fromstring(html, HTML_PARSER)
         fragment_dump = dump_fragment(html, HTML_PARSER)

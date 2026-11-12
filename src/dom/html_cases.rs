@@ -40,6 +40,7 @@ pub(super) const TOSTRING_HTML_CASES: &[(&str, &str)] = &[
     ("<p a=\"&{x} & y &{ z\">x</p>", "<p a=\"&{x} &amp; y &amp;{ z\">x</p>"),
     ("<p a=\"<!--x--> <y> & z\">x</p>", "<p a=\"<!--x--> &lt;y&gt; &amp; z\">x</p>"),
     ("<p alt>x</p>", "<p alt>x</p>"),
+    ("<html><head></head><body><p alt>x</p></body></html>", "<html><head></head><body><p alt>x</p></body></html>"),
     ("<p a=\"\">x</p>", "<p a=\"\">x</p>"),
     ("<p a=\"x&#13;y&#9;z&#10;w\">x</p>", "<p a=\"x\ry\tz\nw\">x</p>"),
     ("<p checked=\"v\">x</p>", "<p checked>x</p>"),

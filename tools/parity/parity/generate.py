@@ -257,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--only", default="", help="keep pages whose source contains this substring (skips f1.json)")
     args = parser.parse_args(argv)
+    check_libxml2()
 
     upstream_root = args.upstream.resolve()
     pin = check_pin(upstream_root)

@@ -189,6 +189,7 @@ def test_write_json_leaves_no_temp_file_on_failure(tmp_path, monkeypatch):
 def test_failing_f1_leaves_the_previous_fixture_set(tmp_path, monkeypatch):
     out = tmp_path / "out"
     monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "check_libxml2", lambda: None)
     monkeypatch.setattr(generate, "corpus", lambda root: [])
     monkeypatch.setattr(generate, "f1_scores", lambda root: (_ for _ in ()).throw(RuntimeError("f1 failed")))
     generate.store(out / "pin", {"lock_sha256": "old"}, [_page("tests/a.html")], f1={"f1": 1})
@@ -197,6 +198,14 @@ def test_failing_f1_leaves_the_previous_fixture_set(tmp_path, monkeypatch):
         generate.main(["--upstream", str(UPSTREAM), "--out", str(out)])
     assert (out / "pin" / "index.json").read_text() == before
     assert json.loads((out / "pin" / "f1.json").read_text()) == {"f1": 1}
+
+
+def test_main_refuses_a_wrong_libxml2(tmp_path, monkeypatch):
+    import lxml.etree
+
+    monkeypatch.setattr(lxml.etree, "LIBXML_VERSION", (2, 0, 0))
+    with pytest.raises(SystemExit, match="libxml2"):
+        generate.main(["--upstream", str(UPSTREAM), "--out", str(tmp_path)])
 
 
 def test_check_pin_names_worktrees(tmp_path):
@@ -256,6 +265,7 @@ def _raise_runtime_error(*_, **__):
 
 def test_main_restores_process_state_on_return(tmp_path, monkeypatch, clean_logging):
     monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "check_libxml2", lambda: None)
     monkeypatch.setattr(generate, "corpus", lambda root: [])
     monkeypatch.setattr(generate, "f1_scores", lambda root: {})
     before = _process_state()
@@ -266,6 +276,7 @@ def test_main_restores_process_state_on_return(tmp_path, monkeypatch, clean_logg
 
 def test_main_restores_process_state_on_raise(tmp_path, monkeypatch, clean_logging):
     monkeypatch.setattr(generate, "check_pin", lambda root: "pin")
+    monkeypatch.setattr(generate, "check_libxml2", lambda: None)
     monkeypatch.setattr(generate, "corpus", lambda root: [])
     monkeypatch.setattr(generate, "f1_scores", _raise_runtime_error)
     before = _process_state()
