@@ -51,6 +51,30 @@ fn dump_matches_python_format() {
 }
 
 #[test]
+fn dump_tags_plain_svg_by_ancestor() {
+    let name = |n: &str| LocalName::from(n);
+    let mut tree = Tree::new(name("html"), Ns::Html, vec![]);
+    let body = tree.add_child(tree.root(), name("body"), Ns::Html, vec![]);
+    let svg = tree.add_child(body, name("svg"), Ns::Html, vec![]);
+    let path = tree.add_child(svg, name("path"), Ns::Html, vec![]);
+    let math = tree.add_child(body, name("math"), Ns::Html, vec![]);
+    tree.add_child(math, name("mi"), Ns::Html, vec![]);
+    let outer = tree.add_child(body, name("svg"), Ns::Html, vec![]);
+    let inner = tree.add_child(outer, name("math"), Ns::Html, vec![]);
+    tree.add_child(inner, name("mn"), Ns::Html, vec![]);
+    // The outermost name wins, as `foreign = foreign or ...` in treedump.
+    let expected = concat!(
+        "html\n  body\n",
+        "    svg@svg\n      path@svg\n",
+        "    math@math\n      mi@math\n",
+        "    svg@svg\n      math@svg\n        mn@svg\n",
+    );
+    assert_eq!(dump(&tree, DumpMode::Exact).0, expected);
+    // The dump root starts with no inherited tag; ancestors above it are not looked at.
+    assert_eq!(dump_from(&tree, path, DumpMode::Exact).0, "path\n");
+}
+
+#[test]
 fn text_and_tail_follow_lxml() {
     let tree = parse("<p>a<b>b</b>c</p>");
     let p = tree.node(find(&tree, "p"));

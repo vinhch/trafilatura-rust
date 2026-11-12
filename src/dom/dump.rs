@@ -149,14 +149,46 @@ fn push_text_line(out: &mut String, depth: usize, text: Option<&str>) {
     out.push('\n');
 }
 
+/// The `@svg`/`@math` tag of a foreign element: from its namespace in a tree that has any
+/// namespaced element, else from the outermost `svg`/`math` ancestor-or-self (`inherited` is the
+/// tag the parent passed down; `None` in a namespaced tree).
+// upstream: tools/parity/parity/treedump.py::dump_tree
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
-fn push_element_line(out: &mut String, depth: usize, node: &Node) {
+fn foreign_tag(node: &Node, plain: bool, inherited: Option<&'static str>) -> Option<&'static str> {
+    if !plain {
+        return match node.ns {
+            Ns::Html => None,
+            Ns::Svg => Some("svg"),
+            Ns::MathMl => Some("math"),
+        };
+    }
+    inherited.or(match &*node.name {
+        "svg" => Some("svg"),
+        "math" => Some("math"),
+        _ => None,
+    })
+}
+
+/// True when no element of the subtree at `start` has a namespace.
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
+fn is_plain(tree: &Tree, start: NodeId) -> bool {
+    let mut stack = vec![start];
+    while let Some(id) = stack.pop() {
+        if tree.node(id).ns != Ns::Html {
+            return false;
+        }
+        stack.extend(tree.children(id));
+    }
+    true
+}
+
+#[cfg_attr(not(feature = "__internals"), allow(dead_code))]
+fn push_element_line(out: &mut String, depth: usize, node: &Node, foreign: Option<&str>) {
     out.push_str(&"  ".repeat(depth));
     out.push_str(&node.name);
-    match node.ns {
-        Ns::Html => {}
-        Ns::Svg => out.push_str("@svg"),
-        Ns::MathMl => out.push_str("@math"),
+    if let Some(tag) = foreign {
+        out.push('@');
+        out.push_str(tag);
     }
     let mut attrs: Vec<&(LocalName, Arc<str>)> = node.attrs.iter().collect();
     attrs.sort_by(|a, b| str::cmp(&a.0, &b.0));
@@ -172,7 +204,8 @@ fn push_element_line(out: &mut String, depth: usize, node: &Node) {
 /// One line per node in document order, two spaces of indent per depth.
 ///
 /// Element: `name[@svg|@math] key="value" ...` with attributes sorted by name and values as JSON
-/// strings. Text and tail: `#text "..."` at the child depth (text) or the element's own depth
+/// strings; the tag follows `treedump.py` (namespace, or `svg`/`math` ancestor-or-self when no
+/// element has a namespace). Text and tail: `#text "..."` at the child depth (text) or the element's own depth
 /// (tail); whitespace-only text is kept, empty text is omitted. The flag is true when the copy rule
 /// of `DumpMode::Normalized` changed the tree; it is always false for `Exact`.
 #[cfg_attr(not(feature = "__internals"), allow(dead_code))]
@@ -196,14 +229,17 @@ pub fn dump_from(tree: &Tree, id: NodeId, mode: DumpMode) -> (String, bool) {
         Some(copy) => (copy, copy.root()),
         None => (tree, id),
     };
+    let plain = is_plain(tree, start);
     let root = tree.node(start);
+    let root_tag = foreign_tag(root, plain, None);
     let mut out = String::new();
-    push_element_line(&mut out, 0, root);
+    push_element_line(&mut out, 0, root, root_tag);
     push_text_line(&mut out, 1, root.text.as_deref());
-    // (element, depth, next child)
-    let mut stack: Vec<(NodeId, usize, Option<NodeId>)> = vec![(start, 0, root.first_child)];
+    // (element, depth, next child, tag the element passes down)
+    let mut stack: Vec<(NodeId, usize, Option<NodeId>, Option<&'static str>)> =
+        vec![(start, 0, root.first_child, root_tag)];
     while let Some(frame) = stack.last_mut() {
-        let (id, depth, next) = *frame;
+        let (id, depth, next, inherited) = *frame;
         let Some(child_id) = next else {
             stack.pop();
             // The root has no tail; any other element's tail sits at its own depth.
@@ -214,9 +250,15 @@ pub fn dump_from(tree: &Tree, id: NodeId, mode: DumpMode) -> (String, bool) {
         };
         let child = tree.node(child_id);
         frame.2 = child.next;
-        push_element_line(&mut out, depth.saturating_add(1), child);
+        let child_tag = foreign_tag(child, plain, inherited);
+        push_element_line(&mut out, depth.saturating_add(1), child, child_tag);
         push_text_line(&mut out, depth.saturating_add(2), child.text.as_deref());
-        stack.push((child_id, depth.saturating_add(1), child.first_child));
+        stack.push((
+            child_id,
+            depth.saturating_add(1),
+            child.first_child,
+            child_tag,
+        ));
     }
     (out, changed)
 }
