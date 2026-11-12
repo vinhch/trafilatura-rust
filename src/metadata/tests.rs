@@ -190,7 +190,8 @@ fn extract_meta_json_minifies_then_parses() {
     let (document, result) = read_scripts(&[
         "{\n \"@context\": \"https://schema.org\",\n \"@type\": \"Article\",\n \"headline\":\t\"A  B\u{1}C\"\n}",
     ]);
-    // oracle: html5tree.parse_document(html) -> extract_meta_json(tree, Document())
+    // oracle: scripts/oracle.sh 'from lxml import html as h; from trafilatura.utils import HTML_PARSER; from trafilatura.metadata import extract_meta_json, Document; page = "<html><head><script type=\"application/ld+json\">{\n \"@context\": \"https://schema.org\",\n \"@type\": \"Article\",\n \"headline\":\t\"A  B\x01C\"\n}</script></head><body><p>x</p></body></html>"; t = h.fromstring(page, parser=HTML_PARSER); d = Document(); extract_meta_json(t, d); print(ascii(d.title))'
+    // -> 'A B\x01C'
     assert_eq!(result, Ok(()));
     assert_eq!(document.title.as_deref(), Some("A B\u{1}C"));
 }
