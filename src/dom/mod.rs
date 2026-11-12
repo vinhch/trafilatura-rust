@@ -92,7 +92,7 @@ impl Node {
         }
     }
 
-    /// The parent element, `None` for a document-level element (the root or one of `document_roots`).
+    /// The parent element. Only a `document_roots` entry or a detached element has none.
     pub fn parent(&self) -> Option<NodeId> {
         self.parent
     }
@@ -125,7 +125,7 @@ pub struct Tree {
     /// missing text and the extraction must run again on a full parse.
     pub(crate) needs_script_text: bool,
     /// libxml2's document-level elements in order: the first `html`, the root, then each `html` opened
-    /// after the first one closed (implied or written). Only the first has no parent; the others are detached.
+    /// after the first one closed (implied or written). None of them has a parent.
     pub(crate) document_roots: Vec<NodeId>,
 }
 
@@ -142,7 +142,7 @@ impl Tree {
         }
     }
 
-    /// The root element.
+    /// The root element. It may sit below a document-level element (`document_roots`).
     pub fn root(&self) -> NodeId {
         self.root
     }

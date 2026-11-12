@@ -97,7 +97,7 @@ fn children_named(tree: &Tree, parent: NodeId, name: &str) -> Vec<NodeId> {
 
 /// `drop_tree`: removes `id` with its children and text. Its tail joins the tail of the previous
 /// element, or the text of the parent when it is the first child.
-// upstream: lxml/etree.pyx::_Element.drop_tree
+// upstream: lxml/html/__init__.py::HtmlMixin.drop_tree
 fn drop_tree(tree: &mut Tree, id: NodeId) {
     let Some(parent) = tree.node(id).parent() else {
         return;
