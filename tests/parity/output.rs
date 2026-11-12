@@ -141,6 +141,19 @@ fn within(range: &Range<usize>, span: &Range<usize>) -> bool {
     range.start >= span.start && range.end <= span.end
 }
 
+/// Whether a text segment of `line` (the run between `>` and `<`, trimmed) equals `value`, or one
+/// of its `", "`-separated pieces does (`<bibl>Sitename, 2008-07-30</bibl>`).
+pub(crate) fn mentions_value(line: &str, value: &str) -> bool {
+    line.split('<')
+        .enumerate()
+        .filter_map(|(i, part)| match i {
+            0 => Some(part),
+            _ => part.split_once('>').map(|(_, text)| text),
+        })
+        .map(str::trim)
+        .any(|segment| segment == value || segment.split(", ").any(|piece| piece.trim() == value))
+}
+
 /// Rule for the TEI header of a page `METADATA_KNOWN` lists: both ranges lie inside the `teiHeader`
 /// of their side, and each line pair holds a fixture value of a listed field on one side. The text
 /// part is outside the header, so a text difference is never this class.
@@ -162,13 +175,12 @@ fn known_metadata_hunk(
     let left = expected.get(hunk.expected.clone()).unwrap_or_default();
     let right = actual.get(hunk.actual.clone()).unwrap_or_default();
     // Values under four characters occur inside ordinary header words (`T` in "Today"), so they
-    // cannot tell which line they explain. shortcut: a longer value can still sit inside a longer
-    // word; a whole-word match would close that.
+    // cannot tell which line they explain; a longer one must fill a text segment or its tail.
     let mentions = |line: &str| {
         known_values
             .iter()
             .filter(|value| value.chars().count() >= 4)
-            .any(|value| line.contains(value.as_str()))
+            .any(|value| mentions_value(line, value))
     };
     !left.is_empty()
         && left.len() == right.len()

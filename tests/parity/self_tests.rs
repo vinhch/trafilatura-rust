@@ -476,3 +476,20 @@ fn fingerprint_only_is_port_bug() {
         );
     }
 }
+
+#[test]
+fn known_value_matches_whole_segment_or_tail() {
+    // Lines of the `xmltei` fixture of tests__eval__archive.org.dimido.de.marketing.html.
+    let date = "2008-07-30";
+    assert!(mentions_value(
+        "        <bibl>DimidoBlog, 2008-07-30</bibl>",
+        date
+    ));
+    assert!(mentions_value(
+        "        <bibl type=\"sigle\">2008-07-30</bibl>",
+        date
+    ));
+    assert!(mentions_value("            <date>2008-07-30</date>", date));
+    assert!(!mentions_value("        <title>Maine news</title>", "Main"));
+    assert!(!mentions_value("        <note>x2008-07-30</note>", date));
+}
