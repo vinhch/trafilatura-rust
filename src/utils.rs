@@ -175,8 +175,8 @@ fn bounded_unbrotli(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
 const UNICODE_ALIASES: [&str; 2] = ["utf-8", "utf_8"];
 
 /// Codec names to try for bytes that are not valid UTF-8, best first, as `charset_normalizer` ranks
-/// them; `["utf-8"]` for valid UTF-8. May be empty: the detector rejects mostly-UTF-8 text with stray
-/// bytes.
+/// them; `["utf-8"]` for valid UTF-8. May be empty when the detector finds no match, as for some
+/// UTF-8 text with stray bytes.
 ///
 /// Inputs of 10 000 bytes or more are judged on their first and last 5000 bytes, then on the whole
 /// input when those give no match.
@@ -185,15 +185,17 @@ pub fn detect_encoding(content: &[u8]) -> Vec<String> {
     if std::str::from_utf8(content).is_ok() {
         return vec!["utf-8".to_owned()];
     }
-    // The cchardet branch of upstream is absent: this crate has no counterpart for it.
-    let sampled = match (content.len() < 10_000, content.get(..5000), tail(content)) {
-        (false, Some(head), Some(tail)) => from_bytes(&[head, tail].concat()),
+    // deviation: D-31 (upstream's cchardet branch is absent)
+    let matches = match (content.len() < 10_000, content.get(..5000), tail(content)) {
+        (false, Some(head), Some(tail)) => {
+            let sampled = from_bytes(&[head, tail].concat());
+            if sampled.is_empty() {
+                from_bytes(content)
+            } else {
+                sampled
+            }
+        }
         _ => from_bytes(content),
-    };
-    let matches = if sampled.is_empty() {
-        from_bytes(content)
-    } else {
-        sampled
     };
     matches
         .iter()

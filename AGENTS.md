@@ -129,6 +129,8 @@ These hold for the whole crate; `docs/architecture.md` (Runtime contract) has th
 - No thread outlives a call. `Extractor::extract_batch`'s scoped workers are the one place the library
   spawns threads.
 - No global cache and no global allocator: a cache is owned by the caller, the allocator by the binary.
+- One gated exception to the three rules above on state, caches and freeing on return: `charset-norm`'s
+  memo arrays and thread-local scratch pool (`docs/dependencies.md`, `docs/architecture.md` Runtime contract).
 - Measure before and after a resource change: output digests equal on both option sets, the numbers in
   the commit message (`docs/architecture.md`, Performance and memory).
 
