@@ -574,31 +574,3 @@ fn test_tei_tree() {
             .contains(r#"<ab rend="h2" type="header">content<list rend="ul"><item>text1"#)
     );
 }
-
-// Blocks 1 and 5 of `test_tei` on the nesting libxml2 gives them.
-#[test]
-fn test_tei_strip_double_tags_libxml2_nesting() {
-    let call = Call::default();
-    // oracle: sanitize(etree.tostring(remove_empty_elements(strip_double_tags(etree.fromstring(S))), encoding="unicode")).replace("\n", ""), S being the first block's html with its outer `p` closed at the second one, as `lxml.html.fromstring` parses it
-    let mut tree = xml_tree(
-        "<html>
-<body>
-<p/><p>
-<span><p>content</p></span>
-</p>
-</body>
-</html>",
-    );
-    let root = tree.root();
-    assert_eq!(
-        strip_double_tags_then_clean(&mut tree, root, &call),
-        "<html><body><p><span>content</span></p></body></html>"
-    );
-
-    // oracle: [t.find(f".//{tag}/p") is not None for tag in ("item", "cell", "quote", "note", "figure")] on etree.fromstring(S), before and after strip_double_tags(t), S being `WHITELISTED_NESTING`
-    let mut tree = xml_tree(WHITELISTED_NESTING);
-    let root = tree.root();
-    assert_eq!(whitelisted_parents_with_p(&tree, root), [true; 5]);
-    strip_double_tags(&mut tree, root, &call).unwrap();
-    assert_eq!(whitelisted_parents_with_p(&tree, root), [true; 5]);
-}

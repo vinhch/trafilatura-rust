@@ -61,6 +61,10 @@ PARSER_CASES = [
     ("36-script-lt-letter", '<script>for(var t=0;t<e.length;t++){a=1}</script><p>after'),
     ("37-noscript-img", "<head><noscript><img src=a></noscript></head><body><noscript><p>x</p></noscript></body>"),
     ("38-html-duplicate-lang", '<html lang="de-DE" lang="de"><body><p>a</p></body></html>'),
+    ("39-cr-in-attribute", '<p title="a\rb">x</p>'),
+    ("40-crlf-in-attribute", '<p title="a\r\nb">x</p>'),
+    ("41-cr-in-script", "<script>var a = 1;\rvar b = 2;\r\n</script>"),
+    ("42-cr-in-style", "<style>a{}\r\nb{}</style>"),
 ]
 
 # Snippets of single tree-builder rules, and of the `fromstring` and fragment shapes.

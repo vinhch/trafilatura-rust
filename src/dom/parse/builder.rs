@@ -327,9 +327,6 @@ fn attributes(
 pub(super) struct BuildStats {
     /// Tokens the loop took from the emitter, the abort included.
     pub(super) tokens: usize,
-    /// Tokens the emitter still held when the loop stopped on an abort. It queues none after its first
-    /// limit, so this is 0.
-    pub(super) tokens_after_abort: usize,
 }
 
 /// The tree of `html` as libxml2 2.14.6 builds it: the root is the first `html`, and the other
@@ -392,9 +389,10 @@ fn run(
         }
     }
     if let Some(error) = abort {
-        stats.tokens_after_abort = emitter.queued();
         return Err(error);
     }
+    // libxml2: HTMLparser.c::htmlAutoCloseOnEnd is not ported: it ends every element still open when the
+    // input ends, and the elements are already attached to their parents, so the tree stays as it is.
     let dropped = emitter.dropped_text();
     let Some(mut tree) = builder.tree else {
         return Err(ExtractError::Rejected(Rejection::EmptyTree));

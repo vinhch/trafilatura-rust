@@ -119,11 +119,6 @@ impl Emitter {
         self.dropped_any
     }
 
-    /// Tokens queued and not yet taken.
-    pub(super) fn queued(&self) -> usize {
-        self.queue.len()
-    }
-
     /// Queues the text run in progress, or a `Skipped` when only dropped text was pending.
     fn flush_text(&mut self) {
         if self.done {
@@ -209,14 +204,13 @@ fn decode(bytes: &[u8]) -> String {
 // libxml2: HTMLparser.c::htmlParseHTMLName
 fn local_name(bytes: &[u8]) -> LocalName {
     let text = String::from_utf8_lossy(bytes);
-    if text.len() <= NAME_BYTES && !text.contains('\0') {
+    if text.len() <= NAME_BYTES {
         return LocalName::from(text.as_ref());
     }
     // A character that does not fit is skipped, and later ones that fit are still kept.
     let mut kept = String::with_capacity(text.len().min(NAME_BYTES));
     let mut count = 0usize;
     for ch in text.chars() {
-        let ch = if ch == '\0' { '\u{fffd}' } else { ch };
         if count + ch.len_utf8() <= NAME_BYTES {
             count += ch.len_utf8();
             kept.push(ch);

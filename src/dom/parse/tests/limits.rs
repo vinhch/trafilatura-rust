@@ -372,7 +372,6 @@ fn nothing_after_the_stop() {
     );
     // `html`, `body`, then the abort.
     assert_eq!(stats.tokens, 3);
-    assert_eq!(stats.tokens_after_abort, 0);
 }
 
 #[test]

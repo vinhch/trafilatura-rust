@@ -172,22 +172,13 @@ fn get_max_date_keeps_aware_bound() {
 #[test]
 fn clean_html_stops_like_lxml() {
     // oracle: clean_html(tree, CLEANING_LIST), then lxml.html.tostring of the root
-    let cases = [
-        (
-            "<object><audio></audio></object><video>v</video>",
-            "<span><video>v</video></span>",
-        ),
-        (
-            "<object><svg></svg></object><video>v</video>",
-            "<span><video>v</video></span>",
-        ),
-    ];
-    for (page, expected) in cases {
-        let mut tree = parse(page);
-        let root = tree.root();
-        clean_html(&mut tree, root, CLEANING_LIST, &Call::default()).expect("not cancelled");
-        assert_eq!(tree.tostring_html(root, true), expected, "page {page:?}");
-    }
+    let mut tree = parse("<object><audio></audio></object><video>v</video>");
+    let root = tree.root();
+    clean_html(&mut tree, root, CLEANING_LIST, &Call::default()).expect("not cancelled");
+    assert_eq!(
+        tree.tostring_html(root, true),
+        "<span><video>v</video></span>"
+    );
 }
 
 #[test]

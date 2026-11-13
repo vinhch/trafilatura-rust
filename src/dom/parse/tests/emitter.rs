@@ -184,29 +184,6 @@ fn name_cut_skips_characters_that_do_not_fit() {
 }
 
 #[test]
-fn name_nul_is_kept_as_replacement_and_costs_three_bytes() {
-    // Tag names reach the emitter with NUL already mapped by html5gum; this pins the rule for a raw NUL.
-    let mut emitter = Emitter::new(&ParseLimits::default(), false);
-    let mut sink = &mut emitter;
-    sink.init_start_tag();
-    sink.push_tag_name(b"a\0b");
-    let _ = sink.emit_current_tag();
-    assert_eq!(sink.pop_token(), Some(start("a\u{fffd}b")));
-
-    // 99 bytes of `a` leave one byte: the three-byte replacement is skipped, the `c` after it fits.
-    let mut emitter = Emitter::new(&ParseLimits::default(), false);
-    let mut sink = &mut emitter;
-    sink.init_start_tag();
-    sink.push_tag_name("a".repeat(99).as_bytes());
-    sink.push_tag_name(b"\0c");
-    let _ = sink.emit_current_tag();
-    assert_eq!(
-        sink.pop_token(),
-        Some(start(&format!("{}c", "a".repeat(99))))
-    );
-}
-
-#[test]
 fn attribute_budget_rejects() {
     let limits = ParseLimits {
         max_nodes: Some(1),
@@ -282,4 +259,9 @@ fn comments_doctype_pi_skipped() {
 #[test]
 fn leading_bom_stripped_once() {
     assert_eq!(toks("\u{feff}\u{feff}a"), vec![text("\u{feff}a")]);
+}
+
+#[test]
+fn nul_in_tag_name_reaches_the_emitter_replaced() {
+    assert_eq!(toks("<a\0b>x"), [start("a\u{fffd}b"), text("x")]);
 }
