@@ -16,12 +16,18 @@ mod hunks;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use blake2::digest::consts::U16;
+use blake2::{Blake2b, Digest};
 use serde_json::{Map, Value, json};
-use trafilatura_rust::__internals::{HtmlInput, MAX_FILE_SIZE, ParseLimits, dump, load_html};
+use trafilatura_rust::__internals::{
+    HtmlInput, MAX_FILE_SIZE, ParseLimits, decode_file, detect_encoding, dump, load_html,
+};
 use trafilatura_rust::{Call, Document, ExtractError, Focus, Format, Input, Options, Rejection};
 
+use encoding_cases::CORPUS_ENCODING_CASES;
 use hunks::{Hunk, is_encoding_hunk, is_encoding_text_hunk};
 
+mod encoding_cases;
 mod metadata;
 mod output;
 mod self_tests;
@@ -325,4 +331,54 @@ fn script_text_drop_keeps_output() {
         "{} outputs differ: {differing:?}",
         differing.len()
     );
+}
+
+/// `detect_encoding` and `decode_file` on every non-UTF-8 corpus page give what charset_normalizer gives
+/// upstream: the ranked guesses, and the decoded text by length and digest.
+#[test]
+fn corpus_encoding_matches_charset_normalizer() {
+    let Some((_, upstream, index)) = load_corpus() else {
+        return;
+    };
+    let non_utf8: Vec<(&str, &str)> = index["pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|entry| entry["valid_utf8"] == Value::Bool(false))
+        .map(|entry| {
+            (
+                entry["id"].as_str().unwrap(),
+                entry["source"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    let mut index_ids: Vec<&str> = non_utf8.iter().map(|(id, _)| *id).collect();
+    let mut row_ids: Vec<&str> = CORPUS_ENCODING_CASES.iter().map(|row| row.id).collect();
+    index_ids.sort_unstable();
+    row_ids.sort_unstable();
+    assert_eq!(
+        row_ids, index_ids,
+        "the encoding table and the fixtures list different non-UTF-8 pages"
+    );
+    let mut failures = Vec::new();
+    for row in CORPUS_ENCODING_CASES {
+        let source = non_utf8
+            .iter()
+            .find_map(|(id, source)| (*id == row.id).then_some(*source))
+            .unwrap();
+        let bytes = std::fs::read(upstream.join(source)).unwrap();
+        let guesses = detect_encoding(&bytes);
+        let decoded = decode_file(&bytes, MAX_FILE_SIZE);
+        let digest: [u8; 16] = Blake2b::<U16>::digest(decoded.as_bytes()).into();
+        if guesses != row.guesses {
+            failures.push(format!(
+                "{}: guesses {guesses:?}, oracle {:?}",
+                row.id, row.guesses
+            ));
+        }
+        if decoded.chars().count() != row.decoded_chars || digest != row.decoded_blake2b {
+            failures.push(format!("{}: decoded text differs", row.id));
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
 }

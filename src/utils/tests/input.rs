@@ -53,14 +53,40 @@ fn patterns_compile() {
     assert!(INVALID_XML_CHARS.is_some());
 }
 
+fn encoding_case(name: &str) -> &'static EncodingCase {
+    ENCODING_CASES
+        .iter()
+        .find(|case| case.name == name)
+        .unwrap_or_else(|| panic!("no encoding case {name}"))
+}
+
 #[test]
 fn test_input_detect_encoding() {
-    let utf8 = "高山云雾出好茶".as_bytes();
-    assert_eq!(detect_encoding(utf8), vec![UTF_8]);
-    let (gb, _, _) = encoding_rs::GB18030.encode("高山云雾出好茶");
-    let guessed = detect_encoding(&gb.repeat(1000));
-    // encoding_rs names the GBK superset-compatible pair separately; either decodes the text.
-    assert!(guessed.contains(&encoding_rs::GB18030) || guessed.contains(&encoding_rs::GBK));
+    assert_eq!(detect_encoding("高山云雾出好茶".as_bytes()), ["utf-8"]);
+    for name in ["gb18030", "gb18030_x1000"] {
+        let guessed = detect_encoding(encoding_case(name).input);
+        assert!(guessed.iter().any(|guess| guess == "gb18030"), "{name}");
+    }
+}
+
+#[test]
+fn detect_encoding_matches_charset_normalizer() {
+    let failures: Vec<String> = ENCODING_CASES
+        .iter()
+        .filter_map(|case| {
+            let guesses = detect_encoding(case.input);
+            let decoded = decode_file(case.input, MAX_FILE_SIZE);
+            let mut problems = Vec::new();
+            if guesses != case.guesses {
+                problems.push(format!("guesses {guesses:?}, oracle {:?}", case.guesses));
+            }
+            if decoded != case.decoded {
+                problems.push("decoded text differs".to_owned());
+            }
+            (!problems.is_empty()).then(|| format!("{}: {}", case.name, problems.join("; ")))
+        })
+        .collect();
+    assert!(failures.is_empty(), "{failures:#?}");
 }
 
 #[test]
@@ -121,7 +147,10 @@ fn repair_faulty_html_borrows_a_clean_doctype_page() {
 fn test_input_load_html() {
     assert!(load("<html><body>ÄÖÜ</body></html>").is_ok());
     assert!(load_bytes(b"<html><body>\x2f\x2e\x9f</body></html>").is_ok());
-    let (latin1, _, _) = WINDOWS_1252.encode("<html><body>\u{2f}\u{2e}\u{9f}</body></html>");
+    let latin1: Vec<u8> = "<html><body>\u{2f}\u{2e}\u{9f}</body></html>"
+        .chars()
+        .map(|c| u8::try_from(u32::from(c)).unwrap())
+        .collect();
     assert!(load_bytes(&latin1).is_ok());
 }
 
@@ -180,59 +209,6 @@ fn decode_keeps_bom() {
 }
 
 #[test]
-fn decode_windows_1251() {
-    let text = "Съешь же ещё этих мягких французских булок, да выпей чаю. ".repeat(20);
-    let (bytes, _, _) = WINDOWS_1251.encode(&text);
-    assert_eq!(decode_file(&bytes, SIZE), text);
-}
-
-#[test]
-fn decode_mostly_utf8_keeps_valid_text() {
-    let text = "Zażółć gęślą jaźń, a potem przeczytaj długi akapit o sprawach wsi. ".repeat(20);
-    let mut bytes = text.clone().into_bytes();
-    bytes.extend_from_slice(b" caf\xe9 ");
-    bytes.extend_from_slice(text.as_bytes());
-    assert!(detect_encoding(&bytes).is_empty());
-    assert_eq!(
-        decode_file(&bytes, SIZE),
-        format!("{text} caf\u{fffd} {text}")
-    );
-}
-
-#[test]
-fn mostly_utf8_needs_more_than_ten_valid_chars_per_invalid_sequence() {
-    // Each "é" is one valid non-ASCII character; the lone 0xE9 is one invalid sequence.
-    let page = |valid: usize| {
-        let mut bytes = "é".repeat(valid).into_bytes();
-        bytes.extend_from_slice(b"x\xe9x");
-        bytes
-    };
-    assert!(!is_mostly_utf8(&page(10)));
-    assert!(detect_encoding(&page(10)).len() == 1);
-    assert!(is_mostly_utf8(&page(11)));
-    assert!(detect_encoding(&page(11)).is_empty());
-}
-
-#[test]
-fn decode_falls_back_to_replacement() {
-    // A Shift_JIS lead byte before a space is malformed, so strict decoding fails and U+FFFD takes over.
-    let junk = b"<p>\x81 ok</p>";
-    assert!(
-        encoding_rs::SHIFT_JIS
-            .decode_without_bom_handling_and_without_replacement(junk)
-            .is_none()
-    );
-    let decoded = decode_with(junk, &[encoding_rs::SHIFT_JIS]);
-    assert_eq!(decoded, "<p>\u{fffd} ok</p>");
-    assert_eq!(decode_with(junk, &[]), decoded);
-    // A later candidate that decodes strictly wins over the fallback.
-    assert_eq!(
-        decode_with(junk, &[encoding_rs::SHIFT_JIS, WINDOWS_1252]),
-        "<p>\u{81} ok</p>"
-    );
-}
-
-#[test]
 fn load_html_full_document_ignores_synthetic_head() {
     for page in [
         "<!DOCTYPE foo><p>x</p>",
@@ -254,31 +230,4 @@ fn load_html_leading_text_does_not_count_as_a_child() {
     assert!(load("hello <b>x</b> <i>y</i>").is_ok());
     assert!(load("hello <b>x</b>").is_err());
     assert!(load("just text").is_err());
-}
-
-#[test]
-fn detect_encoding_samples_head_and_tail() {
-    let german = "Größe über Äpfel und Öl, schön gemäß Maßstab. ".repeat(200);
-    let (german, _, _) = WINDOWS_1252.encode(&german);
-    let cyrillic = "Съешь же ещё этих мягких французских булок. ".repeat(400);
-    let (cyrillic, _, _) = WINDOWS_1251.encode(&cyrillic);
-    let head = german.get(..5000).unwrap();
-    let tail = german.get(german.len() - 5000..).unwrap();
-    let mut content = head.to_vec();
-    content.extend_from_slice(cyrillic.get(..10_000).unwrap());
-    content.extend_from_slice(tail);
-
-    let mut sample = EncodingDetector::new(Iso2022JpDetection::Deny);
-    sample.feed(head, false);
-    sample.feed(tail, true);
-    let mut whole = EncodingDetector::new(Iso2022JpDetection::Deny);
-    whole.feed(&content, true);
-
-    let expected = sample.guess(None, Utf8Detection::Deny);
-    assert_ne!(
-        expected,
-        whole.guess(None, Utf8Detection::Deny),
-        "the middle must change the whole-input guess"
-    );
-    assert_eq!(detect_encoding(&content), vec![expected]);
 }

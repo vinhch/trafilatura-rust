@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
-use chardetng::{EncodingDetector, Iso2022JpDetection, Utf8Detection};
-use encoding_rs::{Encoding, UTF_8};
+use charset_norm::codecs::{Errors, decode};
+use charset_norm::from_bytes;
 use regex::Regex;
 
 use crate::cancel::Call;
@@ -170,50 +170,42 @@ fn bounded_unbrotli(content: &[u8], max_size: usize) -> Option<Vec<u8>> {
     (!out.is_empty()).then_some(out)
 }
 
-/// Candidate encodings for bytes that are not valid UTF-8, best first; none for mostly-UTF-8 text.
+/// Names `detect_encoding` drops from the detector's guesses: UTF-8 was ruled out before it ran.
+// upstream: utils.py::UNICODE_ALIASES
+const UNICODE_ALIASES: [&str; 2] = ["utf-8", "utf_8"];
+
+/// Codec names to try for bytes that are not valid UTF-8, best first, as `charset_normalizer` ranks
+/// them; `["utf-8"]` for valid UTF-8. May be empty: the detector rejects mostly-UTF-8 text with stray
+/// bytes.
 ///
-/// Inputs of 10 000 bytes or more are judged on their first and last 5000 bytes.
+/// Inputs of 10 000 bytes or more are judged on their first and last 5000 bytes, then on the whole
+/// input when those give no match.
 // upstream: utils.py::detect_encoding
-pub fn detect_encoding(content: &[u8]) -> Vec<&'static Encoding> {
+pub fn detect_encoding(content: &[u8]) -> Vec<String> {
     if std::str::from_utf8(content).is_ok() {
-        return vec![UTF_8];
+        return vec!["utf-8".to_owned()];
     }
-    if is_mostly_utf8(content) {
-        return Vec::new();
-    }
-    let mut detector = EncodingDetector::new(Iso2022JpDetection::Deny);
-    let head = content.get(..5000);
-    let tail = content
-        .len()
-        .checked_sub(5000)
-        .and_then(|from| content.get(from..));
-    match (content.len() < 10_000, head, tail) {
-        (false, Some(head), Some(tail)) => {
-            detector.feed(head, false);
-            detector.feed(tail, true);
-        }
-        _ => {
-            detector.feed(content, true);
-        }
-    }
-    // deviation: D-3 (one guess instead of every charset_normalizer match, and no retry on the whole
-    // input when the sample matched nothing)
-    vec![detector.guess(None, Utf8Detection::Deny)]
+    // The cchardet branch of upstream is absent: this crate has no counterpart for it.
+    let sampled = match (content.len() < 10_000, content.get(..5000), tail(content)) {
+        (false, Some(head), Some(tail)) => from_bytes(&[head, tail].concat()),
+        _ => from_bytes(content),
+    };
+    let matches = if sampled.is_empty() {
+        from_bytes(content)
+    } else {
+        sampled
+    };
+    matches
+        .iter()
+        .map(|found| found.encoding())
+        .filter(|name| !UNICODE_ALIASES.contains(name))
+        .map(str::to_owned)
+        .collect()
 }
 
-/// Whether the bytes are UTF-8 text with a few stray invalid sequences: more than ten valid
-/// non-ASCII characters per invalid sequence.
-// deviation: D-3 (a heuristic standing in for charset_normalizer's mojibake check, which often leaves
-// such text without a candidate so upstream decodes UTF-8 with replacement; chardetng always guesses
-// one, so at a ratio of ten or less the crate takes that single-byte guess)
-fn is_mostly_utf8(content: &[u8]) -> bool {
-    let (mut valid_non_ascii, mut invalid) = (0_usize, 0_usize);
-    for chunk in content.utf8_chunks() {
-        valid_non_ascii =
-            valid_non_ascii.saturating_add(chunk.valid().chars().filter(|c| !c.is_ascii()).count());
-        invalid = invalid.saturating_add(usize::from(!chunk.invalid().is_empty()));
-    }
-    valid_non_ascii > invalid.saturating_mul(10)
+/// The last 5000 bytes of `content`, if it has that many.
+fn tail(content: &[u8]) -> Option<&[u8]> {
+    content.get(content.len().checked_sub(5000)?..)
 }
 
 /// Decompresses `content` if needed and decodes it to text: strict UTF-8 first, then the guessed
@@ -299,12 +291,14 @@ fn is_binary(content: &[u8]) -> bool {
             .any(|window| window.eq_ignore_ascii_case(b"html"))
 }
 
-/// Decodes `content` with the first of `encodings` that does it without loss, else as UTF-8 with
-/// U+FFFD for what is invalid.
-fn decode_with(content: &[u8], encodings: &[&'static Encoding]) -> Cow<'static, str> {
+/// Decodes `content` with the first of `encodings` that does it strictly, else as UTF-8 with
+/// U+FFFD for what is invalid. A name the detector crate has no codec for, and bytes the codec
+/// rejects, both move on to the next guess.
+// upstream: utils.py::decode_file
+fn decode_with(content: &[u8], encodings: &[String]) -> Cow<'static, str> {
     for encoding in encodings {
-        if let Some(text) = encoding.decode_without_bom_handling_and_without_replacement(content) {
-            return Cow::Owned(text.into_owned());
+        if let Ok(text) = decode(content, encoding, Errors::Strict) {
+            return Cow::Owned(text);
         }
     }
     // Destructive fallback if nothing else succeeded.

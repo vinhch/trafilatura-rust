@@ -96,48 +96,6 @@ pub(crate) const METADATA_KNOWN: &[(&str, &str, &str, &str)] = &[
         "\"2022-01-17\"",
         "D-13",
     ),
-    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
-    (
-        "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
-        "author",
-        "\"PAP; Rafa³ Guz\"",
-        "D-3",
-    ),
-    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
-    (
-        "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
-        "description",
-        "\"Ostra debata w Sejmie przybli¿y³a Polskê do zatwierdzenia decyzji o zasobach w³asnych UE. Koalicji Obywatelskiej nie uda³o siê prze³o¿yæ g³osowania.\"",
-        "D-3",
-    ),
-    // Non-UTF-8, byte 0xB3: upstream reads ł (Central European), the crate reads ³ (latin-1)
-    (
-        "tests__eval__Unijne fundusze coraz bli%C5%BCej. Sejm zag%C5%82osowa%C5%82 _za_ - Polityka - rp.pl.html",
-        "title",
-        r#""Unijne fundusze coraz bli¿ej. Sejm zag³osowa³ \"za\"""#,
-        "D-3",
-    ),
-    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
-    (
-        "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
-        "description",
-        "\"Jak pomóc osobie niewidomej, z którą jesteśmy restauracji? Co zrobić, jeśli w kontaktach z osobą głuchą towarzyszy nam tłumacz? Z okazji Dnia Walki z Dyskryminacją Osób z Niepełnosprawnościami przygotowaliśmy wraz z organizacjami pozarządowymi i na podstawie fachowych publikacji krótki poradnik.\"",
-        "D-3",
-    ),
-    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
-    (
-        "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
-        "tags",
-        r#"["Informacje z Polski, newsy, aktualności, wydarzenia"]"#,
-        "D-3",
-    ),
-    // Non-UTF-8, byte 0xB1: upstream reads ± (latin-1), the crate reads ą (Central European)
-    (
-        "tests__eval___Ziemniaki na sz%C3%B3stej, sur%C3%B3wka na dziesi%C4%85tej_. Jak pomaga%C4%87, %C5%BCeby nie zaszkodzi%C4%87_ [PORADNIK W PIGU%C5%81CE].html",
-        "title",
-        r#""\"Ziemniaki na szóstej, surówka na dziesiątej\". Jak pomagać, żeby nie zaszkodzić? [PORADNIK W PIGUŁCE]""#,
-        "D-3",
-    ),
 ];
 
 const METADATA_CLASSES: [&str; 5] = ["match", "decompress", "upstream-error", "known", "port-bug"];

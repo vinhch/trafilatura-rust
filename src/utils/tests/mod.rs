@@ -1,5 +1,5 @@
 use super::*;
-use encoding_rs::{WINDOWS_1251, WINDOWS_1252};
+use encoding_cases::{ENCODING_CASES, EncodingCase};
 
 use crate::settings::{DEFAULT_MAX_INPUT_BYTES, MAX_FILE_SIZE};
 use crate::utils::text::{
@@ -56,6 +56,7 @@ fn normalize_unicode_is_nfc() {
 mod binary;
 #[cfg(feature = "decompress")]
 mod decompress;
+mod encoding_cases;
 mod input;
 
 // The text helpers. Expected values come from upstream Python (`scripts/oracle.sh`); the oracle

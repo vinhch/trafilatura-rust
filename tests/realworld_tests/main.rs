@@ -29,8 +29,8 @@ use trafilatura_rust::{Call, ExtractError, Extractor, Format, Input, Options};
 mod pages;
 use pages::MOCK_PAGES;
 
-/// A cached page: text when its bytes are valid UTF-8, else the bytes, which the crate's own
-/// detector decodes (upstream's test decodes with charset_normalizer there, D-3).
+/// A cached page: text when its bytes are valid UTF-8, else the bytes, which the crate's detector
+/// decodes as upstream's test does with charset_normalizer.
 enum Page {
     Text(String),
     Bytes(Vec<u8>),

@@ -20,6 +20,8 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
+    # The previous revision of the Unicode data license, OSI approved: unicode_names2 (via charset-norm) carries it
+    "Unicode-DFS-2016",
     "Zlib",
 ]
 confidence-threshold = 0.93
@@ -36,6 +38,11 @@ multiple-versions-include-dev = true
 skip = [
     { crate = "miniz_oxide@0.8", reason = "dev-only: dhat -> backtrace pins miniz_oxide 0.8 while flate2 (feature decompress) uses 0.9; drop when backtrace moves to 0.9" },
     { crate = "syn@2", reason = "dev-only: criterion -> ciborium -> half -> zerocopy-derive pins syn 2 while serde_derive uses 3; drop when zerocopy-derive moves to 3" },
+    { crate = "rustc-hash@1", reason = "dev-only: dhat pins rustc-hash 1 while charset-norm uses 2; drop when dhat moves to 2" },
+    { crate = "phf@0.11", reason = "charset-norm -> unicode_names2 4.0 pins phf 0.11 while web_atoms uses 0.14; drop with unicode_names2 once charset-norm releases without it (docs/dependencies.md, charset-norm row)" },
+    { crate = "phf_shared@0.11", reason = "same as phf@0.11: unicode_names2 pins the 0.11 line" },
+    { crate = "phf_generator@0.11", reason = "same as phf@0.11: unicode_names2 pins the 0.11 line (build dependency)" },
+    { crate = "phf_codegen@0.11", reason = "same as phf@0.11: unicode_names2 pins the 0.11 line (build dependency)" },
 ]
 wildcards = "deny"
 allow-wildcard-paths = true

@@ -23,6 +23,11 @@ adding, changing or removing one. A row is added with the dependency and removed
 - Each requirement in `Cargo.toml` (normal, optional and dev) is a real minimum: the `minimal-versions` job
   in `_ci.yml` resolves each to its lowest allowed version and runs the tests with the parity fixtures.
   Raise the requirement when a newer version is needed.
+- A gated exception admits a crate that fails the maintenance or process-state rules above when a
+  parity test proves it returns what upstream's counterpart returns. Its row names the gate, the
+  version requirement is a tilde so a minor release cannot change behavior unseen, every bump reruns
+  the gate, and the costs the exception carries (a `deny.toml` skip, process-wide state) are recorded
+  in the row. `charset-norm` is the one today.
 - Optional functionality goes behind a cargo feature so the default build stays small.
 - The `fuzz/` crate has its own `Cargo.lock`, outside `cargo deny` and its license allow list (libFuzzer
 is NCSA), moved by its own Dependabot entry, and never shipped to users.
@@ -32,8 +37,7 @@ is NCSA), moved by its own Dependabot entry, and never shipped to users.
 | Crate | Kind | Replaces upstream | Why this crate |
 | --- | --- | --- | --- |
 | `html5gum` | always | `lxml.html` parsing (libxml2's HTML tokenizer) | WHATWG tokenizer with a byte-level emitter and no tree builder; `src/dom/parse/emitter.rs` applies libxml2's name, attribute and raw-text rules on top. Default features off |
-| `encoding_rs` | always | Python codecs | The WHATWG encodings, maintained by Firefox's encoding owner |
-| `chardetng` | always | `charset_normalizer` | Firefox's detector, same maintainer as `encoding_rs` (D-3) |
+| `charset-norm` | always, `~4.1.0` | `charset_normalizer` (`detect_encoding`) and the Python codecs (`decode_file`) | A port of charset_normalizer with CPython-compatible codecs of its own. It replaces `chardetng` and `encoding_rs`, which follow the WHATWG rules and gave one guess where upstream gives a ranked list (D-3, closed). A gated exception to the Policy: young and single-author. Gate: `detect_encoding_matches_charset_normalizer` (22 synthetic inputs) and `corpus_encoding_matches_charset_normalizer` (the 27 non-UTF-8 corpus pages) compare `detect_encoding` and `decode_file` with charset_normalizer 3.5.2 as upstream calls it; identical on every case. The tilde keeps a minor release from changing detection under dependents whose lock files this repo does not control; every bump of the requirement reruns the gate. Costs it carries (decision D1, D2): `unicode_names2` pulls `phf` 0.11 beside `web_atoms`' 0.14, skipped in `deny.toml` with the license `Unicode-DFS-2016`; and process-wide state, about 3 MiB of statics (two memo arrays) plus a thread-local scratch pool that stays allocated after a call (2.9 MiB after one 305 KB page, not growing across calls). An issue asks `charset-norm` to drop `unicode_names2`; when a release without it lands, raise the requirement, remove the `phf` skips and rerun the gate |
 | `regex` | always | `re` | rust-lang regex; lookaround and backreferences are written by hand (`gotchas.md`) |
 | `blake2` | always | `hashlib.blake2b` | RustCrypto's BLAKE2b, the digest `hashlib` computes; the content fingerprint and `generate_bow_hash` are built on it, the duplicate cache keys its entries with a 16-byte digest (D-24), and `fingerprint_matches_python` checks the fingerprint's values. Default features off |
 | `psl` | always | `tld` (the suffix list of `get_tld`) | Maintained, MIT/Apache-2.0, with the Public Suffix List compiled in and no runtime data; tld's own list is MPL-2.0 data, which the license policy leaves out. Its list release differs from tld 0.13.2's, so `extract_domain` differs for hosts under the rules only one list holds (D-18). `courlan/tld.rs` shapes its answer to tld's trie (exception parents, `xn--` rules below the top level; tables generated from tld's own trie) and `TLD_CASES` checks it. Default features off: the `helpers` free functions are not used |
