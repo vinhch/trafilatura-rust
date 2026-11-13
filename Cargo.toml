@@ -31,7 +31,7 @@ charset-norm = "~4.1.0"
 flate2 = { version = "1.1.10", optional = true }
 html5gum = { version = "0.9.1", default-features = false }
 psl = { version = "2.1.164", default-features = false }
-regex = "1.8.0"
+regex = "1.13"
 ruzstd = { version = "0.9", optional = true }
 web_atoms = "0.3"
 
