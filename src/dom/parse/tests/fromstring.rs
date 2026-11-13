@@ -119,11 +119,11 @@ fn fragment_without_body_is_empty_tree() {
 }
 
 /// Checks a run makes in `parse` over `html`, uncancelled, then asserts that a trip at the last
-/// check, which falls after the build, stops it with `Cancelled`.
+/// check, which falls after the build, stops it with `Cancelled`. Returns the build's own checks.
 fn assert_last_check_stops(
     html: &str,
     parse: impl Fn(&str, &ParseLimits, &Call<'_>) -> Result<Tree, ExtractError>,
-) {
+) -> usize {
     let limits = ParseLimits::default();
     let counting = CheckTrip::counting();
     parse(html, &limits, &Call::default().trip(&counting)).unwrap();
@@ -135,10 +135,20 @@ fn assert_last_check_stops(
         "no check after the build: {total} in all, {} in the build",
         built.checks()
     );
-    let trip = CheckTrip::at(total);
-    let stopped = parse(html, &limits, &Call::default().trip(&trip));
+    assert_trip_stops(html, parse, total);
+    built.checks()
+}
+
+/// Asserts that a trip at check `index`, 1-based, stops `parse` over `html` with `Cancelled`.
+fn assert_trip_stops(
+    html: &str,
+    parse: impl Fn(&str, &ParseLimits, &Call<'_>) -> Result<Tree, ExtractError>,
+    index: usize,
+) {
+    let trip = CheckTrip::at(index);
+    let stopped = parse(html, &ParseLimits::default(), &Call::default().trip(&trip));
     assert_eq!(stopped.err(), Some(ExtractError::Cancelled));
-    assert_eq!(trip.checks(), total);
+    assert_eq!(trip.checks(), index);
 }
 
 #[test]
@@ -151,7 +161,9 @@ fn block_tag_walk_stops_when_cancelled() {
 fn body_merge_stops_when_cancelled() {
     // The children of the second body move into the first.
     let html = format!("<p>a</p></body><body>{}", "<i>x</i>".repeat(400_000));
-    assert_last_check_stops(&html, fromstring);
+    let built = assert_last_check_stops(&html, fromstring);
+    // The first check after the build is the merge's, made before the first child moves.
+    assert_trip_stops(&html, fromstring, built + 1);
 }
 
 #[test]
