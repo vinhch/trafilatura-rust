@@ -215,7 +215,10 @@ prints their paths.
   (absolute paths). It compares every `*_digest` key by page id and by synthetic name, prints each
   difference as `page key base head` and exits 1 on any; a page or key on one side only is a difference,
   and so is a run with no digest key to compare. A partial run (`--only`) cannot be compared with a full
-  baseline: the check fails on the pages it lacks.
+  baseline: the check fails on the pages it lacks. The baseline for a change that must not alter
+  output is a full run of the same `scripts/measure` command, on the same platform, at the commit the
+  change starts from (a `git worktree` of it keeps the working tree free); its `.temp/measure/`
+  directory is `BASE`.
 - Heap profile: `TRAFILATURA_MEASURE_DHAT=1` with `--only` makes `measure_heap` write one dhat profile per
   profiled call to `.temp/measure/dhat/<page>-<run>.json`, `run` being `load`, `extract`, `rich-md` or
   `rich-html`. The profile is written after the call's heap is read. Without `--only` the target skips.
