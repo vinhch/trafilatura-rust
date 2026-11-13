@@ -61,7 +61,8 @@ def fetch(name: str) -> bytes:
 
 def c_array(source: str, header: str) -> str:
     """The text between the braces of the C array that starts with `header`."""
-    assert source.count(header) == 1, header
+    if source.count(header) != 1:
+        raise RuntimeError(header)
     start = source.index(header) + len(header)
     return source[start : source.index("\n};", start)]
 
