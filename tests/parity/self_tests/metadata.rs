@@ -93,7 +93,6 @@ fn known_metadata_header_only() {
         let result: Result<String, ExtractError> = Ok(actual.to_string());
         let case = OutputCase {
             source: "page.html",
-            valid_utf8: true,
             expected: Some(expected),
             upstream_error: false,
             actual: &result,
@@ -142,7 +141,6 @@ fn known_metadata_ignores_a_value_inside_other_text() {
     let actual: Result<String, ExtractError> = Ok(note("Today"));
     let case = OutputCase {
         source: "page.html",
-        valid_utf8: true,
         expected: Some(&expected),
         upstream_error: false,
         actual: &actual,
@@ -179,7 +177,6 @@ fn known_metadata_ignores_a_short_value_that_fills_a_segment() {
     let actual: Result<String, ExtractError> = Ok(note("U"));
     let case = OutputCase {
         source: "page.html",
-        valid_utf8: true,
         expected: Some(&expected),
         upstream_error: false,
         actual: &actual,

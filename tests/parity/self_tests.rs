@@ -49,3 +49,30 @@ fn accept_relabels_only_listed_port_bugs() {
     assert_eq!(other_format, ["port-bug"]);
     assert_eq!(other_page, ["port-bug"]);
 }
+
+#[test]
+fn non_utf8_page_difference_is_port_bug() {
+    let expected = Some("html\n  p\n    #text \"bliżej\"\n".to_string());
+    let actual = Some("html\n  p\n    #text \"bli¿ej\"\n".to_string());
+    assert_eq!(classify_page("p.html", &expected, &actual).0, ["port-bug"]);
+    let decoded: Result<String, ExtractError> = Ok("bli¿ej".to_string());
+    let case = OutputCase {
+        source: "page.html",
+        expected: Some("bliżej"),
+        upstream_error: false,
+        actual: &decoded,
+        known_values: &[],
+    };
+    assert_eq!(classify_output(&case).0, ["port-bug"]);
+}
+
+#[test]
+fn gate_counts_non_utf8_port_bugs() {
+    // The classes decide, not the encoding of the page: a non-UTF-8 page with `port-bug` counts.
+    let rows = vec![
+        ("first".to_string(), vec!["port-bug"]),
+        ("clean".to_string(), vec!["match"]),
+        ("mixed".to_string(), vec!["match", "port-bug"]),
+    ];
+    assert_eq!(gate_port_bugs(rows.into_iter()), ["first", "mixed"]);
+}

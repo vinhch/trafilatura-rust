@@ -4,7 +4,6 @@ use std::ops::Range;
 /// One page and format of the output check.
 pub(crate) struct OutputCase<'a> {
     pub(crate) source: &'a str,
-    pub(crate) valid_utf8: bool,
     pub(crate) expected: Option<&'a str>,
     pub(crate) upstream_error: bool,
     pub(crate) actual: &'a Result<String, ExtractError>,
@@ -31,9 +30,7 @@ pub(crate) fn known_values(id: &str, metadata: &Value) -> Vec<String> {
 }
 
 /// Classes of one output and its classified hunks, first match wins: `match`, `decompress`,
-/// `upstream-error`, then, when both sides have text, per hunk `encoding` (page not valid UTF-8),
-/// `known-metadata`, or `port-bug`. A fingerprint hunk is `encoding` when the page is not valid UTF-8,
-/// the output has an `encoding` hunk, and every hunk is `encoding` or a fingerprint; else `port-bug`.
+/// `upstream-error`, then, when both sides have text, per hunk `known-metadata` or `port-bug`.
 /// Text on one side only is a whole-output `port-bug`.
 pub(crate) fn classify_output(case: &OutputCase) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
     let whole = |class: &'static str| (vec![class], vec![]);
@@ -61,14 +58,10 @@ pub(crate) fn classify_output(case: &OutputCase) -> (Vec<&'static str>, Vec<(Hun
     };
     let (left, right): (Vec<&str>, Vec<&str>) =
         (expected.lines().collect(), actual.lines().collect());
-    let mut classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
+    let classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
         .into_iter()
         .map(|hunk| {
-            let class = if !case.valid_utf8 && is_encoding_text_hunk(&left, &right, &hunk) {
-                "encoding"
-            } else if is_fingerprint_hunk(&left, &right, &hunk) {
-                "fingerprint"
-            } else if known_metadata_hunk(&left, &right, &hunk, case.known_values) {
+            let class = if known_metadata_hunk(&left, &right, &hunk, case.known_values) {
                 "known-metadata"
             } else {
                 "port-bug"
@@ -76,23 +69,6 @@ pub(crate) fn classify_output(case: &OutputCase) -> (Vec<&'static str>, Vec<(Hun
             (hunk, class)
         })
         .collect();
-    // A fingerprint follows the text of its page: D-3 changes both. A fingerprint with no encoding
-    // hunk to follow, or next to any other kind of difference, is not explained.
-    let fingerprint_class = if !case.valid_utf8
-        && classified.iter().any(|(_, class)| *class == "encoding")
-        && classified
-            .iter()
-            .all(|(_, class)| matches!(*class, "encoding" | "fingerprint"))
-    {
-        "encoding"
-    } else {
-        "port-bug"
-    };
-    for (_, class) in &mut classified {
-        if *class == "fingerprint" {
-            *class = fingerprint_class;
-        }
-    }
     // Texts that differ only in the final newline make no line hunk and are still a difference.
     if classified.is_empty() {
         return whole("port-bug");
@@ -168,49 +144,6 @@ fn known_metadata_hunk(
             .all(|(a, b)| mentions(a) || mentions(b))
 }
 
-/// `line` with the value of each fingerprint blanked: the text of `<note type="fingerprint">` and the
-/// `fingerprint` attribute of the xml `<doc>`.
-fn without_fingerprint(line: &str) -> String {
-    blank_after(
-        &blank_after(line, "type=\"fingerprint\">", '<'),
-        "fingerprint=\"",
-        '"',
-    )
-}
-
-/// `text` with the value after each `marker` removed up to `end`, which stays in the output.
-fn blank_after(text: &str, marker: &str, end: char) -> String {
-    let mut out = String::new();
-    let mut rest = text;
-    while let Some((head, tail)) = rest.split_once(marker) {
-        out.push_str(head);
-        out.push_str(marker);
-        rest = match tail.split_once(end) {
-            Some((_, after)) => {
-                out.push(end);
-                after
-            }
-            None => "",
-        };
-    }
-    out.push_str(rest);
-    out
-}
-
-/// Whether the hunk differs only in a fingerprint value: each line pair is equal once the values are
-/// blanked, and some pair differs.
-fn is_fingerprint_hunk(expected: &[&str], actual: &[&str], hunk: &Hunk) -> bool {
-    let left = expected.get(hunk.expected.clone()).unwrap_or_default();
-    let right = actual.get(hunk.actual.clone()).unwrap_or_default();
-    !left.is_empty()
-        && left.len() == right.len()
-        && left
-            .iter()
-            .zip(right)
-            .all(|(a, b)| without_fingerprint(a) == without_fingerprint(b))
-        && left.iter().zip(right).any(|(a, b)| a != b)
-}
-
 pub(crate) struct OutputResult {
     pub(crate) id: String,
     pub(crate) format: &'static str,
@@ -254,7 +187,6 @@ pub(crate) fn run_output_page(
             let known = known_values(id, &fixture["lxml"]["metadata"]);
             let (classes, hunks) = classify_output(&OutputCase {
                 source,
-                valid_utf8,
                 expected: expected.as_deref(),
                 upstream_error: fixture["lxml"]["errors"][name].is_string(),
                 actual: &actual,

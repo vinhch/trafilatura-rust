@@ -18,26 +18,11 @@ fn tree_of(fixture: &Value) -> Option<String> {
     fixture["tree"].as_str().map(str::to_string)
 }
 
-/// Class of one hunk of the tree dump, first match wins: `encoding` (page not valid UTF-8), else
-/// `port-bug`.
-fn classify_hunk(
-    expected: &[&str],
-    actual: &[&str],
-    valid_utf8: bool,
-    hunk: &Hunk,
-) -> &'static str {
-    if !valid_utf8 && is_encoding_hunk(expected, actual, hunk) {
-        "encoding"
-    } else {
-        "port-bug"
-    }
-}
-
 /// The classes of a page (sorted, unique) and its classified hunks. `match`, `decompress` and a dump
-/// that is `None` on one side (an empty tree against a tree) are whole-page.
+/// that is `None` on one side (an empty tree against a tree) are whole-page; every hunk of a dump that
+/// differs is a `port-bug`.
 pub(crate) fn classify_page(
     source: &str,
-    valid_utf8: bool,
     expected: &Option<String>,
     actual: &Option<String>,
 ) -> (Vec<&'static str>, Vec<(Hunk, &'static str)>) {
@@ -54,10 +39,7 @@ pub(crate) fn classify_page(
         (expected.lines().collect(), actual.lines().collect());
     let classified: Vec<(Hunk, &'static str)> = hunks::hunks(&left, &right)
         .into_iter()
-        .map(|hunk| {
-            let class = classify_hunk(&left, &right, valid_utf8, &hunk);
-            (hunk, class)
-        })
+        .map(|hunk| (hunk, "port-bug"))
         .collect();
     // Texts that differ only in the final newline make no line hunk and are still a difference.
     if classified.is_empty() {
@@ -125,7 +107,7 @@ pub(crate) fn tree_page(
         };
     }
     let expected = tree_of(fixture);
-    let (classes, hunks) = classify_page(source, valid_utf8, &expected, actual);
+    let (classes, hunks) = classify_page(source, &expected, actual);
     Page {
         id,
         classes,

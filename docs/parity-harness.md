@@ -68,16 +68,15 @@ Generating takes about 10 minutes, so the set is packed (zstd level 19, about 23
 ## Tree classes
 
 The tree dump is compared line by line: expected and actual are aligned with a Myers diff (`similar`,
-`tests/hunks/mod.rs`) and each hunk (a run of removed and inserted lines) gets the first class that
-applies. A page's classes are the set of its hunk classes; the test fails when any hunk is `port-bug`.
+`tests/hunks/mod.rs`) and every hunk (a run of removed and inserted lines) is a `port-bug`. A page's classes are the set
+of its hunk classes; the test fails when any hunk is `port-bug`.
 Only `decompress` and `upstream-error` apply to the whole page, because there is no crate tree to
 compare. A dump that is `None` on one side (an empty tree against a tree) is a whole-page `port-bug`.
 
 | Class | Meaning |
 | --- | --- |
 | `match` | crate tree equals the `lxml` fixture |
-| `encoding` | input is not valid UTF-8 (D-3), the hunk has as many removed as inserted lines, and each pair is equal once every non-ASCII char is removed |
-| `port-bug` | a hunk no rule above explains |
+| `port-bug` | any hunk, whatever the encoding of the page |
 | `decompress` | compressed input without the `decompress` feature (D-4), whole page |
 | `upstream-error` | upstream raised while building the `lxml` tree, whole page |
 
@@ -104,14 +103,8 @@ classified; the first rule that applies decides the output, and the test fails o
 | `match` | equal text, or no text upstream and a `Rejected` error from the crate, whole output |
 | `decompress` | compressed input without the `decompress` feature (D-4), whole output |
 | `upstream-error` | upstream raised and the crate returned a `Rejected` error, whole output |
-| `encoding` | per hunk: input is not valid UTF-8 (D-3), as many removed as inserted lines, and each pair equal once non-ASCII chars are removed, or once a run of whitespace and non-ASCII chars counts as one space (upstream decodes some bytes to characters Python's `str.split()` counts as whitespace, where the crate's cp1252 guess gives a printable one); whitespace not next to a non-ASCII char must match |
 | `known-metadata` | `xmltei` only, per hunk: both sides of the hunk lie inside their `teiHeader`, and each line pair holds a fixture value of four characters or more, of a field `METADATA_KNOWN` lists for the page, on one side as a whole text segment (the run between `>` and `<`) or as one of its `", "`-separated pieces, not inside a longer word (the metadata check pins those fields). The text part is outside the header, so it is still compared exactly |
 | `port-bug` | any other hunk, or text on one side only |
-
-A fingerprint hunk (`<note type="fingerprint">` in `xmltei`, the `fingerprint` attribute of the `xml` `<doc>`)
-is `encoding` when the page is not valid UTF-8, the output has an `encoding` hunk, and every hunk of that
-output is `encoding` or a fingerprint; otherwise `port-bug`. On a D-3 page the text and its fingerprint
-change together.
 
 The report is `.temp/parity/output-report.md`: per format the outputs and hunks of each class, the
 outputs of each class other than `match` and the diffs of the
@@ -127,7 +120,7 @@ JSON: strings or `null`, and `categories` and `tags` as arrays, `None` as `[]`.
 Each page gets the first class that applies: `upstream-error`, `match` (equal, `null` on both sides
 included), `decompress` (compressed input without the feature, D-4), else per field `known` when
 `METADATA_KNOWN` lists the page and field, or `port-bug`. A `null` on one side only is a whole-page
-`port-bug`. The gate fails on a valid-UTF-8 page with a `port-bug` field or a whole-page `port-bug`, and
+`port-bug`. The gate fails on a page with a `port-bug` field or a whole-page `port-bug`, and
 on a `METADATA_KNOWN` entry whose field matches the fixture or whose page is not in the corpus. Entries of a page that was not compared are not
 checked.
 
@@ -143,15 +136,16 @@ prints their paths.
 
 - The tree dump writes an attribute name as `treedump.py` does: the local part of a
   Clark name `{ns}local`, so `{count}` is written as an empty name.
-- The classes are `match`, `decompress`, `encoding` (D-3), `port-bug`, `upstream-error`, and
+- The classes are `match`, `decompress`, `port-bug`, `upstream-error`, and
   `known-metadata` for outputs and `known` for metadata. The expected lxml output is used as it is.
 - A page whose lxml fixture records an error is `upstream-error`, read from `fixture["lxml"]["errors"]`.
 - Each report starts, after its title, with `Gate count (port-bug pages): valid-UTF-8 N, all M`:
-  `N` counts valid-UTF-8 pages with a `port-bug` class (the Phase 10b gate), `M` counts every page with
-  one (the Phase 10c gate). The output report has one such line per format. `known-metadata`,
+  `N` counts valid-UTF-8 pages with a `port-bug` class, `M` counts every page with one; `M` is the
+  gate, `N` shows how many of them decode as UTF-8. The output report has one such line per format. `known-metadata`,
   `known`, `upstream-error` and `decompress` pages are reported apart.
-- The gate: zero valid-UTF-8 `port-bug` pages. `LXML_ACCEPTED` (page id, format or `tree`/`metadata`,
-  deviation id) lists the pages whose difference is accepted; a listed page with a `port-bug` is classed
+- The gate: zero `port-bug` pages among all 1,044, the non-UTF-8 ones included, each of which
+  `corpus_encoding_matches_charset_normalizer` first proves decodes as upstream's does.
+  `LXML_ACCEPTED` (page id, format or `tree`/`metadata`, deviation id) lists the pages whose difference is accepted; a listed page with a `port-bug` is classed
   `accepted`. More than `LXML_CAP` (10) accepted pages in one format fails, and so does an entry whose page
   is not `accepted` in that format any more (stale).
 
@@ -294,10 +288,12 @@ writes it byte for byte.
 | `gen_extraction_cases.py` | `tests/extraction_cases/cases.rs` | `extract` in TXT, Markdown and HTML on the html snippets of `gen_main_extractor_cases` (imported) and on pages for each branch of the cascade, and `baseline` with `html2txt` on JSON-LD and Discourse pages, built with `fast=True` (D-1) and `dedup=False` on upstream's own parse; results are the text, `None` or the class of an exception raised below `bare_extraction`'s own checks, caught or escaping |
 | `gen_repeated_output_cases.py` | `tests/repeated_output_tests/cases.rs` | the sets of upstream's `repeated_output_tests.py` re-derived with `fast=True` (D-1) on upstream's own parse: the keys of `test_no_repeated_words` whose result is `None` or repeats a word (upstream's reason kept for a key it lists too), and the comment-list triples that repeat; the file is imported by path from the checkout, and the generation fails when one of the three plain upstream assertions does not hold in fast mode |
 | `gen_libxml2_tables.py` | `src/dom/parse/tables.rs` | libxml2 2.14.6's `html40ElementTable` (the `empty` and `dataMode` columns), `htmlStartClose`, `htmlEndPriority` and `htmlBooleanAttrs`, fetched from the tag and checked by sha256; it runs under plain `uv` (no lxml), so it does not go through `scripts/oracle.sh` |
+| `gen_encoding_cases.py` (`synthetic`) | `src/utils/tests/encoding_cases.rs` | `detect_encoding` and `decode_file` on 22 fixed byte inputs (single-byte code pages, CJK, UTF-16 and UTF-32, short inputs, mostly UTF-8 with stray bytes, an input over 10,000 bytes whose head and tail give no match, a byte undefined in the guessed code page past the first 5,000 bytes, the replacement fallback), with charset_normalizer 3.5.2 |
+| `gen_encoding_cases.py` (`corpus`) | `tests/parity/encoding_cases.rs` | `detect_encoding` and a length and blake2b digest of `decode_file` for each of the 27 corpus pages that are not valid UTF-8 (digests, not text: the pages are third-party content) |
 | `gen_tree_cases.py` | `src/dom/parse/tree_cases.rs` | the tree `lxml.html.document_fromstring` builds with `HTML_PARSER` on one snippet per libxml2 parser behavior (`PARSER_CASES`) and the tree-rule and `fromstring` shape cases (`RULE_CASES`), with the other elements on the document node (`others`), and the element `lxml.html.fromstring` returns (`fromstring`) and the `div` `fragment_fromstring(create_parent="div")` returns (`fragment`) |
 
 Regenerate one with `scripts/oracle.sh 'from parity.<generator> import main; main()' > <file>`;
-`gen_metadata_cases` takes `json_cases` or `cases` in place of `main`, `gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs`, `lower` for `lower.rs`, `title` for `title.rs` and `alnum` for `alnum.rs`, and `gen_dedup_cases` takes `cases` in place of `main`. The files that hold HTML snippets carry the `treedump` of the libxml2 tree (`lxml.html.fromstring` with
+`gen_metadata_cases` takes `json_cases` or `cases` in place of `main`, `gen_url` and `gen_nfc` take `tables` or `cases` in place of `main` (`gen_url` also `tld_tables`), `gen_printable` `alpha` for `alpha.rs`, `lower` for `lower.rs`, `title` for `title.rs` and `alnum` for `alnum.rs`, `gen_dedup_cases` takes `cases` in place of `main`, and `gen_encoding_cases` takes `synthetic` or `corpus`. The files that hold HTML snippets carry the `treedump` of the libxml2 tree (`lxml.html.fromstring` with
 `HTML_PARSER`) next to each snippet, and their tests first check that the crate's parse dumps the same: a
 snippet whose crate tree differs from lxml's is a port bug to fix in the builder, never a changed expectation.
 `cases_match_upstream` of `html_processing` then runs the operation and compares `dump_from` of the result

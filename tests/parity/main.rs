@@ -25,7 +25,7 @@ use trafilatura_rust::__internals::{
 use trafilatura_rust::{Call, Document, ExtractError, Focus, Format, Input, Options, Rejection};
 
 use encoding_cases::CORPUS_ENCODING_CASES;
-use hunks::{Hunk, is_encoding_hunk, is_encoding_text_hunk};
+use hunks::Hunk;
 
 mod encoding_cases;
 mod metadata;
@@ -38,19 +38,12 @@ use output::*;
 use tree::*;
 
 /// Classes of a tree report.
-const TREE_CLASSES: [&str; 5] = [
-    "match",
-    "decompress",
-    "encoding",
-    "port-bug",
-    "upstream-error",
-];
+const TREE_CLASSES: [&str; 4] = ["match", "decompress", "port-bug", "upstream-error"];
 
 /// Classes of an output report.
-const OUTPUT_CLASSES: [&str; 6] = [
+const OUTPUT_CLASSES: [&str; 5] = [
     "match",
     "decompress",
-    "encoding",
     "known-metadata",
     "port-bug",
     "upstream-error",
@@ -76,10 +69,10 @@ const OUTPUT_FORMATS: [(&str, Format); 6] = [
 
 /// Pages whose difference from lxml in one format is accepted: (page id, format or `tree`/`metadata`,
 /// deviation id). The page keeps its `port-bug` hunks in the report and is classed `accepted`. None
-/// today: every valid-UTF-8 page matches lxml in every format.
+/// today: every page matches lxml in every format.
 const LXML_ACCEPTED: &[(&str, &str, &str)] = &[];
 
-/// Most accepted pages one format may carry: 1% of the valid-UTF-8 pages (stop rule a).
+/// Most accepted pages one format may carry: 1% of the 1,044 pages (stop rule a).
 const LXML_CAP: usize = 10;
 
 /// Relabels the `port-bug` class of page `id` in `format` as `accepted` when `accepted` lists the page
@@ -177,6 +170,14 @@ fn load_corpus() -> Option<(PathBuf, PathBuf, Value)> {
     }
 }
 
+/// The labels of the rows that carry a `port-bug` class, whatever the encoding of the page. A row is
+/// (label, classes).
+fn gate_port_bugs(rows: impl Iterator<Item = (String, Vec<&'static str>)>) -> Vec<String> {
+    rows.filter(|(_, classes)| classes.contains(&"port-bug"))
+        .map(|(label, _)| label)
+        .collect()
+}
+
 /// Every tree against lxml's `fromstring`.
 #[test]
 fn tree_dump_matches_lxml_fixture() {
@@ -196,14 +197,10 @@ fn tree_dump_matches_lxml_fixture() {
     }
     let accepted = accepted_ids(pages.iter().map(|p| (p.id.as_str(), p.classes.as_slice())));
     let failures = accepted_failures(LXML_ACCEPTED, "tree", &accepted, LXML_CAP);
-    let port_bugs: Vec<&str> = pages
-        .iter()
-        .filter(|p| p.valid_utf8 && p.classes.contains(&"port-bug"))
-        .map(|p| p.id.as_str())
-        .collect();
+    let port_bugs = gate_port_bugs(pages.iter().map(|p| (p.id.clone(), p.classes.clone())));
     assert!(
         port_bugs.is_empty() && failures.is_empty(),
-        "{} valid-UTF-8 port-bug pages (see {}): {port_bugs:?}; {failures:?}",
+        "{} port-bug pages (see {}): {port_bugs:?}; {failures:?}",
         port_bugs.len(),
         path.display()
     );
@@ -230,11 +227,11 @@ fn outputs_match_lxml_fixture() {
             &mut result.classes,
         );
     }
-    let port_bugs: Vec<String> = results
-        .iter()
-        .filter(|r| r.valid_utf8 && r.classes.contains(&"port-bug"))
-        .map(|r| format!("{} {}", r.id, r.format))
-        .collect();
+    let port_bugs = gate_port_bugs(
+        results
+            .iter()
+            .map(|r| (format!("{} {}", r.id, r.format), r.classes.clone())),
+    );
     let mut failures = Vec::new();
     for (format, _) in OUTPUT_FORMATS {
         let accepted = accepted_ids(
@@ -252,7 +249,7 @@ fn outputs_match_lxml_fixture() {
     }
     assert!(
         port_bugs.is_empty() && failures.is_empty(),
-        "{} valid-UTF-8 port-bug outputs (see {}): {port_bugs:?}; {failures:?}",
+        "{} port-bug outputs (see {}): {port_bugs:?}; {failures:?}",
         port_bugs.len(),
         path.display()
     );
@@ -278,14 +275,10 @@ fn metadata_matches_lxml_fixture() {
     }
     let accepted = accepted_ids(pages.iter().map(|p| (p.id.as_str(), p.classes.as_slice())));
     let failures = accepted_failures(LXML_ACCEPTED, "metadata", &accepted, LXML_CAP);
-    let port_bugs: Vec<&str> = pages
-        .iter()
-        .filter(|p| p.valid_utf8 && p.classes.contains(&"port-bug"))
-        .map(|p| p.id.as_str())
-        .collect();
+    let port_bugs = gate_port_bugs(pages.iter().map(|p| (p.id.clone(), p.classes.clone())));
     assert!(
         port_bugs.is_empty() && stale.is_empty() && failures.is_empty(),
-        "{} valid-UTF-8 port-bug pages, {} stale entries (see {}): {port_bugs:?} {stale:?} {failures:?}",
+        "{} port-bug pages, {} stale entries (see {}): {port_bugs:?} {stale:?} {failures:?}",
         port_bugs.len(),
         stale.len(),
         path.display()
