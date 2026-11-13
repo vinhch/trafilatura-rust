@@ -82,10 +82,12 @@ function.
   `a=""` keeps its quotes.
 - Void elements are the 13 whose `empty` column is set in libxml2's `html40ElementTable` (`dom/parse/tables.rs`).
   `source`, `track`, `embed` and `wbr` are not void in libxml2 2.14.6; 2.15 makes `source` and `track` void (OI-5).
-- Decode strictly. Upstream tries each guessed codec and falls back to UTF-8 with replacement only
-  when all fail; `encoding_rs`'s `Encoding::decode` sniffs a BOM and replaces silently, which skips
-  that fallback. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
-  first and last 5000).
+- Decode strictly, with CPython's codecs. Upstream tries each guessed codec on the whole input and falls
+  back to UTF-8 with replacement only when all fail, so a guess that decodes the first 5000 bytes but not
+  a later one moves on to the next guess (`charset_norm::codecs::decode` with `Errors::Strict`). A codec
+  that sniffs a BOM or replaces silently skips that fallback, and WHATWG tables differ from CPython's for
+  undefined bytes. Feed the detector the sample upstream uses (whole input under 10000 bytes, else the
+  first and last 5000, then the whole input when those give no match).
 - XPath semantics. `contains(@class, "x")` is a substring test, not a class-token test; results come
   in document order. Port each predicate exactly, including the substrings that look like accidents.
   `translate(s, from, to)` maps only the listed characters, so it is not a lowercase:

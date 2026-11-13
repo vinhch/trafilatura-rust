@@ -88,7 +88,7 @@ Upstream's own dependencies carry extraction logic, so the parts trafilatura cal
 | --- | --- | --- |
 | `htmldate` (date extraction) | ported as a module named `htmldate` | exists: `find_date` (`htmldate/core.rs`) runs upstream's stages on a copy of the tree; its inputs are `DateParams` (`max_date` from the caller) and the D-21 clock |
 | `courlan` (URL normalization and filtering) | ported as a module named `courlan` | partial: `get_base_url`, `fix_relative_urls`, `get_tldinfo` and `extract_domain` (`courlan.rs`), `validate_url` and `is_valid_url` (`courlan/filters.rs`) and `normalize_url` (`courlan/clean.rs`) exist; `tld`'s `get_tld` is `courlan/tld.rs` over the `psl` crate, with `courlan/tld_tables.rs` generated; the other courlan functions are not ported |
-| `charset_normalizer` | replaced by `chardetng` (D-3) | done |
+| `charset_normalizer` | replaced by the `charset-norm` crate behind a parity gate (`dependencies.md`) | done: `detect_encoding` and `decode_file` (`utils.rs`) return what upstream's return |
 | `justext` | not ported: only the `fast=False` fallbacks use it | not ported |
 | `py3langid` (language check, optional upstream) | open item OI-4 in `phase-plan.md` | undecided |
 
@@ -114,7 +114,9 @@ upstream has no equivalent.
   A ported function that loops over nodes checks it itself, and `convert_tags`, which runs several walks in a
   row, checks it before each one. A single `dom` walk runs unchecked; its bound is `max_nodes` (D-5). The
   parse loop checks about every `CHECK_INTERVAL` tokens; a run that yields no token until it ends has no check
-  inside it (D-5).
+  inside it (D-5). Detecting and decoding a non-UTF-8 input are two unchecked calls (`from_bytes` on the whole
+  input when the head and tail give no match, then one whole-input decode per guess); at the 64 MiB default
+  input cap they took 0.9 s at most in release, so the deadline holds at stage granularity.
   The handle is `Call` (`cancel.rs`): an optional borrowed `CancelToken` (`Arc<AtomicBool>`, no
   dependency) and an optional deadline `Instant`. Loops check both about every 256 nodes
   (`CHECK_INTERVAL`: one atomic load and one `Instant::now()`), a constant tuned by benchmarks; cancel
@@ -154,7 +156,10 @@ upstream has no equivalent.
   borrows overlap.
 - Every `pub` item has a doc comment: `missing_docs` warns and CI denies warnings.
 - No process-global mutable state. Anything upstream keeps in a module global is an explicit value the
-  caller owns. `Send + Sync` options and results, so concurrent calls need no locking of their own. A
+  caller owns. One exception, accepted with the `charset-norm` dependency (`dependencies.md`): the detector
+  keeps about 3 MiB of statics (two per-code-point memo arrays) and a thread-local scratch pool that stays
+  allocated after a call on the caller's thread (2.9 MiB after one 305 KB page, not growing across calls).
+  The memos are pure per code point, so a call's output never depends on them. `Send + Sync` options and results, so concurrent calls need no locking of their own. A
   `DedupCache` shared by calls takes a lock in each of its methods (D-23 for what they see).
 - `unsafe` is forbidden.
 
