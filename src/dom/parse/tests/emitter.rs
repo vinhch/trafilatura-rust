@@ -257,6 +257,14 @@ fn comments_doctype_pi_skipped() {
 }
 
 #[test]
+fn processing_instruction_skipped() {
+    assert_eq!(
+        toks("<?php echo 1 ?>a<?t d>b"),
+        vec![Token::Skipped, text("a"), Token::Skipped, text("b")]
+    );
+}
+
+#[test]
 fn leading_bom_stripped_once() {
     assert_eq!(toks("\u{feff}\u{feff}a"), vec![text("\u{feff}a")]);
 }

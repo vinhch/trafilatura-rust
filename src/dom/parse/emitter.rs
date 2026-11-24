@@ -309,6 +309,10 @@ impl html5gum::Emitter for &mut Emitter {
         self.current = Current::Other;
     }
 
+    fn init_processing_instruction(&mut self) {
+        self.current = Current::Other;
+    }
+
     fn emit_current_tag(&mut self) -> Option<State> {
         if self.done {
             return None;
@@ -353,6 +357,10 @@ impl html5gum::Emitter for &mut Emitter {
         self.drop_markup();
     }
 
+    fn emit_current_processing_instruction(&mut self) {
+        self.drop_markup();
+    }
+
     fn set_self_closing(&mut self) {
         self.self_closing = true;
     }
@@ -366,6 +374,10 @@ impl html5gum::Emitter for &mut Emitter {
     fn push_comment(&mut self, _: &[u8]) {}
 
     fn push_doctype_name(&mut self, _: &[u8]) {}
+
+    fn push_processing_instruction_target(&mut self, _: &[u8]) {}
+
+    fn push_processing_instruction_data(&mut self, _: &[u8]) {}
 
     fn set_doctype_public_identifier(&mut self, _: &[u8]) {}
 
